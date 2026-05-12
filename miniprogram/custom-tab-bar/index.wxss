@@ -1,0 +1,100 @@
+.tab-bar {
+  display: flex;
+  align-items: flex-end;
+  height: 100rpx;
+  background: #ffffff;
+  border-top: 1rpx solid #e5e5e5;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  position: relative;
+}
+
+.tab-label {
+  font-size: 20rpx;
+  margin-top: 4rpx;
+}
+
+.tab-icon-placeholder {
+  font-size: 40rpx;
+  width: 44rpx;
+  height: 44rpx;
+  text-align: center;
+  line-height: 44rpx;
+}
+
+/* Center "+" button */
+.tab-plus-btn {
+  width: 90rpx;
+  height: 90rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #07c160, #06ad56);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -40rpx;
+  box-shadow: 0 4rpx 16rpx rgba(7, 193, 96, 0.35);
+}
+
+.tab-plus-icon {
+  color: #fff;
+  font-size: 48rpx;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* Action Sheet */
+.action-sheet-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+}
+
+.action-sheet-container {
+  width: 100%;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 0 0 env(safe-area-inset-bottom);
+}
+
+.action-sheet-title {
+  text-align: center;
+  padding: 30rpx;
+  font-size: 28rpx;
+  color: #888;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.action-sheet-item {
+  display: flex;
+  align-items: center;
+  padding: 30rpx 40rpx;
+  font-size: 30rpx;
+  border-bottom: 1rpx solid #f6f6f6;
+}
+
+.action-icon {
+  margin-right: 20rpx;
+  font-size: 36rpx;
+}
+
+.action-sheet-cancel {
+  text-align: center;
+  padding: 30rpx;
+  font-size: 28rpx;
+  color: #999;
+  border-top: 12rpx solid #f6f6f6;
+}

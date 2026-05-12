@@ -1,0 +1,94 @@
+/* Global Styles */
+page {
+  --primary: #07c160;
+  --primary-dark: #06ad56;
+  --danger: #fa5151;
+  --warning: #ffc300;
+  --text: #333333;
+  --text-secondary: #888888;
+  --text-light: #b0b0b0;
+  --bg: #f6f6f6;
+  --bg-white: #ffffff;
+  --border: #e5e5e5;
+  --radius: 12rpx;
+  --shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.08);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", sans-serif;
+  font-size: 28rpx;
+  color: var(--text);
+  background-color: var(--bg);
+}
+
+/* Flex Helpers */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-1 { flex: 1; }
+
+/* Spacing */
+.p-20 { padding: 20rpx; }
+.p-30 { padding: 30rpx; }
+.mt-20 { margin-top: 20rpx; }
+.mb-20 { margin-bottom: 20rpx; }
+
+/* Text */
+.text-center { text-align: center; }
+.text-secondary { color: var(--text-secondary); }
+.text-light { color: var(--text-light); }
+.text-primary { color: var(--primary); }
+.text-sm { font-size: 24rpx; }
+.text-lg { font-size: 32rpx; }
+
+/* Card */
+.card {
+  background: var(--bg-white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24rpx;
+  margin: 20rpx;
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 8rpx;
+  font-size: 30rpx;
+  padding: 20rpx 40rpx;
+  text-align: center;
+}
+.btn-primary[disabled] { background: #c0c0c0; }
+
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border: 2rpx solid var(--primary);
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  padding: 16rpx 32rpx;
+  text-align: center;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  padding: 16rpx 32rpx;
+}
+
+/* Status Tags */
+.tag {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+}
+.tag-primary { background: #e8f8ee; color: var(--primary); }
+.tag-warning { background: #fff8e0; color: #d4a000; }
+.tag-danger  { background: #fde8e8; color: var(--danger); }
+.tag-default { background: #f0f0f0; color: var(--text-secondary); }
+
+/* Ellipsis */
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

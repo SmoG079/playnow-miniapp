@@ -1,0 +1,95 @@
+App({
+  globalData: {
+    userInfo: null,
+    token: null,
+    refreshToken: null,
+    role: 'user',           // 'user' | 'club_admin' | 'platform_admin'
+    managedClubIds: [],      // clubs this user manages
+    baseURL: 'https://api.your-domain.com/api/v1',
+  },
+
+  onLaunch() {
+    // Restore login state from storage
+    const token = wx.getStorageSync('access_token');
+    const refreshToken = wx.getStorageSync('refresh_token');
+    if (token) {
+      this.globalData.token = token;
+      this.globalData.refreshToken = refreshToken;
+      this.fetchUserInfo();
+    }
+  },
+
+  async fetchUserInfo() {
+    try {
+      const res = await this.request({ url: '/users/me' });
+      this.globalData.userInfo = res;
+      this.globalData.role = res.role;
+      this.globalData.managedClubIds = res.managed_club_ids || [];
+    } catch (e) {
+      console.error('Fetch user info failed', e);
+    }
+  },
+
+  request({ url, method = 'GET', data = {}, skipAuth = false }) {
+    return new Promise((resolve, reject) => {
+      const header = {};
+      if (!skipAuth && this.globalData.token) {
+        header['Authorization'] = `Bearer ${this.globalData.token}`;
+      }
+      wx.request({
+        url: this.globalData.baseURL + url,
+        method,
+        data,
+        header,
+        success: (res) => {
+          if (res.statusCode === 200) {
+            resolve(res.data);
+          } else if (res.statusCode === 401) {
+            this.refreshTokenAndRetry({ url, method, data, resolve, reject });
+          } else {
+            wx.showToast({ title: res.data?.detail || '请求失败', icon: 'none' });
+            reject(res);
+          }
+        },
+        fail: (err) => {
+          wx.showToast({ title: '网络错误', icon: 'none' });
+          reject(err);
+        },
+      });
+    });
+  },
+
+  async refreshTokenAndRetry({ url, method, data, resolve, reject }) {
+    try {
+      const res = await this.request({
+        url: '/auth/refresh',
+        method: 'POST',
+        data: { refresh_token: this.globalData.refreshToken },
+        skipAuth: true,
+      });
+      this.globalData.token = res.access_token;
+      this.globalData.refreshToken = res.refresh_token;
+      wx.setStorageSync('access_token', res.access_token);
+      wx.setStorageSync('refresh_token', res.refresh_token);
+      // Retry original request
+      const retryRes = await this.request({ url, method, data });
+      resolve(retryRes);
+    } catch (e) {
+      // Refresh failed, go to login
+      wx.removeStorageSync('access_token');
+      wx.removeStorageSync('refresh_token');
+      wx.reLaunch({ url: '/pages/common/login' });
+      reject(e);
+    }
+  },
+
+  /** Check if user is a club admin */
+  isClubAdmin() {
+    return this.globalData.role === 'club_admin' || this.globalData.role === 'platform_admin';
+  },
+
+  /** Check if user manages a specific club */
+  managesClub(clubId) {
+    return this.globalData.managedClubIds.includes(clubId);
+  },
+});

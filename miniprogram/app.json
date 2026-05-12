@@ -1,0 +1,54 @@
+{
+  "pages": [
+    "pages/home/index",
+    "pages/booking/club-list",
+    "pages/booking/club-detail",
+    "pages/booking/venue-detail",
+    "pages/booking/confirm",
+    "pages/booking/success",
+    "pages/publish/post-create",
+    "pages/publish/club-create",
+    "pages/publish/tournament-create",
+    "pages/publish/venue-manage",
+    "pages/publish/slot-manage",
+    "pages/publish/order-manage",
+    "pages/chat/index",
+    "pages/chat/conversation",
+    "pages/profile/index",
+    "pages/profile/edit",
+    "pages/profile/my-bookings",
+    "pages/profile/my-posts",
+    "pages/profile/my-registrations",
+    "pages/profile/club-dashboard",
+    "pages/profile/settlement-list",
+    "pages/profile/stats",
+    "pages/common/login",
+    "pages/common/post-detail",
+    "pages/common/tournament-detail",
+    "pages/common/user-profile"
+  ],
+  "tabBar": {
+    "custom": true,
+    "list": [
+      { "pagePath": "pages/home/index", "text": "首页" },
+      { "pagePath": "pages/booking/club-list", "text": "订场" },
+      { "pagePath": "pages/publish/post-create", "text": "+" },
+      { "pagePath": "pages/chat/index", "text": "消息" },
+      { "pagePath": "pages/profile/index", "text": "我的" }
+    ]
+  },
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "运动俱乐部",
+    "navigationBarTextStyle": "black"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于搜索附近的俱乐部"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation", "chooseAddress"],
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

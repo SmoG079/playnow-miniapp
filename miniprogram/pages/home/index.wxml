@@ -1,0 +1,93 @@
+<!-- 首页 - 信息流 -->
+<view class="page">
+  <!-- Search Bar -->
+  <view class="search-bar" bindtap="onSearch">
+    <text class="search-icon">🔍</text>
+    <text class="search-placeholder">搜索俱乐部、比赛、约球...</text>
+  </view>
+
+  <!-- Sport Filter -->
+  <scroll-view class="filter-scroll" scroll-x>
+    <view
+      wx:for="{{sportFilters}}"
+      wx:key="*this"
+      class="filter-item {{activeSport === item ? 'active' : ''}}"
+      data-sport="{{item}}"
+      bindtap="onSportFilter"
+    >{{item}}</view>
+  </scroll-view>
+
+  <!-- Tournament Banner -->
+  <view class="section" wx:if="{{tournaments.length > 0}}">
+    <view class="section-header">
+      <text class="section-title">🏆 近期比赛</text>
+      <text class="section-more" bindtap="onTourDetail" data-id="0">更多</text>
+    </view>
+    <scroll-view class="tour-scroll" scroll-x>
+      <view
+        wx:for="{{tournaments}}"
+        wx:key="id"
+        class="tournament-card-h"
+        data-id="{{item.id}}"
+        bindtap="onTourDetail"
+      >
+        <image class="tour-cover" src="{{item.cover_image || '/images/default-match.png'}}" mode="aspectFill" />
+        <view class="tour-info">
+          <text class="tour-title ellipsis">{{item.title}}</text>
+          <text class="text-sm text-secondary">{{item.club_name}}</text>
+          <text class="text-sm text-secondary">{{item.start_time}}</text>
+          <text class="text-primary">{{item.current_participants}}/{{item.max_participants}}人</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- Match Posts Feed -->
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">🔥 约球广场</text>
+    </view>
+
+    <block wx:for="{{posts}}" wx:key="id">
+      <view
+        class="post-card card"
+        data-id="{{item.id}}"
+        bindtap="onPostDetail"
+      >
+        <view class="post-header">
+          <image class="avatar" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+          <view class="post-user-info">
+            <text class="post-username">{{item.user_nickname || '匿名用户'}}</text>
+            <text class="text-sm text-secondary">{{item.created_at}}</text>
+          </view>
+          <view class="tag tag-primary">{{item.sport_type || '运动'}}</view>
+        </view>
+
+        <view class="post-body">
+          <text class="post-title">{{item.title}}</text>
+          <view class="post-meta">
+            <text>📅 {{item.preferred_date}} {{item.players_needed ? '还差' + item.players_needed + '人' : ''}}</text>
+            <text>🎯 {{item.level_required || '不限水平'}}</text>
+          </view>
+        </view>
+
+        <view class="post-footer">
+          <text class="text-sm text-secondary">{{item.club_name}}</text>
+          <view class="post-actions">
+            <text class="text-sm">{{item.registration_count}} 人已报名</text>
+            <button
+              class="share-btn-mini"
+              open-type="share"
+              data-id="{{item.id}}"
+              data-title="{{item.title}}"
+            >分享</button>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{posts.length === 0 && !loading}}" class="empty-state">
+      <text>暂无约球帖，快去发布吧！</text>
+    </view>
+  </view>
+</view>

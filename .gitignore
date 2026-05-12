@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+mysql_data/
+
+# Certificates
+backend/certs/
+backend/ssl/*.pem
+backend/ssl/*.key
+
+# Claude
+.claude/
+
+# Temp files
+需求.txt

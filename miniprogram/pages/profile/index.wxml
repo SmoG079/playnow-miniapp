@@ -1,0 +1,48 @@
+<!-- 我的 - 角色化个人中心 -->
+<view class="page">
+  <!-- Profile Header -->
+  <view class="profile-header">
+    <image class="profile-avatar" src="{{userInfo.avatar_url || '/images/default-avatar.png'}}" mode="aspectFill" />
+    <view class="profile-info">
+      <text class="profile-name">{{userInfo.nickname || '未设置昵称'}}</text>
+      <view class="profile-role">
+        <text class="tag {{role === 'club_admin' ? 'tag-primary' : 'tag-default'}}">
+          {{role === 'platform_admin' ? '平台管理员' : role === 'club_admin' ? '俱乐部管理员' : '普通用户'}}
+        </text>
+      </view>
+    </view>
+    <view class="edit-btn" bindtap="onEditProfile">
+      <text>编辑</text>
+    </view>
+  </view>
+
+  <!-- Managed Clubs (if admin) -->
+  <view class="card" wx:if="{{managedClubIds.length > 0}}">
+    <text class="card-title">我管理的俱乐部</text>
+    <text class="text-secondary text-sm">共 {{managedClubIds.length}} 个</text>
+  </view>
+
+  <!-- Menu List -->
+  <view class="menu-list">
+    <view
+      wx:for="{{menuItems}}"
+      wx:key="title"
+      class="menu-item"
+      data-page="{{item.page}}"
+      bindtap="onMenuTap"
+    >
+      <text class="menu-icon">{{item.icon}}</text>
+      <text class="menu-title">{{item.title}}</text>
+      <text class="menu-arrow">›</text>
+    </view>
+  </view>
+
+  <!-- Logout / About -->
+  <view class="menu-list" style="margin-top: 20rpx;">
+    <view class="menu-item">
+      <text class="menu-icon">ℹ️</text>
+      <text class="menu-title">关于我们</text>
+      <text class="menu-arrow">›</text>
+    </view>
+  </view>
+</view>

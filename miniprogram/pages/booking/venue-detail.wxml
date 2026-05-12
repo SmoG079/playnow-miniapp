@@ -1,0 +1,60 @@
+<!-- 场地详情 & 时间表 -->
+<view class="page">
+  <!-- Venue Info -->
+  <view class="venue-header" wx:if="{{venue}}">
+    <image class="venue-cover" src="{{venue.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+    <view class="venue-info">
+      <text class="venue-name">{{venue.name}}</text>
+      <text class="text-secondary">{{venue.sport_type}} · 最多{{venue.max_capacity}}人</text>
+      <text class="text-primary text-lg">¥{{venue.price_per_hour}}/小时</text>
+    </view>
+  </view>
+
+  <!-- Date Selector -->
+  <scroll-view class="date-scroll" scroll-x>
+    <view
+      wx:for="{{dateOptions}}"
+      wx:key="value"
+      class="date-item {{selectedDate === item.value ? 'active' : ''}}"
+      data-date="{{item.value}}"
+      bindtap="onDateChange"
+    >
+      <text class="date-weekday">{{item.weekday}}</text>
+      <text class="date-label">{{item.label}}</text>
+    </view>
+  </scroll-view>
+
+  <!-- Time Slots -->
+  <view class="slot-section">
+    <block wx:for="{{slotGroups}}" wx:key="date">
+      <view class="slot-date-group">
+        <text class="slot-date-title">{{item.date}}</text>
+        <view class="slot-grid">
+          <view
+            wx:for="{{item.slots}}"
+            wx:for-item="slot"
+            wx:key="id"
+            class="slot-item {{slot.status}}"
+            data-slot="{{slot}}"
+            bindtap="onSlotTap"
+          >
+            <text class="slot-time">{{slot.start_time}} - {{slot.end_time}}</text>
+            <text class="slot-price">¥{{slot.price}}</text>
+            <text class="slot-status" wx:if="{{slot.status === 'booked'}}">已预约</text>
+            <text class="slot-status" wx:if="{{slot.status === 'locked'}}">锁定中</text>
+            <text class="slot-book" wx:if="{{slot.status === 'available'}}">可预约</text>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{slotGroups.length === 0 && !loading}}" class="empty-state">
+      <text>暂无可用时间段</text>
+    </view>
+  </view>
+
+  <!-- Management Button (club admin only) -->
+  <view class="admin-entry" wx:if="{{isAdmin}}">
+    <button class="btn-outline" bindtap="onManageSlots">管理时间段</button>
+  </view>
+</view>

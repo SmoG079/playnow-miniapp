@@ -1,0 +1,410 @@
+from datetime import datetime, date, time
+from typing import Optional, Any, List
+from pydantic import BaseModel, Field
+from decimal import Decimal
+
+
+# ── Auth ──
+
+class WxLoginRequest(BaseModel):
+    code: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class PhoneRequest(BaseModel):
+    code: str  # WeChat phone number encrypted data code
+
+
+# ── User ──
+
+class UserProfile(BaseModel):
+    id: int
+    nickname: Optional[str]
+    avatar_url: Optional[str]
+    phone: Optional[str]
+    role: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class UserMeResponse(UserProfile):
+    managed_club_ids: list[int] = []
+
+
+# ── Club ──
+
+class ClubCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    sport_types: list[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    images: list[str] = Field(default_factory=list)
+    address: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    contact_phone: Optional[str] = None
+
+class ClubUpdate(BaseModel):
+    name: Optional[str] = None
+    sport_types: Optional[list[str]] = None
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    images: Optional[list[str]] = None
+    address: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    contact_phone: Optional[str] = None
+
+class ClubBrief(BaseModel):
+    id: int
+    name: str
+    sport_types: Any
+    cover_image: Optional[str]
+    address: Optional[str]
+    latitude: Optional[Decimal]
+    longitude: Optional[Decimal]
+    status: str
+
+    class Config:
+        from_attributes = True
+
+class ClubDetail(ClubBrief):
+    description: Optional[str]
+    images: Any
+    contact_phone: Optional[str]
+    venues: list["VenueBrief"] = []
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ClubListParams(BaseModel):
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    sport: Optional[str] = None
+    keyword: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=50)
+
+
+# ── Venue ──
+
+class VenueCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    sport_type: str
+    price_per_hour: Decimal = Field(..., gt=0)
+    max_capacity: int = Field(default=4, ge=1)
+    cover_image: Optional[str] = None
+    sort_order: int = 0
+
+class VenueUpdate(BaseModel):
+    name: Optional[str] = None
+    sport_type: Optional[str] = None
+    price_per_hour: Optional[Decimal] = None
+    max_capacity: Optional[int] = None
+    cover_image: Optional[str] = None
+    sort_order: Optional[int] = None
+    status: Optional[str] = None
+
+class VenueBrief(BaseModel):
+    id: int
+    club_id: int
+    name: str
+    sport_type: str
+    price_per_hour: Decimal
+    max_capacity: int
+    cover_image: Optional[str]
+    status: str
+
+    class Config:
+        from_attributes = True
+
+class VenueDetail(VenueBrief):
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Time Slot ──
+
+class SlotGenerateRequest(BaseModel):
+    date_from: date
+    date_to: date
+    start_time: time = time(8, 0)
+    end_time: time = time(22, 0)
+    interval_minutes: int = Field(default=60, ge=30)
+
+class SlotBrief(BaseModel):
+    id: int
+    venue_id: int
+    date: date
+    start_time: time
+    end_time: time
+    price: Decimal  # effective price (override or venue default)
+    status: str
+
+    class Config:
+        from_attributes = True
+
+class SlotDateGroup(BaseModel):
+    date: date
+    slots: list[SlotBrief]
+
+
+# ── Booking ──
+
+class BookingCreateRequest(BaseModel):
+    slot_id: int
+
+class BookingDetail(BaseModel):
+    id: int
+    order_no: str
+    user_id: int
+    venue_id: int
+    slot_id: int
+    club_id: int
+    amount: Decimal
+    status: str
+    payment_time: Optional[datetime]
+    wx_transaction_id: Optional[str]
+    cancel_reason: Optional[str]
+    cancel_time: Optional[datetime]
+    created_at: datetime
+    venue_name: Optional[str] = None
+    club_name: Optional[str] = None
+    slot_date: Optional[date] = None
+    slot_start: Optional[time] = None
+    slot_end: Optional[time] = None
+
+    class Config:
+        from_attributes = True
+
+class BookingListParams(BaseModel):
+    status: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=50)
+
+class PayRequest(BaseModel):
+    booking_id: int
+
+class PayResponse(BaseModel):
+    """Return params for wx.requestPayment"""
+    timeStamp: str
+    nonceStr: str
+    package: str
+    signType: str
+    paySign: str
+
+class CancelRequest(BaseModel):
+    reason: Optional[str] = None
+
+class PaginatedResponse(BaseModel):
+    items: list[Any]
+    total: int
+    page: int
+    page_size: int
+
+
+# ── Match Post ──
+
+class PostCreate(BaseModel):
+    club_id: int
+    title: str = Field(..., min_length=1, max_length=256)
+    sport_type: Optional[str] = None
+    preferred_date: Optional[date] = None
+    preferred_start: Optional[time] = None
+    preferred_end: Optional[time] = None
+    players_needed: int = Field(default=1, ge=1)
+    level_required: Optional[str] = None
+    notes: Optional[str] = None
+    venue_id: Optional[int] = None
+    booking_id: Optional[int] = None
+
+class PostBrief(BaseModel):
+    id: int
+    club_id: int
+    user_id: int
+    title: str
+    sport_type: Optional[str]
+    preferred_date: Optional[date]
+    preferred_start: Optional[time]
+    preferred_end: Optional[time]
+    players_needed: int
+    level_required: Optional[str]
+    status: str
+    created_at: datetime
+    user_nickname: Optional[str] = None
+    user_avatar: Optional[str] = None
+    club_name: Optional[str] = None
+    registration_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+class PostDetail(PostBrief):
+    notes: Optional[str]
+    venue_id: Optional[int]
+    booking_id: Optional[int]
+    registrations: list["RegistrationBrief"] = []
+
+    class Config:
+        from_attributes = True
+
+class RegistrationBrief(BaseModel):
+    id: int
+    user_id: int
+    message: Optional[str]
+    status: str
+    user_nickname: Optional[str] = None
+    user_avatar: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class PostListParams(BaseModel):
+    club_id: Optional[int] = None
+    sport: Optional[str] = None
+    status: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=50)
+
+class RegisterPostRequest(BaseModel):
+    message: Optional[str] = None
+
+class ReviewRegistrationRequest(BaseModel):
+    status: str  # approved / rejected
+
+
+# ── Tournament ──
+
+class TournamentCreate(BaseModel):
+    club_id: int
+    title: str = Field(..., min_length=1, max_length=256)
+    description: Optional[str] = None
+    sport_type: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    venue_id: Optional[int] = None
+    lock_venue: bool = False
+    max_participants: Optional[int] = None
+    entry_fee: Decimal = Decimal("0")
+    cover_image: Optional[str] = None
+
+class TournamentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    sport_type: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    venue_id: Optional[int] = None
+    lock_venue: Optional[bool] = None
+    max_participants: Optional[int] = None
+    entry_fee: Optional[Decimal] = None
+    cover_image: Optional[str] = None
+    status: Optional[str] = None
+
+class TournamentBrief(BaseModel):
+    id: int
+    club_id: int
+    title: str
+    sport_type: Optional[str]
+    start_time: datetime
+    end_time: datetime
+    venue_id: Optional[int]
+    entry_fee: Decimal
+    max_participants: Optional[int]
+    current_participants: int
+    cover_image: Optional[str]
+    status: str
+    created_at: datetime
+    club_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class TournamentDetail(TournamentBrief):
+    description: Optional[str]
+    lock_venue: bool
+    registrations: list["TournamentRegBrief"] = []
+
+    class Config:
+        from_attributes = True
+
+class TournamentRegBrief(BaseModel):
+    id: int
+    user_id: int
+    status: str
+    user_nickname: Optional[str] = None
+    user_avatar: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class TournamentListParams(BaseModel):
+    club_id: Optional[int] = None
+    sport: Optional[str] = None
+    status: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=50)
+
+
+# ── Settlement ──
+
+class SettlementBrief(BaseModel):
+    id: int
+    order_id: int
+    total_amount: Decimal
+    platform_amount: Decimal
+    club_amount: Decimal
+    split_ratio: Optional[Decimal]
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Notification ──
+
+class NotificationBrief(BaseModel):
+    id: int
+    type: str
+    title: Optional[str]
+    content: Optional[str]
+    ref_id: Optional[int]
+    ref_type: Optional[str]
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Stats ──
+
+class ClubStats(BaseModel):
+    total_venues: int
+    total_orders: int
+    total_revenue: Decimal
+    venue_utilization: float  # percentage
+    today_orders: int
+    today_revenue: Decimal
+
+
+# ── Upload ──
+
+class UploadResponse(BaseModel):
+    url: str
+    filename: str
