@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -80,6 +78,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: club-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_pass}
     ports:
       - "6379:6379"
     restart: unless-stopped
