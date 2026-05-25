@@ -7,13 +7,19 @@ Page({
     role: 'user',
     managedClubIds: [],
     menuItems: [],
+    isLoggedIn: false,
   },
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 4 });
     }
+    this.setData({ isLoggedIn: !!app.globalData.token });
     this.buildMenu();
+  },
+
+  onLogin() {
+    wx.navigateTo({ url: '/pages/common/login' });
   },
 
   buildMenu() {
@@ -56,6 +62,10 @@ Page({
     if (page) {
       wx.navigateTo({ url: page });
     }
+  },
+
+  onImgError(e) {
+    // Fallback: keep current src to avoid infinite loop
   },
 
   onEditProfile() {

@@ -1,1 +1,12 @@
-.page { padding: 20rpx; }
+.page { padding: 20rpx; padding-bottom: 160rpx; }
+
+.form-label { display: block; font-size: 28rpx; font-weight: 500; margin: 24rpx 0 12rpx; color: var(--text); }
+.form-input { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; }
+.form-textarea { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; min-height: 120rpx; width: 100%; box-sizing: border-box; }
+.form-picker { display: flex; justify-content: space-between; align-items: center; background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; }
+.form-row { display: flex; align-items: center; gap: 16rpx; }
+.form-picker-half { flex: 1; background: #fff; border-radius: 8rpx; padding: 20rpx; text-align: center; font-size: 28rpx; }
+.form-divider { color: var(--text-light); }
+
+.submit-area { margin-top: 30rpx; }
+.submit-area .btn-primary { width: 100%; border-radius: 44rpx; padding: 24rpx; font-size: 32rpx; }

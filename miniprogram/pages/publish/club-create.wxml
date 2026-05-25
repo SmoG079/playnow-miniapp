@@ -1,1 +1,30 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="card">
+    <text class="form-label">俱乐部名称 *</text>
+    <input class="form-input" placeholder="输入俱乐部名称" value="{{name}}" bindinput="onNameInput" />
+
+    <text class="form-label">运动类型</text>
+    <view class="sport-check-group">
+      <view
+        wx:for="{{['羽毛球','篮球','网球','乒乓球','足球']}}"
+        wx:key="*this"
+        class="sport-check {{sportTypes.indexOf(item) > -1 ? 'checked' : ''}}"
+        data-sport="{{item}}"
+        bindtap="onSportToggle"
+      >{{item}}</view>
+    </view>
+
+    <text class="form-label">俱乐部介绍</text>
+    <textarea class="form-textarea" placeholder="介绍一下俱乐部..." value="{{description}}" bindinput="onDescInput" />
+
+    <text class="form-label">地址</text>
+    <input class="form-input" placeholder="俱乐部地址" value="{{address}}" bindinput="onAddrInput" />
+
+    <text class="form-label">联系电话</text>
+    <input class="form-input" type="number" placeholder="联系电话" value="{{phone}}" bindinput="onPhoneInput" />
+  </view>
+
+  <view class="submit-area">
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name}}">创建俱乐部</button>
+  </view>
+</view>

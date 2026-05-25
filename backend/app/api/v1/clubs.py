@@ -72,20 +72,13 @@ async def create_club(
     db.add(member)
 
     # Upgrade user role if not already
-    if current_user.role.value == "user":
+    role = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
+    if role == "user":
         current_user.role = "club_admin"
 
     await db.flush()
-    await db.refresh(club)
 
-    venues_result = await db.execute(
-        select(Venue).where(Venue.club_id == club.id)
-    )
-    venues = venues_result.scalars().all()
-
-    detail = ClubDetail.model_validate(club)
-    detail.venues = [VenueBrief.model_validate(v) for v in venues]
-    return detail
+    return _club_to_detail(club)
 
 
 @router.get("/{club_id}", response_model=ClubDetail)
@@ -96,12 +89,7 @@ async def get_club(club_id: int, db: AsyncSession = Depends(get_db)):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Club not found")
 
-    venues_result = await db.execute(select(Venue).where(Venue.club_id == club_id))
-    venues = venues_result.scalars().all()
-
-    detail = ClubDetail.model_validate(club)
-    detail.venues = [VenueBrief.model_validate(v) for v in venues]
-    return detail
+    return await _club_to_detail_async(club, db)
 
 
 @router.put("/{club_id}", response_model=ClubDetail)
@@ -121,12 +109,35 @@ async def update_club(
     for key, value in update_data.items():
         setattr(club, key, value)
 
-    await db.flush()
-    await db.refresh(club)
+    return await _club_to_detail_async(club, db)
 
-    venues_result = await db.execute(select(Venue).where(Venue.club_id == club_id))
-    venues = venues_result.scalars().all()
-    detail = ClubDetail.model_validate(club)
+
+def _club_to_detail(club: Club) -> ClubDetail:
+    """Build ClubDetail from ORM object without triggering lazy load."""
+    return ClubDetail(
+        id=club.id,
+        name=club.name,
+        sport_types=club.sport_types,
+        cover_image=club.cover_image,
+        address=club.address,
+        latitude=club.latitude,
+        longitude=club.longitude,
+        status=club.status.value if hasattr(club.status, 'value') else str(club.status),
+        description=club.description,
+        images=club.images,
+        contact_phone=club.contact_phone,
+        venues=[],
+        created_at=club.created_at,
+    )
+
+
+async def _club_to_detail_async(club: Club, db: AsyncSession) -> ClubDetail:
+    """Build ClubDetail with venues loaded from query."""
+    detail = _club_to_detail(club)
+    v_result = await db.execute(
+        select(Venue).where(Venue.club_id == club.id)
+    )
+    venues = v_result.scalars().all()
     detail.venues = [VenueBrief.model_validate(v) for v in venues]
     return detail
 

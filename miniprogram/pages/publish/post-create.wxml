@@ -1,1 +1,58 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="card">
+    <text class="form-label">标题 *</text>
+    <input class="form-input" placeholder="如：周末羽毛球3缺1" value="{{title}}" bindinput="onField" data-field="title" />
+
+    <text class="form-label">俱乐部 *</text>
+    <picker mode="selector" range="{{clubNames}}" value="{{clubIndex}}" bindchange="onClubChange">
+      <view class="form-picker">
+        <text class="{{clubIndex > -1 ? '' : 'text-light'}}">{{clubIndex > -1 ? clubNames[clubIndex] : '选择俱乐部'}}</text>
+        <text>›</text>
+      </view>
+    </picker>
+
+    <text class="form-label">运动类型</text>
+    <input class="form-input" placeholder="如：羽毛球" value="{{sportType}}" bindinput="onField" data-field="sportType" />
+
+    <text class="form-label">日期</text>
+    <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange">
+      <view class="form-picker">
+        <text class="{{preferredDate ? '' : 'text-light'}}">{{preferredDate || '选择日期'}}</text>
+        <text>›</text>
+      </view>
+    </picker>
+
+    <text class="form-label">时间</text>
+    <view class="form-row">
+      <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart">
+        <view class="form-picker-half">
+          <text class="{{preferredStart ? '' : 'text-light'}}">{{preferredStart || '开始'}}</text>
+        </view>
+      </picker>
+      <text class="form-divider">至</text>
+      <picker mode="time" value="{{preferredEnd}}" bindchange="onTimeEnd">
+        <view class="form-picker-half">
+          <text class="{{preferredEnd ? '' : 'text-light'}}">{{preferredEnd || '结束'}}</text>
+        </view>
+      </picker>
+    </view>
+
+    <text class="form-label">还差几人</text>
+    <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
+
+    <text class="form-label">水平要求</text>
+    <picker mode="selector" range="{{levels}}" value="{{levelIndex}}" bindchange="onLevelChange">
+      <view class="form-picker">
+        <text class="{{levelIndex > -1 ? '' : 'text-light'}}">{{levelIndex > -1 ? levels[levelIndex] : '不限'}}</text>
+        <text>›</text>
+      </view>
+    </picker>
+
+    <text class="form-label">备注</text>
+    <textarea class="form-textarea" placeholder="补充说明..." value="{{notes}}" bindinput="onField" data-field="notes" />
+  </view>
+
+  <view class="submit-area">
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1}}">发布约球帖</button>
+  </view>
+</view>

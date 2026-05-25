@@ -1,1 +1,13 @@
-.page { padding: 20rpx; }
+.page { padding-bottom: env(safe-area-inset-bottom); }
+
+.chat-actions { margin: 20rpx; }
+.chat-card { display: flex; align-items: center; gap: 20rpx; padding: 24rpx; background: #fff; border-radius: var(--radius); margin-bottom: 2rpx; }
+.chat-icon { font-size: 44rpx; width: 64rpx; text-align: center; }
+.chat-avatar { width: 80rpx; height: 80rpx; border-radius: 12rpx; background: #eee; }
+.chat-arrow { font-size: 32rpx; color: #ccc; }
+.chat-title { font-size: 30rpx; font-weight: 500; }
+.chat-name { font-size: 30rpx; font-weight: 500; }
+
+.section-title { font-size: 28rpx; font-weight: 600; padding: 30rpx 20rpx 16rpx; }
+
+.empty-state { text-align: center; padding: 100rpx 0; color: var(--text-light); display: flex; flex-direction: column; gap: 12rpx; }

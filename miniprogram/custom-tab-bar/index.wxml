@@ -13,8 +13,8 @@
       </view>
     </block>
     <block wx:else>
-      <view class="tab-icon-placeholder">{{item.icon}}</view>
-      <text class="tab-label" style="color: {{selected === index ? selectedColor : color}}">
+      <view class="tab-icon-placeholder" style="opacity: {{selected === index ? 1 : 0.5}}">{{item.icon}}</view>
+      <text class="tab-label" style="color: {{selected === index ? selectedColor : defaultColor}}">
         {{item.text}}
       </text>
     </block>

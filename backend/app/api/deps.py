@@ -7,6 +7,11 @@ from app.core.security import decode_token
 from app.models.models import User, ClubMember
 
 
+def _v(field) -> str:
+    """Safely get string value from enum or string field (asyncmy returns strings)."""
+    return field.value if hasattr(field, 'value') else str(field)
+
+
 async def get_current_user(
     authorization: str = Header(..., description="Bearer {token}"),
     db: AsyncSession = Depends(get_db),
@@ -45,7 +50,7 @@ async def get_club_admin(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if current_user.role.value in ("club_admin", "platform_admin"):
+    if _v(current_user.role) in ("club_admin", "platform_admin"):
         result = await db.execute(
             select(ClubMember).where(
                 ClubMember.club_id == club_id,
@@ -60,6 +65,6 @@ async def get_club_admin(
 async def get_platform_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    if current_user.role.value != "platform_admin":
+    if _v(current_user.role) != "platform_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires platform admin")
     return current_user

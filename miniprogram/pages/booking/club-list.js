@@ -67,9 +67,14 @@ Page({
     this.loadClubs();
   },
 
-  onSportChange(e) {
-    this.setData({ sportFilter: e.detail.value });
+  onSportFilter(e) {
+    const val = e.currentTarget.dataset.value;
+    this.setData({ sportFilter: val });
     this.loadClubs();
+  },
+
+  onCreateClub() {
+    wx.navigateTo({ url: '/pages/publish/club-create' });
   },
 
   onClubDetail(e) {

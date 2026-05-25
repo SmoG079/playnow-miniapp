@@ -25,7 +25,7 @@ async def get_me(
         nickname=current_user.nickname,
         avatar_url=current_user.avatar_url,
         phone=current_user.phone,
-        role=current_user.role.value,
+        role=current_user.role.value if hasattr(current_user.role, 'value') else current_user.role,
         created_at=current_user.created_at,
         managed_club_ids=club_ids,
     )

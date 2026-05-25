@@ -1,1 +1,28 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="chat-actions">
+    <view class="chat-card" bindtap="onContactService">
+      <text class="chat-icon">🎧</text>
+      <view>
+        <text class="chat-title">联系客服</text>
+        <text class="text-sm text-secondary">有任何问题，随时咨询</text>
+      </view>
+      <text class="chat-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="section-title">我的群聊</view>
+  <block wx:for="{{conversations}}" wx:key="id">
+    <view class="chat-card" data-id="{{item.id}}" bindtap="onConversationTap">
+      <image class="chat-avatar" src="{{item.avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+      <view class="flex-1">
+        <text class="chat-name">{{item.name}}</text>
+        <text class="text-sm text-secondary ellipsis">{{item.lastMessage || '暂无消息'}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{conversations.length === 0}}" class="empty-state">
+    <text>暂无群聊</text>
+    <text class="text-sm text-secondary">参与约球或比赛后可创建群聊</text>
+  </view>
+</view>

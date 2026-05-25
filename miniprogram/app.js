@@ -5,7 +5,7 @@ App({
     refreshToken: null,
     role: 'user',           // 'user' | 'club_admin' | 'platform_admin'
     managedClubIds: [],      // clubs this user manages
-    baseURL: 'https://api.your-domain.com/api/v1',
+    baseURL: 'http://127.0.0.1:8000/api/v1',
   },
 
   onLaunch() {
@@ -17,6 +17,13 @@ App({
       this.globalData.refreshToken = refreshToken;
       this.fetchUserInfo();
     }
+  },
+
+  /** Redirect to login if not authenticated. Returns true if logged in. */
+  requireLogin() {
+    if (this.globalData.token) return true;
+    wx.navigateTo({ url: '/pages/common/login' });
+    return false;
   },
 
   async fetchUserInfo() {
@@ -41,6 +48,7 @@ App({
         method,
         data,
         header,
+        timeout: 30000,
         success: (res) => {
           if (res.statusCode === 200) {
             resolve(res.data);
