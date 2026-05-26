@@ -1,6 +1,6 @@
 # PlayNow API 文档
 
-Base URL: `https://api.your-domain.com/api/v1`
+Base URL: `https://www.tennisplaynow.site/api/v1`
 
 ## 目录
 

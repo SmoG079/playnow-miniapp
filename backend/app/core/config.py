@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     WX_MCH_API_V3_KEY: str = ""
     WX_MCH_SERIAL_NO: str = ""
     WX_MCH_PRIVATE_KEY_PATH: str = "/app/certs/apiclient_key.pem"
-    WX_PAY_NOTIFY_URL: str = "https://api.your-domain.com/api/v1/bookings/wx-notify"
+    WX_PAY_NOTIFY_URL: str = "https://www.tennisplaynow.site/api/v1/bookings/wx-notify"
 
     # OSS
     OSS_ENDPOINT: str = ""
