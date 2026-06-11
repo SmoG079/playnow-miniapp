@@ -1,1 +1,27 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="card">
+    <text class="form-label">头像</text>
+    <view class="avatar-wrapper" bindtap="chooseAvatar">
+      <image class="avatar-large" src="{{avatarUrl || '/images/default-avatar.png'}}" mode="aspectFill" />
+      <text class="avatar-hint">点击更换</text>
+    </view>
+
+    <text class="form-label">昵称</text>
+    <input class="form-input" placeholder="输入昵称" value="{{nickname}}" bindinput="onNicknameInput" />
+
+    <text class="form-label">NTRP 等级</text>
+    <picker mode="selector" range="{{ntrpLevels}}" value="{{ntrpIndex}}" bindchange="onNtrpChange">
+      <view class="form-picker">
+        <text class="{{ntrpIndex > -1 ? '' : 'text-light'}}">{{ntrpIndex > -1 ? ntrpLevels[ntrpIndex] : '选择你的网球等级'}}</text>
+        <text class="arrow">›</text>
+      </view>
+    </picker>
+    <text class="text-sm text-secondary" wx:if="{{ntrpIndex > -1}}">
+      {{ntrpLevels[ntrpIndex] <= 1.5 ? '初学者' : ntrpLevels[ntrpIndex] <= 2.5 ? '初级' : ntrpLevels[ntrpIndex] <= 3.5 ? '中级' : ntrpLevels[ntrpIndex] <= 4.5 ? '中高级' : ntrpLevels[ntrpIndex] <= 5.5 ? '高级' : '专业/职业'}}
+    </text>
+  </view>
+
+  <view class="submit-area">
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}">保存</button>
+  </view>
+</view>

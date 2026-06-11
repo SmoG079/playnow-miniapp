@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.models import (
-    User, Club, MatchPost, MatchRegistration, MatchPostStatus,
+    User, Club, ClubMember, Venue, MatchPost, MatchRegistration, MatchPostStatus,
     RegistrationStatus, Notification, NotificationType,
 )
 from app.schemas.schemas import (
@@ -15,17 +16,34 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
+def haversine(lat1, lng1, lat2, lng2):
+    """Calculate distance (km) between two points."""
+    if lat1 is None or lng1 is None or lat2 is None or lng2 is None:
+        return None
+    lat1, lng1, lat2, lng2 = map(radians, [lat1, lng1, lat2, lng2])
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    r = 6371  # Earth radius in km
+    return round(c * r, 1)
+
+
 @router.get("", response_model=PaginatedResponse)
 async def list_posts(
     club_id: int = Query(None),
     sport: str = Query(None),
     status: str = Query(None),
+    lat: float = Query(None),
+    lng: float = Query(None),
+    sort_by: str = Query('created', regex='^(created|distance)$'),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
     query = (
         select(MatchPost, User.nickname, User.avatar_url, Club.name,
+               Club.latitude, Club.longitude,
                func.count(MatchRegistration.id))
         .join(User, MatchPost.user_id == User.id)
         .join(Club, MatchPost.club_id == Club.id)
@@ -43,7 +61,13 @@ async def list_posts(
         query = query.where(MatchPost.status == status)
         count_query = count_query.where(MatchPost.status == status)
 
-    query = query.group_by(MatchPost.id).order_by(MatchPost.created_at.desc())
+    query = query.group_by(MatchPost.id)
+
+    if sort_by == 'distance' and lat is not None and lng is not None:
+        # Sort by distance in Python after fetching
+        pass  # We'll sort after fetching
+    else:
+        query = query.order_by(MatchPost.created_at.desc())
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -54,7 +78,10 @@ async def list_posts(
 
     items = []
     for row in rows:
-        post, nickname, avatar, club_name, reg_count = row
+        post, nickname, avatar, club_name, club_lat, club_lng, reg_count = row
+        distance = haversine(lat, lng,
+                             float(club_lat) if club_lat else None,
+                             float(club_lng) if club_lng else None)
         items.append(PostBrief(
             id=post.id, club_id=post.club_id, user_id=post.user_id,
             title=post.title, sport_type=post.sport_type,
@@ -67,7 +94,11 @@ async def list_posts(
             created_at=post.created_at,
             user_nickname=nickname, user_avatar=avatar,
             club_name=club_name, registration_count=reg_count or 0,
+            distance=distance,
         ))
+
+    if sort_by == 'distance':
+        items.sort(key=lambda x: x.distance if x.distance is not None else float('inf'))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -78,6 +109,16 @@ async def create_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 权限校验：只有俱乐部管理员才能发布
+    member_result = await db.execute(
+        select(ClubMember).where(
+            ClubMember.user_id == current_user.id,
+            ClubMember.club_id == req.club_id,
+        )
+    )
+    if not member_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
+
     post = MatchPost(
         club_id=req.club_id,
         user_id=current_user.id,
@@ -149,6 +190,42 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
             user_nickname=r_nick, user_avatar=r_av,
         ))
 
+    # Get venue info if available
+    venue_address = None
+    venue_latitude = None
+    venue_longitude = None
+    cover_image = None
+    club_documents = None
+    if post.venue_id:
+        venue_result = await db.execute(
+            select(Venue).where(Venue.id == post.venue_id)
+        )
+        venue = venue_result.scalar_one_or_none()
+        if venue:
+            venue_address = venue.address
+            cover_image = venue.cover_image
+    # Fallback to club info
+    if not venue_address:
+        club_result = await db.execute(
+            select(Club).where(Club.id == post.club_id)
+        )
+        club = club_result.scalar_one_or_none()
+        if club:
+            venue_address = club.address
+            venue_latitude = float(club.latitude) if club.latitude else None
+            venue_longitude = float(club.longitude) if club.longitude else None
+            cover_image = cover_image or club.cover_image
+            club_documents = club.documents
+
+    # Get user phone
+    user_phone = None
+    user_result = await db.execute(
+        select(User.phone, User.ntrp_level).where(User.id == post.user_id)
+    )
+    user_row = user_result.one_or_none()
+    if user_row:
+        user_phone = user_row[0]
+
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
         title=post.title, sport_type=post.sport_type,
@@ -163,6 +240,9 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         club_name=club_name, registration_count=reg_count or 0,
         notes=post.notes, venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
+        price=None, user_phone=user_phone, venue_address=venue_address,
+        venue_latitude=venue_latitude, venue_longitude=venue_longitude,
+        cover_image=cover_image, club_documents=club_documents,
     )
 
 

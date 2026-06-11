@@ -8,10 +8,13 @@ Page({
     sportFilter: '',
     sportFilters: ['全部', '羽毛球', '篮球', '网球', '乒乓球', '足球'],
     activeSport: '全部',
+    sortBy: 'created',  // 'created' | 'distance'
+    hasLocation: false,
+    locationError: false,
   },
 
   onLoad() {
-    this.loadFeed();
+    this.initLocation().then(() => this.loadFeed());
   },
 
   onShow() {
@@ -24,12 +27,31 @@ Page({
     this.loadFeed().then(() => wx.stopPullDownRefresh());
   },
 
+  async initLocation() {
+    try {
+      await app.getUserLocation();
+      this.setData({ hasLocation: true, locationError: false });
+    } catch (e) {
+      console.error('Location init failed', e);
+      this.setData({ hasLocation: false, locationError: true });
+    }
+  },
+
   async loadFeed() {
     this.setData({ loading: true });
     try {
-      // Load posts + tournaments in parallel
+      const loc = app.globalData.userLocation;
+      const sport = this.data.activeSport === '全部' ? '' : this.data.activeSport;
+      const sortBy = this.data.sortBy;
+
+      let postUrl = '/posts?page=1&page_size=10';
+      if (sport) postUrl += `&sport=${sport}`;
+      if (sortBy === 'distance' && loc) {
+        postUrl += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
+      }
+
       const [postRes, tourRes] = await Promise.all([
-        app.request({ url: '/posts?page=1&page_size=10' }),
+        app.request({ url: postUrl }),
         app.request({ url: '/tournaments?status=open&page=1&page_size=5' }),
       ]);
 
@@ -44,16 +66,33 @@ Page({
     }
   },
 
+  onSortChange(e) {
+    const sortBy = e.currentTarget.dataset.sort;
+    if (sortBy === 'distance' && !this.data.hasLocation) {
+      wx.showModal({
+        title: '需要位置权限',
+        content: '按距离排序需要获取您的位置',
+        success: (res) => {
+          if (res.confirm) {
+            this.initLocation().then(() => {
+              if (this.data.hasLocation) {
+                this.setData({ sortBy: 'distance' });
+                this.loadFeed();
+              }
+            });
+          }
+        }
+      });
+      return;
+    }
+    this.setData({ sortBy });
+    this.loadFeed();
+  },
+
   onSportFilter(e) {
     const sport = e.currentTarget.dataset.sport;
-    if (sport === '全部') {
-      this.loadFeed();
-    } else {
-      app.request({ url: `/posts?sport=${sport}&page=1` }).then(res => {
-        this.setData({ posts: res.items || [] });
-      });
-    }
     this.setData({ activeSport: sport });
+    this.loadFeed();
   },
 
   onPostDetail(e) {
@@ -70,7 +109,6 @@ Page({
     // Called by share button in posts/tournaments
   },
 
-  // Share to WeChat group/chat
   onShareAppMessage(res) {
     if (res.from === 'button') {
       const data = res.target.dataset;

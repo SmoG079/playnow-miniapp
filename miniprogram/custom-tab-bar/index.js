@@ -32,7 +32,7 @@ Component({
       const hasClub = app.globalData.managedClubIds.length > 0;
 
       const items = [
-        { label: '发布约球帖', icon: '\u{1F4DD}', page: '/pages/publish/post-create', show: true },
+        { label: '发布约球帖', icon: '\u{1F4DD}', page: '/pages/publish/post-create', show: hasClub },
         { label: '创建俱乐部', icon: '\u{1F3E2}', page: '/pages/publish/club-create', show: !hasClub },
         { label: '发布比赛', icon: '\u{1F3C6}', page: '/pages/publish/tournament-create', show: isAdmin && hasClub },
         { label: '管理场地', icon: '⚙', page: '/pages/publish/venue-manage', show: isAdmin && hasClub },

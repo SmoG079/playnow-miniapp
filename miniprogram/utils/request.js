@@ -25,7 +25,7 @@ function request(url, options = {}) {
           // Trigger token refresh in app.js
           app.refreshTokenAndRetry({ url, method, data, resolve, reject });
         } else {
-          wx.showToast({ title: res.data?.detail || '请求失败', icon: 'none' });
+          wx.showToast({ title: (res.data && res.data.detail) || '请求失败', icon: 'none' });
           reject(res);
         }
       },

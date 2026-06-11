@@ -18,38 +18,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DATABASE_URL=mysql+aiomysql://club_user:club_pass@mysql:3306/club_db
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    restart: unless-stopped
-
-  celery_worker:
-    build: ./backend
-    container_name: club-celery
-    command: celery -A app.tasks.worker worker -l info -c 2
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=mysql+aiomysql://club_user:club_pass@mysql:3306/club_db
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - mysql
-      - redis
-    restart: unless-stopped
-
-  celery_beat:
-    build: ./backend
-    container_name: club-celery-beat
-    command: celery -A app.tasks.worker beat -l info
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=mysql+aiomysql://club_user:club_pass@mysql:3306/club_db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://redis:***@mysql:3306/club_db
     depends_on:
       - mysql
       - redis

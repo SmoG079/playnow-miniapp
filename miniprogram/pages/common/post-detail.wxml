@@ -1,1 +1,129 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Loading -->
+  <view wx:if="{{loading}}" class="loading">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- Content -->
+  <block wx:if="{{!loading && post}}">
+    <!-- 顶部图片 -->
+    <view class="cover-image-wrapper">
+      <image class="cover-image" src="{{post.cover_image || '/images/default-venue.jpg'}}" mode="aspectFill" />
+      <view class="cover-gradient"></view>
+      <view class="nav-bar">
+        <view class="nav-back" bindtap="onBack">
+          <text class="nav-icon">←</text>
+        </view>
+        <view class="nav-more" bindtap="onMore">
+          <text class="nav-icon">•••</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 标题区 -->
+    <view class="header-section">
+      <view class="badge-row" wx:if="{{post.sport_type}}">
+        <view class="sport-badge">{{post.sport_type}}</view>
+      </view>
+      <text class="post-title">{{post.title}}</text>
+      <view class="tags-row" wx:if="{{post.notes}}">
+        <text class="tag-text">{{post.notes}}</text>
+      </view>
+    </view>
+
+    <!-- 信息列表 -->
+    <view class="info-section">
+      <view class="info-item" bindtap="onCallPhone">
+        <text class="info-label">发起人</text>
+        <view class="info-content">
+          <text class="info-value">{{post.user_nickname}}</text>
+          <text class="phone-icon">📞</text>
+        </view>
+      </view>
+
+      <view class="info-item">
+        <text class="info-label">时间</text>
+        <text class="info-value">{{post.preferred_date}} {{post.weekday}} {{post.preferred_start}} - {{post.preferred_end}}</text>
+      </view>
+
+      <view class="info-item" bindtap="onOpenMap">
+        <text class="info-label">地点</text>
+        <view class="info-content">
+          <view class="location-wrapper">
+            <text class="info-value location-name">{{post.club_name}}</text>
+            <text class="info-subvalue" wx:if="{{post.venue_address}}">{{post.venue_address}}</text>
+          </view>
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 价格 & 报名状态 -->
+    <view class="price-section">
+      <view class="price-left">
+        <text class="price-symbol">¥</text>
+        <text class="price-value">{{post.price || '0.00'}}</text>
+      </view>
+      <view class="price-right" bindtap="onShowRegistrations">
+        <text class="registration-status {{isFull ? 'full' : ''}}">
+          已报名 {{post.registration_count}}/{{post.players_needed}}
+        </text>
+        <text class="arrow-icon">›</text>
+      </view>
+    </view>
+
+    <!-- 场地规则/PDF -->
+    <view class="documents-section" wx:if="{{post.club_documents && post.club_documents.length > 0}}">
+      <text class="section-title">场地规则</text>
+      <view class="document-list">
+        <view class="doc-item" wx:for="{{post.club_documents}}" wx:key="url" bindtap="onOpenDocument" data-url="{{item.url}}" data-name="{{item.name}}">
+          <text class="doc-icon">📄</text>
+          <text class="doc-name">{{item.name}}</text>
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 已报名用户 -->
+    <view class="registrations-section" wx:if="{{registrations.length > 0}}">
+      <text class="section-title">已报名用户</text>
+      <view class="avatar-list">
+        <view class="avatar-item" wx:for="{{registrations}}" wx:key="id" wx:if="{{index < 6}}">
+          <image class="avatar-image" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+          <text class="avatar-name">{{item.user_nickname}}</text>
+        </view>
+        <view class="avatar-item" wx:if="{{registrations.length > 6}}">
+          <view class="avatar-more">
+            <text class="avatar-more-text">...</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 底部操作栏 -->
+  <view class="bottom-bar" wx:if="{{!loading && post}}">
+    <view class="bottom-left">
+      <view class="bottom-btn" bindtap="onOpenChat">
+        <text class="bottom-icon">💬</text>
+        <text class="bottom-text">群聊</text>
+      </view>
+      <button class="bottom-btn share-btn" open-type="share">
+        <text class="bottom-icon">↗</text>
+        <text class="bottom-text">分享</text>
+      </button>
+    </view>
+    <view class="bottom-right">
+      <view 
+        class="action-btn {{isRegistered ? 'registered' : ''}} {{isFull && !isRegistered ? 'disabled' : ''}}"
+        bindtap="onRegister"
+      >
+        <text wx:if="{{isOwner}}">管理报名</text>
+        <text wx:elif="{{isRegistered}}">已报名</text>
+        <text wx:elif="{{isFull}}">已满员</text>
+        <text wx:else>报名 ¥{{post.price || '0.00'}}</text>
+      </view>
+    </view>
+  </view>
+</view>

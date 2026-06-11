@@ -44,7 +44,7 @@
     "disableSWC": true
   },
   "compileType": "miniprogram",
-  "libVersion": "3.6.0",
+  "libVersion": "3.16.0",
   "appid": "wxfad430ba15c6c3e2",
   "projectname": "club-miniapp",
   "condition": {},

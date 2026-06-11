@@ -12,7 +12,7 @@ Page({
     preferredEnd: '',
     playersNeeded: '1',
     levelIndex: -1,
-    levels: ['不限', '初级', '中级', '高级'],
+    levels: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
     notes: '',
     loading: false,
   },
@@ -23,8 +23,19 @@ Page({
 
   async loadClubs() {
     try {
+      const managedIds = app.globalData.managedClubIds || [];
+      if (managedIds.length === 0) {
+        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
+        setTimeout(() => wx.navigateBack(), 1500);
+        return;
+      }
       const res = await app.request({ url: '/clubs?page=1&page_size=50' });
-      const clubs = res.items || [];
+      const clubs = (res.items || []).filter(c => managedIds.includes(c.id));
+      if (clubs.length === 0) {
+        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
+        setTimeout(() => wx.navigateBack(), 1500);
+        return;
+      }
       this.setData({
         clubIds: clubs.map(c => c.id),
         clubNames: clubs.map(c => c.name),

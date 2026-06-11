@@ -5,7 +5,7 @@ App({
     refreshToken: null,
     role: 'user',           // 'user' | 'club_admin' | 'platform_admin'
     managedClubIds: [],      // clubs this user manages
-    baseURL: 'http://127.0.0.1:8000/api/v1',
+    baseURL: 'http://localhost/api/v1',
   },
 
   onLaunch() {
@@ -55,7 +55,7 @@ App({
           } else if (res.statusCode === 401) {
             this.refreshTokenAndRetry({ url, method, data, resolve, reject });
           } else {
-            wx.showToast({ title: res.data?.detail || '请求失败', icon: 'none' });
+            wx.showToast({ title: (res.data && res.data.detail) || '请求失败', icon: 'none' });
             reject(res);
           }
         },
@@ -94,6 +94,46 @@ App({
   /** Check if user is a club admin */
   isClubAdmin() {
     return this.globalData.role === 'club_admin' || this.globalData.role === 'platform_admin';
+  },
+
+  /** Upload file to OSS */
+  uploadFile(filePath) {
+    return new Promise((resolve, reject) => {
+      wx.uploadFile({
+        url: this.globalData.baseURL + '/upload',
+        filePath,
+        name: 'file',
+        header: {
+          'Authorization': `Bearer ${this.globalData.token}`,
+        },
+        success: (res) => {
+          if (res.statusCode === 200) {
+            resolve(JSON.parse(res.data));
+          } else {
+            reject(new Error('上传失败'));
+          }
+        },
+        fail: reject,
+      });
+    });
+  },
+
+  /** Get user location */
+  getUserLocation() {
+    return new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (res) => {
+          const loc = { latitude: res.latitude, longitude: res.longitude };
+          this.globalData.userLocation = loc;
+          resolve(loc);
+        },
+        fail: (err) => {
+          console.error('Get location failed', err);
+          reject(err);
+        },
+      });
+    });
   },
 
   /** Check if user manages a specific club */

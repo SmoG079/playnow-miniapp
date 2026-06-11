@@ -37,9 +37,11 @@ class UserProfile(BaseModel):
 class UserUpdate(BaseModel):
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
+    ntrp_level: Optional[Decimal] = Field(None, ge=1.0, le=7.0)
 
 class UserMeResponse(UserProfile):
     managed_club_ids: list[int] = []
+    ntrp_level: Optional[Decimal] = None
 
 
 # ── Club ──
@@ -50,6 +52,7 @@ class ClubCreate(BaseModel):
     description: Optional[str] = None
     cover_image: Optional[str] = None
     images: list[str] = Field(default_factory=list)
+    documents: list[dict] = Field(default_factory=list)  # [{name, url, size}]
     address: Optional[str] = None
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
@@ -61,6 +64,7 @@ class ClubUpdate(BaseModel):
     description: Optional[str] = None
     cover_image: Optional[str] = None
     images: Optional[list[str]] = None
+    documents: Optional[list[dict]] = None
     address: Optional[str] = None
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
@@ -82,6 +86,7 @@ class ClubBrief(BaseModel):
 class ClubDetail(ClubBrief):
     description: Optional[str]
     images: Any
+    documents: Any
     contact_phone: Optional[str]
     venues: list["VenueBrief"] = []
     created_at: datetime
@@ -249,6 +254,7 @@ class PostBrief(BaseModel):
     user_avatar: Optional[str] = None
     club_name: Optional[str] = None
     registration_count: int = 0
+    distance: Optional[float] = None  # km
 
     class Config:
         from_attributes = True
@@ -258,6 +264,13 @@ class PostDetail(PostBrief):
     venue_id: Optional[int]
     booking_id: Optional[int]
     registrations: list["RegistrationBrief"] = []
+    price: Optional[Decimal] = None
+    user_phone: Optional[str] = None
+    venue_address: Optional[str] = None
+    venue_latitude: Optional[float] = None
+    venue_longitude: Optional[float] = None
+    cover_image: Optional[str] = None
+    club_documents: Optional[list[dict]] = None
 
     class Config:
         from_attributes = True
@@ -277,6 +290,9 @@ class PostListParams(BaseModel):
     club_id: Optional[int] = None
     sport: Optional[str] = None
     status: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    sort_by: Optional[str] = Field(default='created', regex='^(created|distance)$')
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=50)
 

@@ -83,7 +83,7 @@ Page({
 
   onShareAppMessage() {
     return {
-      title: `${this.data.venue?.name || '场地'} - 来订场吧`,
+      title: `${(this.data.venue && this.data.venue.name) || '场地'} - 来订场吧`,
       path: `/pages/booking/venue-detail?id=${this.data.venueId}`,
     };
   },

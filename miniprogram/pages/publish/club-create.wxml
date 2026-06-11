@@ -17,14 +17,44 @@
     <text class="form-label">俱乐部介绍</text>
     <textarea class="form-textarea" placeholder="介绍一下俱乐部..." value="{{description}}" bindinput="onDescInput" />
 
-    <text class="form-label">地址</text>
-    <input class="form-input" placeholder="俱乐部地址" value="{{address}}" bindinput="onAddrInput" />
+    <text class="form-label">地址 *</text>
+    <view class="form-picker" bindtap="chooseLocation">
+      <text class="{{address ? '' : 'text-light'}}">{{addressName || address || '点击选择地址'}}</text>
+      <text class="icon">📍</text>
+    </view>
+    <text class="text-sm text-secondary" wx:if="{{address}}">{{address}}</text>
 
     <text class="form-label">联系电话</text>
     <input class="form-input" type="number" placeholder="联系电话" value="{{phone}}" bindinput="onPhoneInput" />
+
+    <text class="form-label">场馆图片（最多9张）</text>
+    <view class="image-upload-grid">
+      <view class="image-item" wx:for="{{images}}" wx:key="*this">
+        <image src="{{item}}" mode="aspectFill" bindtap="previewImage" data-url="{{item}}" />
+        <view class="image-remove" bindtap="removeImage" data-idx="{{index}}">×</view>
+      </view>
+      <view class="image-add" bindtap="chooseImage" wx:if="{{images.length < 9}}">
+        <text class="add-icon">+</text>
+        <text class="add-text">添加图片</text>
+      </view>
+    </view>
+
+    <text class="form-label">场地规则/PDF（最多5个，每个10MB）</text>
+    <view class="document-list">
+      <view class="document-item" wx:for="{{documents}}" wx:key="name">
+        <text class="doc-icon">📄</text>
+        <text class="doc-name">{{item.name}}</text>
+        <text class="doc-size">{{item.sizeStr}}</text>
+        <text class="doc-remove" bindtap="removeDocument" data-idx="{{index}}">×</text>
+      </view>
+      <view class="document-add" bindtap="chooseDocument" wx:if="{{documents.length < 5}}">
+        <text class="add-icon">+</text>
+        <text class="add-text">添加PDF</text>
+      </view>
+    </view>
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name}}">创建俱乐部</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name || !latitude}}">创建俱乐部</button>
   </view>
 </view>

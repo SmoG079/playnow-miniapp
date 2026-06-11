@@ -6,6 +6,15 @@
     <text class="search-placeholder">搜索俱乐部、比赛、约球...</text>
   </view>
 
+  <!-- Sort & Filter -->
+  <view class="sort-bar">
+    <view class="sort-options">
+      <view class="sort-item {{sortBy === 'created' ? 'active' : ''}}" data-sort="created" bindtap="onSortChange">最新发布</view>
+      <view class="sort-item {{sortBy === 'distance' ? 'active' : ''}}" data-sort="distance" bindtap="onSortChange">距离最近</view>
+    </view>
+    <text class="location-hint" wx:if="{{locationError}}">📍 未获取位置</text>
+  </view>
+
   <!-- Sport Filter -->
   <scroll-view class="filter-scroll" scroll-x>
     <view
@@ -67,7 +76,10 @@
           <text class="post-title">{{item.title}}</text>
           <view class="post-meta">
             <text>📅 {{item.preferred_date}} {{item.players_needed ? '还差' + item.players_needed + '人' : ''}}</text>
-            <text>🎯 {{item.level_required || '不限水平'}}</text>
+            <text>🎯 NTRP {{item.level_required || '不限'}}</text>
+          </view>
+          <view class="post-meta" wx:if="{{item.distance !== null && item.distance !== undefined}}">
+            <text class="distance-text">📍 {{item.distance}}km</text>
           </view>
         </view>
 

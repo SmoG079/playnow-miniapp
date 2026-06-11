@@ -40,7 +40,7 @@
     <text class="form-label">还差几人</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
 
-    <text class="form-label">水平要求</text>
+    <text class="form-label">NTRP 等级</text>
     <picker mode="selector" range="{{levels}}" value="{{levelIndex}}" bindchange="onLevelChange">
       <view class="form-picker">
         <text class="{{levelIndex > -1 ? '' : 'text-light'}}">{{levelIndex > -1 ? levels[levelIndex] : '不限'}}</text>
