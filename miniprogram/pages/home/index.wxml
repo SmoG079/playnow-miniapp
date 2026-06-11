@@ -1,105 +1,109 @@
-<!-- 首页 - 信息流 -->
+<!-- 首页 - 比赛信息流 -->
 <view class="page">
-  <!-- Search Bar -->
-  <view class="search-bar" bindtap="onSearch">
-    <text class="search-icon">🔍</text>
-    <text class="search-placeholder">搜索俱乐部、比赛、约球...</text>
+  <!-- Header: Location + Search -->
+  <view class="header-bar">
+    <view class="location-selector" bindtap="onCityTap">
+      <text class="location-icon">📍</text>
+      <text class="location-text">杭州</text>
+      <text class="location-arrow">▼</text>
+    </view>
+    <view class="header-actions">
+      <text class="header-btn" bindtap="onSearch">🔍</text>
+      <text class="header-btn">•••</text>
+    </view>
   </view>
 
-  <!-- Sort & Filter -->
-  <view class="sort-bar">
-    <view class="sort-options">
-      <view class="sort-item {{sortBy === 'created' ? 'active' : ''}}" data-sort="created" bindtap="onSortChange">最新发布</view>
-      <view class="sort-item {{sortBy === 'distance' ? 'active' : ''}}" data-sort="distance" bindtap="onSortChange">距离最近</view>
+  <!-- Sport Tabs -->
+  <view class="sport-tabs">
+    <view class="sport-tab active">
+      <text class="sport-tab-icon">🎾</text>
+      <text class="sport-tab-text">网球比赛</text>
     </view>
-    <text class="location-hint" wx:if="{{locationError}}">📍 未获取位置</text>
+    <view class="sport-tab disabled">
+      <text class="sport-tab-icon">🏓</text>
+      <text class="sport-tab-text">匹克球</text>
+    </view>
   </view>
 
-  <!-- Sport Filter -->
-  <scroll-view class="filter-scroll" scroll-x>
-    <view
-      wx:for="{{sportFilters}}"
-      wx:key="*this"
-      class="filter-item {{activeSport === item ? 'active' : ''}}"
-      data-sport="{{item}}"
-      bindtap="onSportFilter"
-    >{{item}}</view>
-  </scroll-view>
-
-  <!-- Tournament Banner -->
-  <view class="section" wx:if="{{tournaments.length > 0}}">
-    <view class="section-header">
-      <text class="section-title">🏆 近期比赛</text>
-      <text class="section-more" bindtap="onTourDetail" data-id="0">更多</text>
+  <!-- Filter Bar -->
+  <view class="filter-bar">
+    <view class="filter-btn" bindtap="onFilterTime">
+      <text>时间</text>
+      <text class="filter-arrow">▼</text>
     </view>
-    <scroll-view class="tour-scroll" scroll-x>
-      <view
-        wx:for="{{tournaments}}"
-        wx:key="id"
-        class="tournament-card-h"
-        data-id="{{item.id}}"
-        bindtap="onTourDetail"
-      >
-        <image class="tour-cover" src="{{item.cover_image || '/images/default-match.png'}}" mode="aspectFill" />
-        <view class="tour-info">
-          <text class="tour-title ellipsis">{{item.title}}</text>
-          <text class="text-sm text-secondary">{{item.club_name}}</text>
-          <text class="text-sm text-secondary">{{item.start_time}}</text>
-          <text class="text-primary">{{item.current_participants}}/{{item.max_participants}}人</text>
-        </view>
-      </view>
-    </scroll-view>
+    <view class="filter-btn" bindtap="onFilterSort">
+      <text>{{sortBy === 'distance' ? '距离最近' : '最新发布'}}</text>
+      <text class="filter-arrow">▼</text>
+    </view>
+    <view class="filter-btn" bindtap="onFilterLevel">
+      <text>评级</text>
+      <text class="filter-arrow">▼</text>
+    </view>
+    <view class="filter-btn" bindtap="onFilterMore">
+      <text>筛选</text>
+      <text class="filter-arrow">▼</text>
+    </view>
   </view>
 
-  <!-- Match Posts Feed -->
-  <view class="section">
-    <view class="section-header">
-      <text class="section-title">🔥 约球广场</text>
-    </view>
-
+  <!-- Match Cards Feed -->
+  <view class="card-list">
     <block wx:for="{{posts}}" wx:key="id">
-      <view
-        class="post-card card"
-        data-id="{{item.id}}"
-        bindtap="onPostDetail"
-      >
-        <view class="post-header">
-          <image class="avatar" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
-          <view class="post-user-info">
-            <text class="post-username">{{item.user_nickname || '匿名用户'}}</text>
-            <text class="text-sm text-secondary">{{item.created_at}}</text>
-          </view>
-          <view class="tag tag-primary">{{item.sport_type || '运动'}}</view>
+      <view class="match-card" data-id="{{item.id}}" bindtap="onPostDetail">
+        <!-- Organizer -->
+        <view class="match-organizer">
+          <image class="organizer-logo" src="{{item.club_cover_image || '/images/default-club.png'}}" mode="aspectFill" />
+          <text class="organizer-name">{{item.club_name || '未知俱乐部'}}</text>
         </view>
 
-        <view class="post-body">
-          <text class="post-title">{{item.title}}</text>
-          <view class="post-meta">
-            <text>📅 {{item.preferred_date}} {{item.players_needed ? '还差' + item.players_needed + '人' : ''}}</text>
-            <text>🎯 NTRP {{item.level_required || '不限'}}</text>
-          </view>
-          <view class="post-meta" wx:if="{{item.distance !== null && item.distance !== undefined}}">
-            <text class="distance-text">📍 {{item.distance}}km</text>
+        <!-- Title Row -->
+        <view class="match-title-row">
+          <text class="match-title">{{item.title}}</text>
+          <text class="verify-badge" wx:if="{{item.club_verified}}">✓</text>
+        </view>
+
+        <!-- Main Content: Image + Info -->
+        <view class="match-content">
+          <image class="match-image" src="{{item.cover_image || item.club_cover_image || '/images/default-match.png'}}" mode="aspectFill" />
+          <view class="match-info">
+            <view class="info-row">
+              <text class="info-icon">⏱</text>
+              <text class="info-text">{{item.preferred_date}} {{item.weekday}} {{item.preferred_start}}</text>
+            </view>
+            <view class="info-row">
+              <text class="info-icon">📍</text>
+              <text class="info-text ellipsis">{{item.venue_address || item.club_name}}</text>
+            </view>
+            <view class="info-row" wx:if="{{item.distance !== null && item.distance !== undefined}}">
+              <text class="info-icon">🧭</text>
+              <text class="info-text distance">{{item.distance}}km</text>
+            </view>
           </view>
         </view>
 
-        <view class="post-footer">
-          <text class="text-sm text-secondary">{{item.club_name}}</text>
-          <view class="post-actions">
-            <text class="text-sm">{{item.registration_count}} 人已报名</text>
-            <button
-              class="share-btn-mini"
-              open-type="share"
-              data-id="{{item.id}}"
-              data-title="{{item.title}}"
-            >分享</button>
+        <!-- Footer: Registrations + Button -->
+        <view class="match-footer">
+          <view class="registration-info">
+            <view class="avatar-stack" wx:if="{{item.registrations && item.registrations.length > 0}}">
+              <image
+                wx:for="{{item.registrations.slice(0, 4)}}"
+                wx:for-item="reg"
+                wx:key="index"
+                class="stack-avatar"
+                src="{{reg.user_avatar || '/images/default-avatar.png'}}"
+                mode="aspectFill"
+              />
+            </view>
+            <text class="registration-text">已报名: {{item.registration_count || 0}}/{{item.players_needed || '?'}}</text>
+          </view>
+          <view class="action-btn {{item.is_full ? 'full' : item.is_registered ? 'registered' : ''}}" catchtap="onActionTap" data-id="{{item.id}}">
+            {{item.is_full ? '已满员' : item.is_registered ? '已报名' : '去报名'}}
           </view>
         </view>
       </view>
     </block>
 
     <view wx:if="{{posts.length === 0 && !loading}}" class="empty-state">
-      <text>暂无约球帖，快去发布吧！</text>
+      <text>暂无比赛，快去发布吧！</text>
     </view>
   </view>
 </view>

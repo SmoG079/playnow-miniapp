@@ -3,11 +3,7 @@ const app = getApp();
 Page({
   data: {
     posts: [],
-    tournaments: [],
     loading: false,
-    sportFilter: '',
-    sportFilters: ['全部', '羽毛球', '篮球', '网球', '乒乓球', '足球'],
-    activeSport: '全部',
     sortBy: 'created',  // 'created' | 'distance'
     hasLocation: false,
     locationError: false,
@@ -41,29 +37,34 @@ Page({
     this.setData({ loading: true });
     try {
       const loc = app.globalData.userLocation;
-      const sport = this.data.activeSport === '全部' ? '' : this.data.activeSport;
       const sortBy = this.data.sortBy;
 
       let postUrl = '/posts?page=1&page_size=10';
-      if (sport) postUrl += `&sport=${sport}`;
       if (sortBy === 'distance' && loc) {
         postUrl += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
       }
 
-      const [postRes, tourRes] = await Promise.all([
-        app.request({ url: postUrl }),
-        app.request({ url: '/tournaments?status=open&page=1&page_size=5' }),
-      ]);
+      const postRes = await app.request({ url: postUrl });
+      const posts = (postRes.items || []).map(item => ({
+        ...item,
+        is_full: item.registration_count >= item.players_needed,
+        is_registered: item.is_registered || false,
+        weekday: this.getWeekday(item.preferred_date),
+      }));
 
-      this.setData({
-        posts: postRes.items || [],
-        tournaments: tourRes.items || [],
-      });
+      this.setData({ posts });
     } catch (e) {
       console.error('Load feed failed', e);
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  getWeekday(dateStr) {
+    if (!dateStr) return '';
+    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const d = new Date(dateStr);
+    return days[d.getDay()];
   },
 
   onSortChange(e) {
@@ -89,10 +90,58 @@ Page({
     this.loadFeed();
   },
 
-  onSportFilter(e) {
-    const sport = e.currentTarget.dataset.sport;
-    this.setData({ activeSport: sport });
-    this.loadFeed();
+  onFilterSort() {
+    const items = ['最新发布', '距离最近', '热度最高'];
+    wx.showActionSheet({
+      itemList: items,
+      success: (res) => {
+        const sortMap = ['created', 'distance', 'hot'];
+        const sortBy = sortMap[res.tapIndex];
+        if (sortBy === 'distance' && !this.data.hasLocation) {
+          wx.showModal({
+            title: '需要位置权限',
+            content: '按距离排序需要获取您的位置',
+            success: (r) => {
+              if (r.confirm) {
+                this.initLocation().then(() => {
+                  if (this.data.hasLocation) {
+                    this.setData({ sortBy });
+                    this.loadFeed();
+                  }
+                });
+              }
+            }
+          });
+          return;
+        }
+        this.setData({ sortBy });
+        this.loadFeed();
+      }
+    });
+  },
+
+  onFilterTime() {
+    wx.showActionSheet({
+      itemList: ['全部时间', '今天', '明天', '本周', '本周末'],
+      success: (res) => {
+        // TODO: implement time filter
+        console.log('Time filter:', res.tapIndex);
+      }
+    });
+  },
+
+  onFilterLevel() {
+    wx.showActionSheet({
+      itemList: ['全部等级', '2.0以下', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0+'],
+      success: (res) => {
+        // TODO: implement level filter
+        console.log('Level filter:', res.tapIndex);
+      }
+    });
+  },
+
+  onFilterMore() {
+    wx.showToast({ title: '高级筛选开发中', icon: 'none' });
   },
 
   onPostDetail(e) {
@@ -100,13 +149,18 @@ Page({
     wx.navigateTo({ url: `/pages/common/post-detail?id=${id}` });
   },
 
-  onTourDetail(e) {
+  onActionTap(e) {
+    e.stopPropagation();
     const id = e.currentTarget.dataset.id;
-    wx.navigateTo({ url: `/pages/common/tournament-detail?id=${id}` });
+    wx.navigateTo({ url: `/pages/common/post-detail?id=${id}` });
   },
 
-  onShare() {
-    // Called by share button in posts/tournaments
+  onSearch() {
+    wx.navigateTo({ url: '/pages/home/search' });
+  },
+
+  onCityTap() {
+    wx.showToast({ title: '城市切换开发中', icon: 'none' });
   },
 
   onShareAppMessage(res) {
@@ -119,12 +173,8 @@ Page({
       };
     }
     return {
-      title: '运动俱乐部 - 约球订场平台',
+      title: '运动俱乐部 - 发现你的运动圈',
       path: '/pages/home/index',
     };
-  },
-
-  onSearch() {
-    wx.navigateTo({ url: '/pages/home/search' });
   },
 });
