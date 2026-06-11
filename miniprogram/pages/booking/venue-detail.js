@@ -117,7 +117,7 @@ Page({
       const slot = {
         slot_id: cell.slot_id,
         venue_id: cell.venue_id,
-        venue_name: this.data.venues.find(v => v.id === cell.venue_id)?.name || '',
+        venue_name: (this.data.venues.find(v => v.id === cell.venue_id) || {}).name || '',
         price: cell.price,
         start_time: cell.start_time,
         end_time: cell.end_time,
@@ -167,7 +167,7 @@ Page({
   },
 
   onPhoneTap() {
-    const phone = this.data.club?.contact_phone;
+    const phone = (this.data.club || {}).contact_phone;
     if (phone) {
       wx.makePhoneCall({ phoneNumber: phone });
     }

@@ -3,8 +3,9 @@ const app = getApp();
 Page({
   data: {
     name: '',
-    sportTypes: [],
+    sportTypes: ['网球'],
     description: '',
+    rules: '',
     address: '',
     addressName: '',
     latitude: null,
@@ -17,16 +18,9 @@ Page({
 
   onNameInput(e) { this.setData({ name: e.detail.value }); },
   onDescInput(e) { this.setData({ description: e.detail.value }); },
+  onRulesInput(e) { this.setData({ rules: e.detail.value }); },
   onPhoneInput(e) { this.setData({ phone: e.detail.value }); },
-
-  onSportToggle(e) {
-    const sport = e.currentTarget.dataset.sport;
-    let types = [...this.data.sportTypes];
-    const idx = types.indexOf(sport);
-    if (idx > -1) { types.splice(idx, 1); }
-    else { types.push(sport); }
-    this.setData({ sportTypes: types });
-  },
+  onAddressInput(e) { this.setData({ address: e.detail.value }); },
 
   // 选择地址（地图API）
   chooseLocation() {
@@ -34,13 +28,13 @@ Page({
       success: (res) => {
         this.setData({
           addressName: res.name,
-          address: res.address,
+          address: res.address || res.name || '',
           latitude: res.latitude,
           longitude: res.longitude,
         });
       },
       fail: (err) => {
-        if (err.errMsg.includes('auth deny')) {
+        if (err.errMsg && err.errMsg.includes('auth deny')) {
           wx.showModal({
             title: '需要位置权限',
             content: '请在设置中开启位置权限',
@@ -48,6 +42,10 @@ Page({
               if (r.confirm) wx.openSetting();
             }
           });
+        } else if (err.errMsg && err.errMsg.includes('cancel')) {
+          // User cancelled, do nothing
+        } else {
+          wx.showToast({ title: '选择地址失败，请手动输入', icon: 'none' });
         }
       }
     });
@@ -96,30 +94,64 @@ Page({
     return urls;
   },
 
-  // 选择PDF文件
+  // 选择PDF文件（支持从聊天记录或相册选择）
   chooseDocument() {
     const remain = 5 - this.data.documents.length;
     if (remain <= 0) return wx.showToast({ title: '最多5个文件', icon: 'none' });
+    wx.showActionSheet({
+      itemList: ['从微信聊天记录选择', '从相册选择图片'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          this._chooseDocFromChat(remain);
+        } else {
+          this._chooseDocFromAlbum(remain);
+        }
+      }
+    });
+  },
+
+  _chooseDocFromChat(remain) {
     wx.chooseMessageFile({
       count: remain,
       type: 'file',
       extension: ['pdf'],
       success: (res) => {
-        const newDocs = res.tempFiles.map(f => ({
-          name: f.name,
-          path: f.path,
-          size: f.size,
-        }));
-        // 检查大小（10MB）
-        for (const doc of newDocs) {
-          if (doc.size > 10 * 1024 * 1024) {
-            return wx.showToast({ title: `${doc.name} 超过10MB`, icon: 'none' });
-          }
-          doc.sizeStr = (doc.size / 1024 / 1024).toFixed(1) + 'MB';
-        }
-        this.setData({ documents: [...this.data.documents, ...newDocs] });
+        this._processDocs(res.tempFiles);
       }
     });
+  },
+
+  _chooseDocFromAlbum(remain) {
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album'],
+      success: (res) => {
+        const files = res.tempFiles.map((f, i) => ({
+          name: `文档图片_${i + 1}.jpg`,
+          path: f.tempFilePath,
+          size: f.size || 0,
+        }));
+        this._processDocs(files);
+      }
+    });
+  },
+
+  _processDocs(files) {
+    const newDocs = files.map(f => ({
+      name: f.name,
+      path: f.path,
+      size: f.size,
+    }));
+    for (const doc of newDocs) {
+      if (doc.size > 10 * 1024 * 1024) {
+        return wx.showToast({ title: `${doc.name} 超过10MB`, icon: 'none' });
+      }
+      doc.sizeStr = doc.size > 1024 * 1024
+        ? (doc.size / 1024 / 1024).toFixed(1) + 'MB'
+        : (doc.size / 1024).toFixed(0) + 'KB';
+    }
+    this.setData({ documents: [...this.data.documents, ...newDocs] });
   },
 
   // 删除PDF
@@ -164,6 +196,7 @@ Page({
           name: this.data.name,
           sport_types: this.data.sportTypes,
           description: this.data.description,
+          rules: this.data.rules,
           address: this.data.address,
           latitude: this.data.latitude,
           longitude: this.data.longitude,

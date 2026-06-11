@@ -50,6 +50,7 @@ class ClubCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     sport_types: list[str] = Field(default_factory=list)
     description: Optional[str] = None
+    rules: Optional[str] = None
     cover_image: Optional[str] = None
     images: list[str] = Field(default_factory=list)
     documents: list[dict] = Field(default_factory=list)  # [{name, url, size}]
@@ -62,6 +63,7 @@ class ClubUpdate(BaseModel):
     name: Optional[str] = None
     sport_types: Optional[list[str]] = None
     description: Optional[str] = None
+    rules: Optional[str] = None
     cover_image: Optional[str] = None
     images: Optional[list[str]] = None
     documents: Optional[list[dict]] = None
@@ -85,6 +87,7 @@ class ClubBrief(BaseModel):
 
 class ClubDetail(ClubBrief):
     description: Optional[str]
+    rules: Optional[str]
     images: Any
     documents: Any
     contact_phone: Optional[str]

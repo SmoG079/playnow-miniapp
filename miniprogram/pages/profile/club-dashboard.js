@@ -85,7 +85,7 @@ Page({
   },
 
   onPhoneTap() {
-    const phone = this.data.club?.contact_phone;
+    const phone = (this.data.club || {}).contact_phone;
     if (phone) {
       wx.makePhoneCall({ phoneNumber: phone });
     }

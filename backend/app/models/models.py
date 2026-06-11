@@ -48,6 +48,7 @@ class Club(Base):
     name = Column(String(128), nullable=False)
     sport_types = Column(JSON, comment='["badminton","basketball"]')
     description = Column(Text)
+    rules = Column(Text, comment='场地规则')
     cover_image = Column(String(512))
     images = Column(JSON)
     documents = Column(JSON, comment='PDF文件列表 [{name, url, size}]')

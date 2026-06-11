@@ -53,10 +53,8 @@
       </view>
 
       <view class="form-group">
-        <text class="form-label">运动类型 *</text>
-        <picker bindchange="onInputChange" data-field="sport_type" value="0" range="{{['羽毛球','篮球','网球','乒乓球','足球']}}">
-          <view class="form-picker">{{form.sport_type || '请选择运动类型'}}</view>
-        </picker>
+        <text class="form-label">运动类型</text>
+        <view class="form-picker" style="color:#999">网球</view>
       </view>
 
       <view class="form-group">

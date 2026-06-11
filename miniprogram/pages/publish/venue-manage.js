@@ -64,7 +64,7 @@ Page({
         showModal: true,
         modalMode: 'create',
         editingVenue: null,
-        form: { name: '', sport_type: '', price_per_hour: '', max_capacity: 4, sort_order: 0, status: 'active' },
+        form: { name: '', sport_type: '网球', price_per_hour: '', max_capacity: 4, sort_order: 0, status: 'active' },
       });
     }
   },
@@ -84,9 +84,6 @@ Page({
     if (!form.name.trim()) {
       return wx.showToast({ title: '请输入场地名称', icon: 'none' });
     }
-    if (!form.sport_type) {
-      return wx.showToast({ title: '请选择运动类型', icon: 'none' });
-    }
     const price = parseFloat(form.price_per_hour);
     if (isNaN(price) || price <= 0) {
       return wx.showToast({ title: '请输入有效的价格', icon: 'none' });
@@ -94,7 +91,7 @@ Page({
 
     const payload = {
       name: form.name.trim(),
-      sport_type: form.sport_type,
+      sport_type: form.sport_type || '网球',
       price_per_hour: price,
       max_capacity: parseInt(form.max_capacity) || 4,
       sort_order: parseInt(form.sort_order) || 0,
