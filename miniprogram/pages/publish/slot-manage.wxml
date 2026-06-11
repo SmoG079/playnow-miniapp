@@ -1,1 +1,66 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="form-card">
+    <view class="form-group">
+      <text class="form-label">选择场地</text>
+      <picker bindchange="onVenueChange" value="{{venueIndex}}" range="{{venues}}" range-key="name">
+        <view class="form-picker">
+          {{venues[venueIndex].name || '请选择场地'}}
+          <text class="picker-arrow">›</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">日期范围</text>
+      <view class="date-row">
+        <picker mode="date" value="{{dateFrom}}" bindchange="onDateFromChange">
+          <view class="date-picker">{{dateFrom}}</view>
+        </picker>
+        <text class="date-sep">至</text>
+        <picker mode="date" value="{{dateTo}}" bindchange="onDateToChange">
+          <view class="date-picker">{{dateTo}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">时间段</text>
+      <view class="date-row">
+        <picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="date-picker">{{startTime}}</view>
+        </picker>
+        <text class="date-sep">至</text>
+        <picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="date-picker">{{endTime}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">时段间隔</text>
+      <picker bindchange="onIntervalChange" value="{{intervalIndex}}" range="{{intervalLabels}}">
+        <view class="form-picker">
+          {{intervalLabels[intervalIndex]}}
+          <text class="picker-arrow">›</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <button class="btn-generate {{generating ? 'disabled' : ''}}" bindtap="onGenerate" disabled="{{generating}}">
+    {{generating ? '生成中...' : '生成时段'}}
+  </button>
+
+  <view class="result-card" wx:if="{{result}}">
+    <text class="result-title">生成结果</text>
+    <text class="result-text">新增 {{result.created}} 个时段</text>
+    <text class="result-hint" wx:if="{{result.created === 0}}">所有时段已存在，无需新增</text>
+  </view>
+
+  <view class="hint-card">
+    <text class="hint-title">说明</text>
+    <text class="hint-text">1. 已存在的时段会自动跳过，不会重复创建</text>
+    <text class="hint-text">2. 每次最多生成31天的时段</text>
+    <text class="hint-text">3. 生成的时段默认价格为场地标准价格</text>
+  </view>
+</view>

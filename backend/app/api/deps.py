@@ -50,7 +50,10 @@ async def get_club_admin(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if _v(current_user.role) in ("club_admin", "platform_admin"):
+    role = _v(current_user.role)
+    if role == "platform_admin":
+        return current_user
+    if role == "club_admin":
         result = await db.execute(
             select(ClubMember).where(
                 ClubMember.club_id == club_id,

@@ -168,6 +168,26 @@ class SlotDateGroup(BaseModel):
     slots: list[SlotBrief]
 
 
+class CourtSlotCell(BaseModel):
+    slot_id: int
+    venue_id: int
+    start_time: time
+    end_time: time
+    price: Decimal
+    status: str  # available / locked / booked / maintenance
+
+
+class CourtSlotRow(BaseModel):
+    time_label: str  # e.g. "07:00"
+    cells: list[CourtSlotCell]
+
+
+class VenueSlotGridResponse(BaseModel):
+    club: dict
+    venues: list[dict]
+    rows: list[CourtSlotRow]
+
+
 # ── Booking ──
 
 class BookingCreateRequest(BaseModel):

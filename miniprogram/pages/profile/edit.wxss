@@ -1,1 +1,14 @@
-.page { padding: 20rpx; }
+.page { padding: 20rpx; padding-bottom: 160rpx; }
+
+.form-label { display: block; font-size: 28rpx; font-weight: 500; margin: 24rpx 0 12rpx; color: var(--text); }
+.form-label:first-child { margin-top: 0; }
+
+.form-input { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; }
+
+.form-picker { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; display: flex; justify-content: space-between; align-items: center; }
+.form-picker .arrow { font-size: 30rpx; color: #ccc; }
+
+.text-light { color: #999; }
+
+.submit-area { padding: 40rpx 20rpx; }
+.submit-area .btn-primary { width: 100%; border-radius: 44rpx; padding: 24rpx; font-size: 32rpx; }

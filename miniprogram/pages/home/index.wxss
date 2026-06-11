@@ -216,3 +216,338 @@
   color: #999;
   font-size: 28rpx;
 }
+
+/* Filter Button Active State */
+.filter-btn.active {
+  background: #e8f5e9;
+  color: #4CAF50;
+}
+.filter-badge {
+  background: #ff4444;
+  color: #fff;
+  font-size: 20rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  border-radius: 14rpx;
+  text-align: center;
+  line-height: 28rpx;
+  padding: 0 6rpx;
+  margin-left: 4rpx;
+}
+
+/* Filter Popup */
+.filter-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.filter-popup.show {
+  visibility: visible;
+  opacity: 1;
+}
+
+.filter-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.filter-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 0 30rpx;
+  padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.filter-popup.show .filter-panel {
+  transform: translateY(0);
+}
+
+/* Panel Header */
+.filter-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.filter-panel-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+.filter-panel-close {
+  font-size: 32rpx;
+  color: #999;
+  padding: 8rpx 16rpx;
+}
+
+/* Filter Section */
+.filter-section {
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+.filter-section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+/* Filter Options (single select) */
+.filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+.filter-option {
+  padding: 14rpx 32rpx;
+  border-radius: 32rpx;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 26rpx;
+  transition: all 0.15s ease;
+}
+.filter-option.active {
+  background: #e8f5e9;
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+/* Filter Chips (multi select) */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+.filter-chip {
+  padding: 14rpx 28rpx;
+  border-radius: 32rpx;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 26rpx;
+  transition: all 0.15s ease;
+}
+.filter-chip.active {
+  background: #e8f5e9;
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+/* Filter Footer */
+.filter-footer {
+  display: flex;
+  gap: 20rpx;
+  padding: 24rpx 0;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+.filter-reset-btn,
+.filter-confirm-btn {
+  flex: 1;
+  padding: 22rpx 0;
+  border-radius: 36rpx;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+.filter-reset-btn {
+  background: #f5f5f5;
+  color: #666;
+}
+.filter-confirm-btn {
+  background: #5CD29D;
+  color: #fff;
+}
+
+/* Calendar Popup */
+.calendar-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  visibility: hidden;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+.calendar-popup.show {
+  visibility: visible;
+  opacity: 1;
+}
+.calendar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.calendar-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 32rpx 32rpx 0;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom) + 40rpx);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+  box-sizing: border-box;
+}
+.calendar-popup.show .calendar-panel {
+  transform: translateY(0);
+}
+.calendar-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+.calendar-panel-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+.calendar-panel-close {
+  font-size: 36rpx;
+  color: #999;
+  padding: 8rpx;
+}
+
+/* Calendar Scroll */
+.calendar-scroll {
+  flex: 1;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+  min-height: 200rpx;
+}
+
+/* Calendar Month */
+.calendar-month {
+  margin-bottom: 32rpx;
+}
+.calendar-month-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  text-align: center;
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+/* Weekday Headers */
+.calendar-weekdays {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 8rpx;
+}
+.calendar-weekday {
+  width: 80rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  padding: 8rpx 0;
+}
+.calendar-weekday.weekend {
+  color: #4CAF50;
+}
+
+/* Days Grid */
+.calendar-days {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.calendar-day {
+  width: calc(100% / 7);
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  color: #333;
+  position: relative;
+}
+.calendar-day.padding {
+  visibility: hidden;
+}
+.calendar-day.weekend {
+  color: #4CAF50;
+}
+.calendar-day.past {
+  color: #ccc;
+}
+.calendar-day.today {
+  color: #4CAF50;
+  font-weight: 600;
+}
+.calendar-day.today::after {
+  content: '';
+  position: absolute;
+  bottom: 4rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #4CAF50;
+}
+.calendar-day.selected {
+  background: #4CAF50;
+  color: #fff;
+  border-radius: 50%;
+}
+.calendar-day.selected.weekend {
+  color: #fff;
+}
+
+/* Calendar Footer */
+.calendar-footer {
+  display: flex;
+  gap: 20rpx;
+  padding: 24rpx 0;
+  margin-bottom: 20rpx;
+  border-top: 1rpx solid #f0f0f0;
+  flex-shrink: 0;
+  background: #fff;
+}
+.calendar-reset-btn,
+.calendar-confirm-btn {
+  flex: 1;
+  padding: 22rpx 0;
+  border-radius: 36rpx;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+.calendar-reset-btn {
+  background: #f5f5f5;
+  color: #666;
+}
+.calendar-confirm-btn {
+  background: #5CD29D;
+  color: #fff;
+}

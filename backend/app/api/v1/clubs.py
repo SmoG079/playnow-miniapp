@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from datetime import date, time
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
@@ -8,7 +9,9 @@ from app.models.models import ClubMemberRole
 from app.schemas.schemas import (
     ClubCreate, ClubUpdate, ClubBrief, ClubDetail, PaginatedResponse,
     VenueBrief, ClubListParams, ClubStats,
+    CourtSlotRow, CourtSlotCell, VenueSlotGridResponse,
 )
+from app.models.models import VenueTimeSlot, SlotStatus, VenueStatus
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
@@ -207,3 +210,104 @@ async def club_stats(
         today_orders=today_orders,
         today_revenue=today_revenue,
     )
+
+
+@router.get("/{club_id}/venue-slots")
+async def get_club_venue_slots(
+    club_id: int,
+    query_date: date = Query(..., alias="date"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all venues for a club and their time slots for a specific date,
+    formatted as a grid (rows = time, columns = venues)."""
+    # Get club
+    club_result = await db.execute(select(Club).where(Club.id == club_id))
+    club = club_result.scalar_one_or_none()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+
+    # Get active venues for club
+    v_result = await db.execute(
+        select(Venue)
+        .where(Venue.club_id == club_id, Venue.status == VenueStatus.active)
+        .order_by(Venue.sort_order)
+    )
+    venues = v_result.scalars().all()
+    if not venues:
+        return VenueSlotGridResponse(
+            club={"id": club.id, "name": club.name, "address": club.address,
+                  "contact_phone": club.contact_phone, "images": club.images or []},
+            venues=[],
+            rows=[],
+        )
+
+    # Build price map from venues to avoid lazy loads
+    price_map = {v.id: v.price_per_hour for v in venues}
+
+    # Get all slots for all venues on the date
+    venue_ids = [v.id for v in venues]
+    slot_result = await db.execute(
+        select(VenueTimeSlot)
+        .where(
+            VenueTimeSlot.venue_id.in_(venue_ids),
+            VenueTimeSlot.date == query_date,
+        )
+        .order_by(VenueTimeSlot.start_time)
+    )
+    slots = slot_result.scalars().all()
+
+    # Group slots by start_time
+    from collections import defaultdict
+    time_groups = defaultdict(dict)
+    for slot in slots:
+        time_key = slot.start_time.strftime("%H:%M")
+        price = slot.price_override if slot.price_override is not None else price_map.get(slot.venue_id, 0)
+        time_groups[time_key][slot.venue_id] = CourtSlotCell(
+            slot_id=slot.id,
+            venue_id=slot.venue_id,
+            start_time=slot.start_time,
+            end_time=slot.end_time,
+            price=price,
+            status=slot.status.value if hasattr(slot.status, "value") else str(slot.status),
+        )
+
+    # Build rows: for each time, list cells in venue order
+    rows = []
+    for time_key in sorted(time_groups.keys()):
+        cells = []
+        for venue in venues:
+            cell = time_groups[time_key].get(venue.id)
+            if cell:
+                cells.append(cell)
+            else:
+                # No slot for this venue at this time - mark as maintenance/unavailable
+                cells.append(CourtSlotCell(
+                    slot_id=0,
+                    venue_id=venue.id,
+                    start_time=_time_from_str(time_key),
+                    end_time=_time_from_str(time_key),
+                    price=0,
+                    status="maintenance",
+                ))
+        rows.append(CourtSlotRow(time_label=time_key, cells=cells))
+
+    return VenueSlotGridResponse(
+        club={
+            "id": club.id,
+            "name": club.name,
+            "address": club.address,
+            "contact_phone": club.contact_phone,
+            "images": club.images or [],
+        },
+        venues=[
+            {"id": v.id, "name": v.name, "sport_type": v.sport_type,
+             "price_per_hour": v.price_per_hour}
+            for v in venues
+        ],
+        rows=rows,
+    )
+
+
+def _time_from_str(s: str) -> time:
+    h, m = map(int, s.split(":"))
+    return time(h, m)

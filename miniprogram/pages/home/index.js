@@ -1,4 +1,63 @@
+// Calendar filter TODO
 const app = getApp();
+
+const SORT_OPTIONS = [
+  { label: '最新发布', value: 'created' },
+  { label: '距离最近', value: 'distance' },
+];
+
+const NTRP_LEVELS = ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'];
+
+const DISTANCE_OPTIONS = [
+  { label: '全部距离', value: 'all' },
+  { label: '1km内', value: '1' },
+  { label: '3km内', value: '3' },
+  { label: '5km内', value: '5' },
+  { label: '10km内', value: '10' },
+  { label: '20km内', value: '20' },
+  { label: '50km内', value: '50' },
+];
+
+function generateCalendar() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const months = [];
+  for (let i = 0; i < 2; i++) {
+    const base = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const year = base.getFullYear();
+    const month = base.getMonth();
+    const monthStr = `${year}年${String(month + 1).padStart(2, '0')}月`;
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const weeks = [];
+    let currentWeek = new Array(firstDay).fill(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayOfWeek = date.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isPast = date.getTime() < today.getTime();
+      currentWeek.push({ day, dateStr, isWeekend, isPast });
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+    }
+    if (currentWeek.length > 0) {
+      while (currentWeek.length < 7) currentWeek.push(null);
+      weeks.push(currentWeek);
+    }
+    months.push({ title: monthStr, weeks });
+  }
+  return months;
+}
+
+function formatDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[1]}.${parts[2]}`;
+}
 
 Page({
   data: {
@@ -7,6 +66,24 @@ Page({
     sortBy: 'created',  // 'created' | 'distance'
     hasLocation: false,
     locationError: false,
+
+    // Filter popup
+    showFilterPopup: false,
+    filterSort: 'created',
+    filterDate: '',
+    filterDateLabel: '',
+    filterLevels: [],
+    filterDistance: 'all',
+    activeFilterCount: 0,
+    showCalendarPopup: false,
+    calendarMonths: [],
+    selectedCalendarDate: '',
+
+    // Constants for wxml
+    SORT_OPTIONS,
+    WEEKDAYS: ['日', '一', '二', '三', '四', '五', '六'],
+    NTRP_LEVELS,
+    DISTANCE_OPTIONS,
   },
 
   onLoad() {
@@ -37,11 +114,20 @@ Page({
     this.setData({ loading: true });
     try {
       const loc = app.globalData.userLocation;
-      const sortBy = this.data.sortBy;
+      const { sortBy, filterDate, filterLevels, filterDistance } = this.data;
 
       let postUrl = '/posts?page=1&page_size=10';
       if (sortBy === 'distance' && loc) {
         postUrl += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
+      }
+      if (filterDate) {
+        postUrl += `&date=${filterDate}`;
+      }
+      if (filterLevels && filterLevels.length > 0) {
+        postUrl += `&ntrp_levels=${filterLevels.join(',')}`;
+      }
+      if (filterDistance && filterDistance !== 'all' && loc) {
+        postUrl += `&max_distance=${filterDistance}`;
       }
 
       const postRes = await app.request({ url: postUrl });
@@ -121,12 +207,25 @@ Page({
   },
 
   onFilterTime() {
-    wx.showActionSheet({
-      itemList: ['全部时间', '今天', '明天', '本周', '本周末'],
-      success: (res) => {
-        // TODO: implement time filter
-        console.log('Time filter:', res.tapIndex);
-      }
+    const { filterDate } = this.data;
+    const calendarMonths = this.generateCalendarData();
+    
+    // Restore selected state if filterDate exists
+    if (filterDate) {
+      calendarMonths.forEach(month => {
+        month.days.forEach(day => {
+          if (day.fullDate === filterDate) {
+            day.isSelected = true;
+          }
+        });
+      });
+    }
+    
+    this.setData({
+      showCalendarPopup: true,
+      showFilterPopup: false,
+      calendarMonths,
+      selectedCalendarDate: filterDate || '',
     });
   },
 
@@ -140,8 +239,209 @@ Page({
     });
   },
 
+  generateCalendarData() {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const months = [];
+    const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+    
+    for (let i = 0; i < 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1; // 1-12
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const firstDayOfWeek = new Date(year, month - 1, 1).getDay(); // 0=Sunday
+      
+      const days = [];
+      // Pad empty cells before the first day
+      for (let p = 0; p < firstDayOfWeek; p++) {
+        days.push({ date: 0, isPadding: true });
+      }
+      
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const dayOfWeek = dateObj.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isToday = dateObj.getTime() === now.getTime();
+        const isPast = dateObj.getTime() < now.getTime();
+        
+        days.push({
+          date: d,
+          fullDate: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+          dayOfWeek,
+          isWeekend,
+          isToday,
+          isPast,
+          isSelected: false,
+        });
+      }
+      
+      months.push({ year, month, days, WEEKDAYS });
+    }
+    return months;
+  },
+
   onFilterMore() {
-    wx.showToast({ title: '高级筛选开发中', icon: 'none' });
+    this.setData({
+      showFilterPopup: true,
+      filterSort: this.data.sortBy || 'created',
+      filterDate: this.data.filterDate || '',
+      filterLevels: this.data.filterLevels || [],
+      filterDistance: this.data.filterDistance || 'all',
+      calendarMonths: this.generateCalendarData(),
+    });
+  },
+
+  onCloseCalendarPopup() {
+    this.setData({ showCalendarPopup: false });
+  },
+
+  onCalendarPanelTap() {
+    // prevent bubbling
+  },
+
+  onCalendarDaySelect(e) {
+    const { date, ispast } = e.currentTarget.dataset;
+    if (ispast === 'true' || ispast === true) return;
+    
+    const months = this.data.calendarMonths.map(month => ({
+      ...month,
+      days: month.days.map(day => ({
+        ...day,
+        isSelected: day.fullDate === date && !day.isPadding,
+      })),
+    }));
+    
+    this.setData({
+      calendarMonths: months,
+      selectedCalendarDate: date,
+    });
+  },
+
+  onCalendarReset() {
+    const months = this.data.calendarMonths.map(month => ({
+      ...month,
+      days: month.days.map(day => ({
+        ...day,
+        isSelected: false,
+      })),
+    }));
+    this.setData({
+      calendarMonths: months,
+      selectedCalendarDate: '',
+    });
+  },
+
+  onCalendarConfirm() {
+    const { selectedCalendarDate } = this.data;
+    this.setData({
+      showCalendarPopup: false,
+      filterDate: selectedCalendarDate,
+      filterDateLabel: formatDateLabel(selectedCalendarDate),
+    }, () => {
+      this.loadFeed();
+    });
+  },
+
+  onCloseFilterPopup() {
+    this.setData({ showFilterPopup: false });
+  },
+
+  onPanelTap() {
+    // prevent bubbling to overlay
+  },
+
+  onFilterSortChange(e) {
+    const value = e.currentTarget.dataset.value;
+    if (value === 'distance' && !this.data.hasLocation) {
+      wx.showModal({
+        title: '需要位置权限',
+        content: '按距离排序需要获取您的位置',
+        success: (res) => {
+          if (res.confirm) {
+            this.initLocation().then(() => {
+              if (this.data.hasLocation) {
+                this.setData({ filterSort: 'distance' });
+              }
+            });
+          }
+        }
+      });
+      return;
+    }
+    this.setData({ filterSort: value });
+  },
+
+  onFilterDateChange(e) {
+    const { date, past } = e.currentTarget.dataset;
+    if (!date || past) return;
+    this.setData({ filterDate: date });
+  },
+
+  onFilterLevelChange(e) {
+    const value = e.currentTarget.dataset.value;
+    const levels = [...this.data.filterLevels];
+    const idx = levels.indexOf(value);
+    if (idx > -1) {
+      levels.splice(idx, 1);
+    } else {
+      levels.push(value);
+    }
+    this.setData({ filterLevels: levels });
+  },
+
+  onFilterDistanceChange(e) {
+    const value = e.currentTarget.dataset.value;
+    if (value !== 'all' && !this.data.hasLocation) {
+      wx.showModal({
+        title: '需要位置权限',
+        content: '按距离筛选需要获取您的位置',
+        success: (res) => {
+          if (res.confirm) {
+            this.initLocation().then(() => {
+              if (this.data.hasLocation) {
+                this.setData({ filterDistance: value });
+              }
+            });
+          }
+        }
+      });
+      return;
+    }
+    this.setData({ filterDistance: value });
+  },
+
+  computeActiveFilterCount() {
+    const { filterDate, filterLevels, filterDistance } = this.data;
+    let count = 0;
+    if (filterDate) count++;
+    if (filterLevels && filterLevels.length > 0) count++;
+    if (filterDistance && filterDistance !== 'all') count++;
+    return count;
+  },
+
+  onResetFilters() {
+    this.setData({
+      filterSort: 'created',
+      filterDate: '',
+      filterDateLabel: '',
+      filterLevels: [],
+      filterDistance: 'all',
+    });
+  },
+
+  onConfirmFilters() {
+    const activeFilterCount = this.computeActiveFilterCount();
+    const { filterSort, filterDate } = this.data;
+    this.setData({
+      showFilterPopup: false,
+      sortBy: filterSort,
+      filterDate,
+      filterDateLabel: formatDateLabel(filterDate),
+      activeFilterCount,
+    }, () => {
+      this.loadFeed();
+    });
   },
 
   onPostDetail(e) {

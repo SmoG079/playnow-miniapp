@@ -79,7 +79,7 @@ Page({
 
   onClubDetail(e) {
     const id = e.currentTarget.dataset.id;
-    wx.navigateTo({ url: `/pages/booking/club-detail?id=${id}` });
+    wx.navigateTo({ url: `/pages/booking/venue-detail?id=${id}` });
   },
 
   onShareAppMessage() {

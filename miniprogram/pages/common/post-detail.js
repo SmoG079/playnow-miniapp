@@ -20,6 +20,10 @@ Page({
     this.loadPost(id);
   },
 
+  onBack() {
+    wx.navigateBack();
+  },
+
   async loadPost(id) {
     this.setData({ loading: true });
     try {
@@ -45,6 +49,14 @@ Page({
   },
 
   onRegister() {
+    if (this.data.isOwner) {
+      // 管理报名 - 跳转到管理页面
+      wx.navigateTo({
+        url: `/pages/publish/order-manage?postId=${this.data.postId}`,
+      });
+      return;
+    }
+    
     if (this.data.isRegistered) {
       // 取消报名
       wx.showModal({

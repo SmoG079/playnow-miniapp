@@ -7,10 +7,10 @@ from sqlalchemy import select, and_, func
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock
-from app.api.deps import get_current_user, get_club_admin
+from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import (
     User, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
-    SettlementRecord, Notification, NotificationType, Club,
+    SettlementRecord, Notification, NotificationType, Club, ClubMember,
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams,
@@ -45,7 +45,7 @@ async def create_booking(
     # Get venue + club
     venue_result = await db.execute(select(Venue).where(Venue.id == slot.venue_id))
     venue = venue_result.scalar_one_or_none()
-    if not venue or venue.status.value != "active":
+    if not venue or _v(venue.status) != "active":
         raise HTTPException(status_code=400, detail="Venue not available")
 
     club_result = await db.execute(select(Club).where(Club.id == venue.club_id))
@@ -64,7 +64,7 @@ async def create_booking(
         slot.locked_at = datetime.utcnow()
 
         # Calculate price
-        price = slot.price_override if slot.price_override else venue.price_per_hour
+        price = slot.price_override if slot.price_override is not None else venue.price_per_hour
 
         # Create order
         order = BookingOrder(
@@ -88,7 +88,7 @@ async def create_booking(
             slot_id=order.slot_id,
             club_id=order.club_id,
             amount=order.amount,
-            status=order.status.value,
+            status=_v(order.status),
             payment_time=order.payment_time,
             wx_transaction_id=order.wx_transaction_id,
             cancel_reason=order.cancel_reason,
@@ -101,7 +101,7 @@ async def create_booking(
             slot_end=slot.end_time,
         )
     except Exception:
-        await release_lock(lock_key)
+        await release_lock(lock_key, str(current_user.id))
         raise
 
 
@@ -126,7 +126,7 @@ async def get_booking(
     # Check ownership or admin
     if order.user_id != current_user.id:
         # Allow club admin to view
-        if current_user.role.value not in ("club_admin", "platform_admin"):
+        if _v(current_user.role) not in ("club_admin", "platform_admin"):
             raise HTTPException(status_code=403, detail="Not authorized")
 
     return BookingDetail(
@@ -137,7 +137,7 @@ async def get_booking(
         slot_id=order.slot_id,
         club_id=order.club_id,
         amount=order.amount,
-        status=order.status.value,
+        status=_v(order.status),
         payment_time=order.payment_time,
         wx_transaction_id=order.wx_transaction_id,
         cancel_reason=order.cancel_reason,
@@ -187,7 +187,7 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     if slot:
         slot.status = SlotStatus.booked
         lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key)
+        await release_lock(lock_key, str(order.user_id))
 
     # Create settlement record
     club_result = await db.execute(select(Club).where(Club.id == order.club_id))
@@ -237,8 +237,23 @@ async def cancel_booking(
         raise HTTPException(status_code=404, detail="Booking not found")
     order, slot = row
 
+    # Authorization: booking owner, club admin, or platform admin
     if order.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your booking")
+        role = _v(current_user.role)
+        if role == "platform_admin":
+            pass  # allowed
+        elif role == "club_admin":
+            # Verify admin manages this club
+            member = await db.execute(
+                select(ClubMember).where(
+                    ClubMember.club_id == order.club_id,
+                    ClubMember.user_id == current_user.id,
+                )
+            )
+            if not member.scalar_one_or_none():
+                raise HTTPException(status_code=403, detail="Not your booking")
+        else:
+            raise HTTPException(status_code=403, detail="Not your booking")
 
     if order.status not in (OrderStatus.pending, OrderStatus.paid):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
@@ -265,7 +280,7 @@ async def cancel_booking(
     slot.locked_by = None
     slot.locked_at = None
     lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-    await release_lock(lock_key)
+    await release_lock(lock_key, str(order.user_id))
 
     # TODO: Trigger WeChat refund API if paid
 
@@ -305,7 +320,7 @@ async def club_orders(
         items.append(BookingDetail(
             id=order.id, order_no=order.order_no, user_id=order.user_id,
             venue_id=order.venue_id, slot_id=order.slot_id, club_id=order.club_id,
-            amount=order.amount, status=order.status.value, payment_time=order.payment_time,
+            amount=order.amount, status=_v(order.status), payment_time=order.payment_time,
             wx_transaction_id=order.wx_transaction_id, cancel_reason=order.cancel_reason,
             cancel_time=order.cancel_time, created_at=order.created_at,
             venue_name=venue_name, club_name=None, slot_date=slot_date,

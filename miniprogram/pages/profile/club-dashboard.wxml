@@ -1,1 +1,83 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Club Selector (when managing multiple clubs) -->
+  <view class="club-picker" wx:if="{{managedClubs.length > 1}}">
+    <picker bindchange="onClubChange" value="0" range="{{managedClubs}}">
+      <view class="picker-value">
+        <text>切换俱乐部</text>
+        <text class="picker-arrow">▼</text>
+      </view>
+    </picker>
+  </view>
+
+  <!-- Club Info Card -->
+  <view class="club-card" wx:if="{{club}}">
+    <view class="club-cover-wrap">
+      <image class="club-cover" src="{{club.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+      <view class="club-name-overlay">
+        <text class="club-name">{{club.name}}</text>
+        <text class="club-status {{club.status === 'active' ? 'active' : 'inactive'}}">
+          {{club.status === 'active' ? '营业中' : '休息中'}}
+        </text>
+      </view>
+    </view>
+    <view class="club-info">
+      <view class="info-row" wx:if="{{club.address}}">
+        <text class="info-icon">📍</text>
+        <text class="info-text">{{club.address}}</text>
+      </view>
+      <view class="info-row" wx:if="{{club.contact_phone}}" bindtap="onPhoneTap">
+        <text class="info-icon">📞</text>
+        <text class="info-text link">{{club.contact_phone}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Stats Row -->
+  <view class="stats-row" wx:if="{{stats}}">
+    <view class="stat-item">
+      <text class="stat-num">{{stats.total_venues}}</text>
+      <text class="stat-label">场地数</text>
+    </view>
+    <view class="stat-divider"></view>
+    <view class="stat-item">
+      <text class="stat-num">{{stats.today_orders}}</text>
+      <text class="stat-label">今日订单</text>
+    </view>
+    <view class="stat-divider"></view>
+    <view class="stat-item">
+      <text class="stat-num">¥{{stats.today_revenue}}</text>
+      <text class="stat-label">今日收入</text>
+    </view>
+  </view>
+
+  <!-- Management Menu -->
+  <view class="menu-grid" wx:if="{{club}}">
+    <view class="menu-item" bindtap="onVenueManage">
+      <text class="menu-icon">🏟️</text>
+      <text class="menu-title">场地管理</text>
+    </view>
+    <view class="menu-item" bindtap="onSlotManage">
+      <text class="menu-icon">⏰</text>
+      <text class="menu-title">时段管理</text>
+    </view>
+    <view class="menu-item" bindtap="onOrderManage">
+      <text class="menu-icon">📋</text>
+      <text class="menu-title">订单管理</text>
+    </view>
+    <view class="menu-item" bindtap="onEditClub">
+      <text class="menu-icon">✏️</text>
+      <text class="menu-title">编辑信息</text>
+    </view>
+  </view>
+
+  <!-- Empty State: No Clubs -->
+  <view class="empty-state" wx:if="{{managedClubs.length === 0 && !loading}}">
+    <text>您还没有管理的俱乐部</text>
+    <button class="btn-primary" style="margin-top:40rpx" bindtap="onCreateClub">创建俱乐部</button>
+  </view>
+
+  <!-- Loading -->
+  <view class="loading-state" wx:if="{{loading}}">
+    <text>加载中...</text>
+  </view>
+</view>

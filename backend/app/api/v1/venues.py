@@ -107,10 +107,16 @@ async def delete_venue(
 @router.get("/{venue_id}/slots")
 async def get_slots(
     venue_id: int,
-    date_from: date = Query(...),
-    date_to: date = Query(...),
+    date: date = Query(None),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    if date:
+        date_from = date_to = date
+    if not date_from or not date_to:
+        raise HTTPException(status_code=422, detail="Provide either 'date' or both 'date_from' and 'date_to'")
+
     result = await db.execute(
         select(VenueTimeSlot)
         .where(
@@ -181,7 +187,9 @@ async def generate_slots(
 
 
 def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
-    price = slot.price_override if slot.price_override else slot.venue.price_per_hour if slot.venue else 0
+    # Note: caller must ensure slot.venue is loaded or price_override is set
+    price = slot.price_override if slot.price_override is not None else (slot.venue.price_per_hour if slot.venue else 0)
+    status_val = slot.status.value if hasattr(slot.status, "value") else str(slot.status)
     return SlotBrief(
         id=slot.id,
         venue_id=slot.venue_id,
@@ -189,5 +197,5 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
         start_time=slot.start_time,
         end_time=slot.end_time,
         price=price,
-        status=slot.status.value,
+        status=status_val,
     )
