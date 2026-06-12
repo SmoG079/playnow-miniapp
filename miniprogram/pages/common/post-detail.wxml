@@ -37,7 +37,7 @@
       <view class="info-item" bindtap="onCallPhone">
         <text class="info-label">发起人</text>
         <view class="info-content">
-          <text class="info-value">{{post.user_nickname}}</text>
+          <text class="info-value">{{post.user_nickname || ('用户' + post.user_id)}}</text>
           <text class="phone-icon">📞</text>
         </view>
       </view>

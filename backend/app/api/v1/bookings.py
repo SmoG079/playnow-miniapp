@@ -42,7 +42,7 @@ async def create_booking(
     slot = result.scalar_one_or_none()
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
-    if slot.status != SlotStatus.available:
+    if _v(slot.status) != "available":
         raise HTTPException(status_code=409, detail="Slot is not available")
 
     # Get venue + club
@@ -102,6 +102,10 @@ async def create_booking(
             slot_date=slot.date,
             slot_start=slot.start_time,
             slot_end=slot.end_time,
+            refund_amount=order.refund_amount,
+            refund_id=order.refund_id,
+            refund_time=order.refund_time,
+            refund_status=order.refund_status,
         )
     except Exception:
         await release_lock(lock_key, str(current_user.id))
@@ -151,6 +155,10 @@ async def get_booking(
         slot_date=slot.date,
         slot_start=slot.start_time,
         slot_end=slot.end_time,
+        refund_amount=order.refund_amount,
+        refund_id=order.refund_id,
+        refund_time=order.refund_time,
+        refund_status=order.refund_status,
     )
 
 
@@ -328,7 +336,7 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
             platform_amount=platform_amount,
             club_amount=club_amount,
             split_ratio=split_ratio,
-            status="pending",
+            status=SettlementStatus.pending,
         )
         db.add(settlement)
 
@@ -796,6 +804,8 @@ async def club_orders(
             cancel_time=order.cancel_time, created_at=order.created_at,
             venue_name=venue_name, club_name=None, slot_date=slot_date,
             slot_start=slot_start, slot_end=slot_end,
+            refund_amount=order.refund_amount, refund_id=order.refund_id,
+            refund_time=order.refund_time, refund_status=order.refund_status,
         ))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

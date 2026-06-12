@@ -31,8 +31,17 @@ Page({
       const post = await app.request({ url: `/posts/${id}` });
       const currentUserId = app.globalData.userInfo && app.globalData.userInfo.id;
       const isOwner = post.user_id === currentUserId;
-      const isRegistered = post.registrations && post.registrations.some(r => r.user_id === currentUserId && r.status === 'approved');
+      const isRegistered = post.registrations && post.registrations.some(r => r.user_id === currentUserId && ['pending', 'approved'].includes(r.status));
       const isFull = post.registration_count >= post.players_needed;
+
+      // Compute weekday from preferred_date
+      if (post.preferred_date) {
+        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const d = new Date(post.preferred_date + 'T00:00:00');
+        post.weekday = days[d.getDay()];
+      } else {
+        post.weekday = '';
+      }
 
       this.setData({
         post,
@@ -172,5 +181,27 @@ Page({
     this.loadPost(this.data.postId).then(() => {
       wx.stopPullDownRefresh();
     });
+  },
+
+  onMore() {
+    wx.showActionSheet({
+      itemList: ['举报', '复制链接', '取消'],
+      success: (res) => {
+        if (res.tapIndex === 1) {
+          wx.setClipboardData({
+            data: `/pages/common/post-detail?id=${this.data.postId}`,
+          });
+        }
+      },
+    });
+  },
+
+  onOpenChat() {
+    const post = this.data.post;
+    if (post && post.group_chat_id) {
+      wx.showToast({ title: '群聊功能待接入', icon: 'none' });
+    } else {
+      wx.showToast({ title: '暂无群聊', icon: 'none' });
+    }
   },
 });

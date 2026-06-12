@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_club_admin
+from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord
 from app.models.models import ClubMemberRole
 from app.schemas.schemas import (
@@ -76,7 +76,7 @@ async def create_club(
     db.add(member)
 
     # Upgrade user role if not already
-    role = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
+    role = _v(current_user.role)
     if role == "user":
         current_user.role = "club_admin"
 

@@ -6,6 +6,9 @@ Page({
     clubIndex: -1,
     clubIds: [],
     clubNames: [],
+    venueIndex: -1,
+    venueIds: [],
+    venueNames: [],
     sportType: '',
     preferredDate: '',
     preferredStart: '',
@@ -49,7 +52,27 @@ Page({
     this.setData({ [e.currentTarget.dataset.field]: e.detail.value });
   },
   onClubChange(e) {
-    this.setData({ clubIndex: parseInt(e.detail.value) });
+    const clubIndex = parseInt(e.detail.value);
+    this.setData({ clubIndex, venueIndex: -1, venueIds: [], venueNames: [] });
+    this.loadVenues(clubIndex);
+  },
+  async loadVenues(clubIndex) {
+    if (clubIndex < 0) return;
+    const clubId = this.data.clubIds[clubIndex];
+    try {
+      const res = await app.request({ url: `/clubs/${clubId}` });
+      const venues = res.venues || [];
+      this.setData({
+        venueIds: venues.map(v => v.id),
+        venueNames: venues.map(v => v.name),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  },
+
+  onVenueChange(e) {
+    this.setData({ venueIndex: parseInt(e.detail.value) });
   },
   onDateChange(e) {
     this.setData({ preferredDate: e.detail.value });
@@ -113,6 +136,8 @@ Page({
           level_required: this.data.levelIndex > 0 ? this.data.levels[this.data.levelIndex] : null,
           description: this.data.description || null,
           notes: this.data.notes || null,
+          venue_id: this.data.venueIndex > -1 ? this.data.venueIds[this.data.venueIndex] : null,
+          booking_id: null,
           documents: this.data.documents.length > 0 ? this.data.documents : null,
         },
       });

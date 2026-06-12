@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, date, time
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_club_admin
-from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club
+from app.api.deps import get_current_user, get_club_admin, _v
+from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, VenueStatus
 from app.schemas.schemas import (
     VenueCreate, VenueUpdate, VenueBrief, VenueDetail,
     SlotGenerateRequest, SlotBrief, SlotDateGroup,
@@ -21,27 +22,6 @@ async def get_venue(venue_id: int, db: AsyncSession = Depends(get_db)):
     if not venue:
         raise HTTPException(status_code=404, detail="Venue not found")
     return VenueDetail.model_validate(venue)
-
-
-@router.post("", response_model=VenueBrief)
-async def create_venue(
-    req: VenueCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    venue = Venue(
-        club_id=req.club_id if hasattr(req, 'club_id') else 0,
-        name=req.name,
-        sport_type=req.sport_type,
-        price_per_hour=req.price_per_hour,
-        max_capacity=req.max_capacity,
-        cover_image=req.cover_image,
-        sort_order=req.sort_order,
-    )
-    db.add(venue)
-    await db.flush()
-    await db.refresh(venue)
-    return VenueBrief.model_validate(venue)
 
 
 @router.post("/with-club/{club_id}", response_model=VenueBrief)
@@ -101,7 +81,7 @@ async def delete_venue(
     venue = result.scalar_one_or_none()
     if not venue:
         raise HTTPException(status_code=404, detail="Venue not found")
-    venue.status = "closed"
+    venue.status = VenueStatus.closed
     return {"msg": "ok"}
 
 
@@ -120,6 +100,7 @@ async def get_slots(
 
     result = await db.execute(
         select(VenueTimeSlot)
+        .options(selectinload(VenueTimeSlot.venue))
         .where(
             VenueTimeSlot.venue_id == venue_id,
             VenueTimeSlot.date >= date_from,
@@ -153,11 +134,37 @@ def _effective_price_for_slot(start_time: time, price_rules: list, venue_price: 
     return venue_price
 
 
+async def _require_club_admin_for_venue(
+    venue_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Load venue and verify current user is admin of the venue's club."""
+    result = await db.execute(select(Venue).where(Venue.id == venue_id))
+    venue = result.scalar_one_or_none()
+    if not venue:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    role = _v(current_user.role)
+    if role == "platform_admin":
+        return current_user
+    if role == "club_admin":
+        from app.models.models import ClubMember
+        member_result = await db.execute(
+            select(ClubMember).where(
+                ClubMember.club_id == venue.club_id,
+                ClubMember.user_id == current_user.id,
+            )
+        )
+        if member_result.scalar_one_or_none():
+            return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires club admin permission")
+
+
 @router.post("/{venue_id}/slots/batch")
 async def generate_slots(
     venue_id: int,
     req: SlotGenerateRequest,
-    _: User = Depends(get_club_admin),
+    _: User = Depends(_require_club_admin_for_venue),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate time slots for a date range."""

@@ -222,6 +222,10 @@ class BookingDetail(BaseModel):
     slot_date: Optional[date] = None
     slot_start: Optional[time] = None
     slot_end: Optional[time] = None
+    refund_amount: Optional[Decimal] = None
+    refund_id: Optional[str] = None
+    refund_time: Optional[datetime] = None
+    refund_status: Optional[str] = None
 
     class Config:
         from_attributes = True

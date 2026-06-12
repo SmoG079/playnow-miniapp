@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
-    FREE_CANCEL_HOURS: int = 2
+    FREE_CANCEL_HOURS: int = 24
 
 
 @lru_cache()

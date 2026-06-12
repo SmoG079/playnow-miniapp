@@ -11,6 +11,14 @@
       </view>
     </picker>
 
+    <text class="form-label">场地</text>
+    <picker mode="selector" range="{{venueNames}}" value="{{venueIndex}}" bindchange="onVenueChange" disabled="{{venueNames.length === 0}}">
+      <view class="form-picker">
+        <text class="{{venueIndex > -1 ? '' : 'text-light'}}">{{venueIndex > -1 ? venueNames[venueIndex] : (venueNames.length === 0 ? '请先选择俱乐部' : '选择场地')}}</text>
+        <text>›</text>
+      </view>
+    </picker>
+
     <text class="form-label">运动类型</text>
     <input class="form-input" placeholder="如：羽毛球" value="{{sportType}}" bindinput="onField" data-field="sportType" />
 

@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.wechat_pay import get_wxpay, build_jsapi_params
-from app.api.deps import get_current_user, get_club_admin
+from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import (
     User, Club, Tournament, TournamentRegistration, TournamentStatus,
     TournamentRegStatus, Venue, VenueTimeSlot, SlotStatus,
@@ -203,7 +203,7 @@ async def register_tournament(
     t = result.scalar_one_or_none()
     if not t:
         raise HTTPException(status_code=404, detail="Tournament not found")
-    if t.status != TournamentStatus.open:
+    if _v(t.status) != "open":
         raise HTTPException(status_code=400, detail="Tournament is not open for registration")
     if t.max_participants and (t.current_participants or 0) >= t.max_participants:
         raise HTTPException(status_code=400, detail="Tournament is full")
@@ -288,7 +288,7 @@ async def pay_tournament(
         raise HTTPException(status_code=404, detail="Registration not found")
     reg, tournament = row
 
-    if reg.status == TournamentRegStatus.confirmed:
+    if _v(reg.status) == "confirmed":
         raise HTTPException(status_code=400, detail="Already paid")
     if not reg.order_id:
         raise HTTPException(status_code=400, detail="No pending order")

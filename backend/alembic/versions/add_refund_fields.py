@@ -11,7 +11,7 @@ from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
 revision = 'add_refund_fields'
-down_revision = None
+down_revision = '001_initial_schema'
 branch_labels = None
 depends_on = None
 
@@ -33,6 +33,7 @@ def upgrade() -> None:
         sa.Column('reason', sa.String(256), nullable=True),
         sa.Column('status', sa.String(32), nullable=True, server_default='pending'),
         sa.Column('created_at', sa.DateTime(), nullable=True, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(), nullable=True, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
         sa.Column('completed_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
         sa.Index('idx_refund_order', 'order_id'),

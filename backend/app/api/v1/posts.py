@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, _v
 from app.models.models import (
     User, Club, ClubMember, Venue, MatchPost, MatchRegistration, MatchPostStatus,
     RegistrationStatus, Notification, NotificationType,
@@ -14,6 +14,12 @@ from app.schemas.schemas import (
 )
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+
+def _fallback_nickname(user_id: int, phone: str | None) -> str:
+    if phone and len(phone) >= 11:
+        return phone[:3] + '****' + phone[7:]
+    return f'用户{user_id}'
 
 
 def haversine(lat1, lng1, lat2, lng2):
@@ -42,7 +48,7 @@ async def list_posts(
     db: AsyncSession = Depends(get_db),
 ):
     query = (
-        select(MatchPost, User.nickname, User.avatar_url, Club.name,
+        select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
                Club.latitude, Club.longitude,
                func.count(MatchRegistration.id))
         .join(User, MatchPost.user_id == User.id)
@@ -78,10 +84,11 @@ async def list_posts(
 
     items = []
     for row in rows:
-        post, nickname, avatar, club_name, club_lat, club_lng, reg_count = row
+        post, nickname, avatar, phone, club_name, club_lat, club_lng, reg_count = row
         distance = haversine(lat, lng,
                              float(club_lat) if club_lat else None,
                              float(club_lng) if club_lng else None)
+        user_nickname = nickname or _fallback_nickname(post.user_id, phone)
         items.append(PostBrief(
             id=post.id, club_id=post.club_id, user_id=post.user_id,
             title=post.title, sport_type=post.sport_type,
@@ -92,7 +99,7 @@ async def list_posts(
             level_required=post.level_required,
             status=post.status.value,
             created_at=post.created_at,
-            user_nickname=nickname, user_avatar=avatar,
+            user_nickname=user_nickname, user_avatar=avatar,
             club_name=club_name, registration_count=reg_count or 0,
             distance=distance,
         ))
@@ -109,7 +116,10 @@ async def create_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 权限校验：只有俱乐部管理员才能发布
+    # 权限校验：只有俱乐部管理员或平台管理员才能发布
+    if _v(current_user.role) not in ("club_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
+
     member_result = await db.execute(
         select(ClubMember).where(
             ClubMember.user_id == current_user.id,
@@ -154,7 +164,8 @@ async def create_post(
         level_required=post.level_required,
         status=post.status.value,
         created_at=post.created_at,
-        user_nickname=user.nickname, user_avatar=user.avatar_url,
+        user_nickname=user.nickname or _fallback_nickname(user.id, user.phone),
+        user_avatar=user.avatar_url,
         club_name=club.name if club else None,
         registration_count=0,
     )
@@ -163,7 +174,7 @@ async def create_post(
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(MatchPost, User.nickname, User.avatar_url, Club.name,
+        select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
                func.count(MatchRegistration.id))
         .join(User, MatchPost.user_id == User.id)
         .join(Club, MatchPost.club_id == Club.id)
@@ -174,11 +185,11 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
     row = result.one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Post not found")
-    post, nickname, avatar, club_name, reg_count = row
+    post, nickname, avatar, phone, club_name, reg_count = row
 
     # Get registrations
     reg_result = await db.execute(
-        select(MatchRegistration, User.nickname, User.avatar_url)
+        select(MatchRegistration, User.nickname, User.avatar_url, User.phone)
         .join(User, MatchRegistration.user_id == User.id)
         .where(MatchRegistration.post_id == post_id)
         .order_by(MatchRegistration.id)
@@ -186,7 +197,8 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
     reg_rows = reg_result.all()
 
     registrations = []
-    for r, r_nick, r_av in reg_rows:
+    for r, r_nick, r_av, r_phone in reg_rows:
+        r_nick = r_nick or _fallback_nickname(r.user_id, r_phone)
         registrations.append(RegistrationBrief(
             id=r.id, user_id=r.user_id, message=r.message, status=r.status.value,
             user_nickname=r_nick, user_avatar=r_av,
@@ -238,7 +250,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         level_required=post.level_required,
         status=post.status.value,
         created_at=post.created_at,
-        user_nickname=nickname, user_avatar=avatar,
+        user_nickname=nickname or _fallback_nickname(post.user_id, phone), user_avatar=avatar,
         club_name=club_name, registration_count=reg_count or 0,
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
@@ -260,7 +272,7 @@ async def register_post(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post.status != MatchPostStatus.open:
+    if _v(post.status) != "open":
         raise HTTPException(status_code=400, detail="Post is not open")
 
     existing = await db.execute(
@@ -325,7 +337,7 @@ async def review_registration(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post.user_id != current_user.id:
+    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
         raise HTTPException(status_code=403, detail="Only post owner can review")
 
     result = await db.execute(
@@ -338,5 +350,39 @@ async def review_registration(
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
 
-    reg.status = RegistrationStatus(req.status)
+    new_status = RegistrationStatus(req.status)
+    reg.status = new_status
+
+    # Notify registrant about approval/rejection
+    title_map = {
+        RegistrationStatus.approved: "报名已通过",
+        RegistrationStatus.rejected: "报名已被拒绝",
+    }
+    content_map = {
+        RegistrationStatus.approved: f"你的报名已通过，约球帖《{post.title}》",
+        RegistrationStatus.rejected: f"你的报名被拒绝，约球帖《{post.title}》",
+    }
+    if new_status in title_map:
+        notif = Notification(
+            user_id=user_id,
+            type=NotificationType.match,
+            title=title_map[new_status],
+            content=content_map[new_status],
+            ref_id=post.id,
+            ref_type="match_post",
+        )
+        db.add(notif)
+
+    # If approved, check if post is now full
+    if new_status == RegistrationStatus.approved:
+        approved_count_result = await db.execute(
+            select(func.count(MatchRegistration.id)).where(
+                MatchRegistration.post_id == post_id,
+                MatchRegistration.status == RegistrationStatus.approved,
+            )
+        )
+        approved_count = approved_count_result.scalar() or 0
+        if approved_count >= post.players_needed:
+            post.status = MatchPostStatus.full
+
     return {"msg": "ok"}
