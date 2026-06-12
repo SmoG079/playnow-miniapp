@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     WX_MCH_SERIAL_NO: str = ""
     WX_MCH_PRIVATE_KEY_PATH: str = ""
     WX_PAY_NOTIFY_URL: str = ""
+    WX_PAY_CERT_DIR: str = "/app/certs"
     
     # OSS
     OSS_ENDPOINT: str = ""

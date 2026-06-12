@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.core.database import get_db
-from app.api.deps import get_current_user
-from app.models.models import User, ClubMember, Notification
+from app.api.deps import get_current_user, _v
+from app.models.models import (
+    User, ClubMember, Notification, BookingOrder, Venue, Club,
+    VenueTimeSlot, OrderStatus,
+)
 from app.schemas.schemas import (
     UserMeResponse, UserUpdate, PaginatedResponse, NotificationBrief,
+    BookingDetail,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -71,3 +75,80 @@ async def my_notifications(
         items=[NotificationBrief.model_validate(n) for n in items],
         total=total, page=page, page_size=page_size,
     )
+
+
+@router.get("/me/bookings", response_model=PaginatedResponse)
+async def my_bookings(
+    status: str = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = (
+        select(
+            BookingOrder,
+            Venue.name.label("venue_name"),
+            Club.name.label("club_name"),
+            VenueTimeSlot.date,
+            VenueTimeSlot.start_time,
+            VenueTimeSlot.end_time,
+        )
+        .join(Venue, BookingOrder.venue_id == Venue.id)
+        .join(Club, BookingOrder.club_id == Club.id)
+        .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
+        .where(BookingOrder.user_id == current_user.id)
+    )
+
+    count_query = select(func.count(BookingOrder.id)).where(
+        BookingOrder.user_id == current_user.id
+    )
+
+    if status == "cancelled":
+        cancelled_statuses = (
+            OrderStatus.cancelled,
+            OrderStatus.refunding,
+            OrderStatus.refunded,
+        )
+        query = query.where(BookingOrder.status.in_(cancelled_statuses))
+        count_query = count_query.where(BookingOrder.status.in_(cancelled_statuses))
+    elif status:
+        query = query.where(BookingOrder.status == status)
+        count_query = count_query.where(BookingOrder.status == status)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        query.order_by(BookingOrder.created_at.desc()).offset(offset).limit(page_size)
+    )
+    rows = result.all()
+
+    items = []
+    for row in rows:
+        order = row[0]
+        items.append(
+            BookingDetail(
+                id=order.id,
+                order_no=order.order_no,
+                user_id=order.user_id,
+                venue_id=order.venue_id,
+                slot_id=order.slot_id,
+                club_id=order.club_id,
+                amount=order.amount,
+                status=_v(order.status),
+                payment_time=order.payment_time,
+                wx_transaction_id=order.wx_transaction_id,
+                cancel_reason=order.cancel_reason,
+                cancel_time=order.cancel_time,
+                created_at=order.created_at,
+                venue_name=row.venue_name,
+                club_name=row.club_name,
+                slot_date=row.date,
+                slot_start=row.start_time,
+                slot_end=row.end_time,
+            )
+        )
+
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

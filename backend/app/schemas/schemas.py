@@ -340,6 +340,7 @@ class TournamentCreate(BaseModel):
     max_participants: Optional[int] = None
     entry_fee: Decimal = Decimal("0")
     cover_image: Optional[str] = None
+    prize: Optional[str] = None
 
 class TournamentUpdate(BaseModel):
     title: Optional[str] = None
@@ -353,6 +354,7 @@ class TournamentUpdate(BaseModel):
     entry_fee: Optional[Decimal] = None
     cover_image: Optional[str] = None
     status: Optional[str] = None
+    prize: Optional[str] = None
 
 class TournamentBrief(BaseModel):
     id: int
@@ -375,6 +377,7 @@ class TournamentBrief(BaseModel):
 
 class TournamentDetail(TournamentBrief):
     description: Optional[str]
+    prize: Optional[str] = None
     lock_venue: bool
     registrations: list["TournamentRegBrief"] = []
 

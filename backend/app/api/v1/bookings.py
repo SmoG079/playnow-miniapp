@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -7,10 +8,12 @@ from sqlalchemy import select, and_, func
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock
+from app.core.wechat_pay import get_wxpay, build_jsapi_params
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import (
     User, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
     SettlementRecord, Notification, NotificationType, Club, ClubMember,
+    TournamentRegistration, TournamentRegStatus,
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams,
@@ -151,18 +154,73 @@ async def get_booking(
     )
 
 
+@router.post("/{booking_id}/pay", response_model=PayResponse)
+async def pay_booking(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(BookingOrder).where(BookingOrder.id == booking_id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your booking")
+    if order.status != OrderStatus.pending:
+        raise HTTPException(status_code=400, detail="Order is not pending")
+    if not current_user.openid:
+        raise HTTPException(status_code=400, detail="User openid not available")
+
+    # Load venue/club info for description
+    venue_result = await db.execute(select(Venue).where(Venue.id == order.venue_id))
+    venue = venue_result.scalar_one_or_none()
+    description = venue.name if venue else "场地预约"
+
+    wxpay = get_wxpay()
+    try:
+        result = wxpay.pay(
+            description=description,
+            out_trade_no=order.order_no,
+            amount={"total": int(order.amount * 100)},
+            payer={"openid": current_user.openid},
+        )
+        prepay_id = result.get("prepay_id")
+        if not prepay_id:
+            raise HTTPException(status_code=500, detail="WeChat pay did not return prepay_id")
+        return build_jsapi_params(wxpay, prepay_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WeChat pay order creation failed: {str(e)}")
+
+
 @router.post("/wx-notify")
 async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
-    """WeChat payment callback. Verify signature and update order status."""
+    """WeChat payment callback. Verify signature, decrypt payload, and update order status."""
     body = await request.body()
-    headers = request.headers
-    # TODO: Implement WeChat Pay V3 signature verification
-    # For now, parse the callback body
-    import json
-    data = json.loads(body)
+
+    try:
+        wxpay = get_wxpay()
+        decrypted = wxpay.decrypt_callback(request.headers, body)
+    except Exception as e:
+        # Signature verification failed, decryption error, or missing certificate
+        return {"code": "FAIL", "message": f"Signature verification failed: {str(e)}"}
+
+    if not decrypted:
+        return {"code": "FAIL", "message": "Invalid callback signature or decryption failed"}
+
+    try:
+        data = json.loads(decrypted)
+    except json.JSONDecodeError:
+        return {"code": "FAIL", "message": "Invalid callback payload"}
 
     out_trade_no = data.get("out_trade_no")
     transaction_id = data.get("transaction_id")
+
+    if not out_trade_no:
+        return {"code": "FAIL", "message": "Missing out_trade_no"}
 
     result = await db.execute(
         select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
@@ -179,43 +237,67 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     order.payment_time = datetime.utcnow()
     order.wx_transaction_id = transaction_id
 
-    # Mark slot as booked
-    slot_result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+    # Handle tournament registration payment
+    tournament_reg_result = await db.execute(
+        select(TournamentRegistration).where(TournamentRegistration.order_id == order.id)
     )
-    slot = slot_result.scalar_one_or_none()
-    if slot:
-        slot.status = SlotStatus.booked
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key, str(order.user_id))
+    tournament_reg = tournament_reg_result.scalar_one_or_none()
+    if tournament_reg:
+        tournament_reg.status = TournamentRegStatus.confirmed
+        tournament = await db.execute(
+            select(Tournament).where(Tournament.id == tournament_reg.tournament_id)
+        )
+        tournament = tournament.scalar_one_or_none()
+        if tournament:
+            tournament.current_participants = (tournament.current_participants or 0) + 1
+        # Create notification for tournament registration
+        notif = Notification(
+            user_id=order.user_id,
+            type=NotificationType.tournament,
+            title="赛事报名成功",
+            content=f"您已成功报名赛事，订单号 {order.order_no}",
+            ref_id=tournament_reg.id,
+            ref_type="tournament_registration",
+        )
+        db.add(notif)
+    else:
+        # Mark slot as booked
+        slot_result = await db.execute(
+            select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+        )
+        slot = slot_result.scalar_one_or_none()
+        if slot:
+            slot.status = SlotStatus.booked
+            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+            await release_lock(lock_key, str(order.user_id))
 
-    # Create settlement record
-    club_result = await db.execute(select(Club).where(Club.id == order.club_id))
-    club = club_result.scalar_one_or_none()
-    split_ratio = club.split_ratio if club else Decimal("0.100")
-    platform_amount = order.amount * split_ratio
-    club_amount = order.amount - platform_amount
+        # Create settlement record
+        club_result = await db.execute(select(Club).where(Club.id == order.club_id))
+        club = club_result.scalar_one_or_none()
+        split_ratio = club.split_ratio if club else Decimal("0.100")
+        platform_amount = order.amount * split_ratio
+        club_amount = order.amount - platform_amount
 
-    settlement = SettlementRecord(
-        order_id=order.id,
-        total_amount=order.amount,
-        platform_amount=platform_amount,
-        club_amount=club_amount,
-        split_ratio=split_ratio,
-        status="pending",
-    )
-    db.add(settlement)
+        settlement = SettlementRecord(
+            order_id=order.id,
+            total_amount=order.amount,
+            platform_amount=platform_amount,
+            club_amount=club_amount,
+            split_ratio=split_ratio,
+            status="pending",
+        )
+        db.add(settlement)
 
-    # Create notification
-    notif = Notification(
-        user_id=order.user_id,
-        type=NotificationType.booking,
-        title="预约成功",
-        content=f"您的场地预约已支付成功，订单号 {order.order_no}",
-        ref_id=order.id,
-        ref_type="booking",
-    )
-    db.add(notif)
+        # Create notification
+        notif = Notification(
+            user_id=order.user_id,
+            type=NotificationType.booking,
+            title="预约成功",
+            content=f"您的场地预约已支付成功，订单号 {order.order_no}",
+            ref_id=order.id,
+            ref_type="booking",
+        )
+        db.add(notif)
 
     return {"code": "SUCCESS"}
 

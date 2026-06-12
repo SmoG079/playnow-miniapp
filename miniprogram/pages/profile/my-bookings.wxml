@@ -1,1 +1,71 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Status Tabs -->
+  <scroll-view class="tab-bar" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="tab-list">
+      <view
+        wx:for="{{statusTabs}}"
+        wx:key="value"
+        class="tab-item {{activeStatus === item.value ? 'active' : ''}}"
+        data-status="{{item.value}}"
+        bindtap="onTabChange"
+      >
+        <text class="tab-text">{{item.label}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- Booking List -->
+  <view class="booking-list" wx:if="{{bookings.length > 0}}">
+    <view
+      class="booking-card"
+      wx:for="{{bookings}}"
+      wx:key="id"
+    >
+      <view class="card-header">
+        <text class="order-no">{{item.order_no}}</text>
+        <text class="status-badge {{statusColor(item.status)}}">{{formatStatus(item.status)}}</text>
+      </view>
+
+      <view class="card-body">
+        <view class="info-row club" wx:if="{{item.club_name}}">
+          <text class="info-icon">🏠</text>
+          <text class="info-text">{{item.club_name}}</text>
+        </view>
+        <view class="info-row venue">
+          <text class="info-icon">🏟️</text>
+          <text class="info-text">{{item.venue_name || '未知场地'}}</text>
+        </view>
+        <view class="info-row time">
+          <text class="info-icon">🕐</text>
+          <text class="info-text">{{item.slot_date}} {{item.slot_start}} ~ {{item.slot_end}}</text>
+        </view>
+      </view>
+
+      <view class="card-footer">
+        <text class="amount">¥{{item.amount}}</text>
+        <view class="actions">
+          <text
+            class="btn-cancel"
+            wx:if="{{item.status === 'pending'}}"
+            data-booking="{{item}}"
+            bindtap="onCancelBooking"
+          >取消</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="load-more" wx:if="{{!hasMore && bookings.length > 0}}">
+      <text>没有更多了</text>
+    </view>
+  </view>
+
+  <!-- Empty State -->
+  <view class="empty-state" wx:if="{{bookings.length === 0 && !loading}}">
+    <text>暂无预约</text>
+  </view>
+
+  <!-- Loading -->
+  <view class="loading-state" wx:if="{{loading && bookings.length === 0}}">
+    <text>加载中...</text>
+  </view>
+</view>
