@@ -130,6 +130,8 @@ async def create_post(
         players_needed=req.players_needed,
         level_required=req.level_required,
         notes=req.notes,
+        description=req.description,
+        documents=req.documents,
         venue_id=req.venue_id,
         booking_id=req.booking_id,
     )
@@ -238,7 +240,8 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         created_at=post.created_at,
         user_nickname=nickname, user_avatar=avatar,
         club_name=club_name, registration_count=reg_count or 0,
-        notes=post.notes, venue_id=post.venue_id, booking_id=post.booking_id,
+        notes=post.notes, description=post.description, documents=post.documents,
+        venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
         price=None, user_phone=user_phone, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,

@@ -73,6 +73,25 @@
       </view>
     </view>
 
+    <!-- 描述 -->
+    <view class="description-section" wx:if="{{post.description || post.notes}}">
+      <text class="section-title">详情说明</text>
+      <text class="description-text" wx:if="{{post.description}}">{{post.description}}</text>
+      <text class="notes-text" wx:if="{{post.notes}}">备注：{{post.notes}}</text>
+    </view>
+
+    <!-- 附件/PDF -->
+    <view class="documents-section" wx:if="{{post.documents && post.documents.length > 0}}">
+      <text class="section-title">附件</text>
+      <view class="document-list">
+        <view class="doc-item" wx:for="{{post.documents}}" wx:key="url" bindtap="onOpenDocument" data-url="{{item.url}}" data-name="{{item.name}}">
+          <text class="doc-icon">📄</text>
+          <text class="doc-name">{{item.name}}</text>
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+    </view>
+
     <!-- 场地规则/PDF -->
     <view class="documents-section" wx:if="{{post.club_documents && post.club_documents.length > 0}}">
       <text class="section-title">场地规则</text>
@@ -87,7 +106,10 @@
 
     <!-- 已报名用户 -->
     <view class="registrations-section" wx:if="{{registrations.length > 0}}">
-      <text class="section-title">已报名用户</text>
+      <view class="section-header" bindtap="onShowRegistrations">
+        <text class="section-title">已报名用户</text>
+        <text class="arrow-icon">›</text>
+      </view>
       <view class="avatar-list">
         <view class="avatar-item" wx:for="{{registrations}}" wx:key="id" wx:if="{{index < 6}}">
           <image class="avatar-image" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
@@ -101,6 +123,30 @@
       </view>
     </view>
   </block>
+
+  <!-- 报名用户弹窗 -->
+  <view class="reg-popup {{showRegPopup ? 'show' : ''}}" bindtap="onCloseRegPopup" wx:if="{{showRegPopup}}">
+    <view class="reg-overlay"></view>
+    <view class="reg-panel" catchtap="onRegPanelTap">
+      <view class="reg-panel-header">
+        <text class="reg-panel-title">已报名用户</text>
+        <text class="reg-panel-close" bindtap="onCloseRegPopup">✕</text>
+      </view>
+      <view class="reg-list">
+        <view class="reg-item" wx:for="{{registrations}}" wx:key="id">
+          <image class="reg-avatar" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+          <view class="reg-info">
+            <text class="reg-name">{{item.user_nickname}}</text>
+            <text class="reg-status {{item.status}}">{{item.status === 'approved' ? '已通过' : item.status === 'rejected' ? '已拒绝' : '待审核'}}</text>
+          </view>
+          <text wx:if="{{item.message}}" class="reg-message">{{item.message}}</text>
+        </view>
+        <view wx:if="{{registrations.length === 0}}" class="reg-empty">
+          <text>暂无报名用户</text>
+        </view>
+      </view>
+    </view>
+  </view>
 
   <!-- 底部操作栏 -->
   <view class="bottom-bar" wx:if="{{!loading && post}}">

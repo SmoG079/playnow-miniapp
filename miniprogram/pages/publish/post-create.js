@@ -13,7 +13,9 @@ Page({
     playersNeeded: '1',
     levelIndex: -1,
     levels: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
+    description: '',
     notes: '',
+    documents: [],
     loading: false,
   },
 
@@ -62,6 +64,35 @@ Page({
     this.setData({ levelIndex: parseInt(e.detail.value) });
   },
 
+  async onAddDocument() {
+    try {
+      const res = await wx.chooseMessageFile({
+        type: 'file',
+        extension: ['pdf'],
+      });
+      const file = res.tempFiles[0];
+      wx.showLoading({ title: '上传中...' });
+      const uploaded = await app.uploadFile(file.path);
+      wx.hideLoading();
+      const docs = this.data.documents.concat([{
+        name: file.name,
+        url: uploaded.url,
+        size: file.size,
+      }]);
+      this.setData({ documents: docs });
+    } catch (e) {
+      wx.hideLoading();
+      console.error(e);
+      wx.showToast({ title: '上传失败', icon: 'none' });
+    }
+  },
+
+  onRemoveDocument(e) {
+    const idx = e.currentTarget.dataset.index;
+    const docs = this.data.documents.filter((_, i) => i !== idx);
+    this.setData({ documents: docs });
+  },
+
   async onSubmit() {
     if (!this.data.title || this.data.clubIndex === -1) {
       return wx.showToast({ title: '标题和俱乐部必填', icon: 'none' });
@@ -80,7 +111,9 @@ Page({
           preferred_end: this.data.preferredEnd || null,
           players_needed: parseInt(this.data.playersNeeded) || 1,
           level_required: this.data.levelIndex > 0 ? this.data.levels[this.data.levelIndex] : null,
+          description: this.data.description || null,
           notes: this.data.notes || null,
+          documents: this.data.documents.length > 0 ? this.data.documents : null,
         },
       });
       wx.showToast({ title: '发布成功', icon: 'success' });

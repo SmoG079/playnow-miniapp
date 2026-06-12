@@ -8,6 +8,7 @@ Page({
     isFull: false,
     isOwner: false,
     registrations: [],
+    showRegPopup: false,
   },
 
   onLoad(options) {
@@ -56,7 +57,7 @@ Page({
       });
       return;
     }
-    
+
     if (this.data.isRegistered) {
       // 取消报名
       wx.showModal({
@@ -100,6 +101,18 @@ Page({
         },
       });
     }
+  },
+
+  onShowRegistrations() {
+    this.setData({ showRegPopup: true });
+  },
+
+  onCloseRegPopup() {
+    this.setData({ showRegPopup: false });
+  },
+
+  onRegPanelTap() {
+    // prevent bubbling
   },
 
   onCallPhone() {

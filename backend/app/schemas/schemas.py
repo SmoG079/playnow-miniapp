@@ -269,6 +269,8 @@ class PostCreate(BaseModel):
     players_needed: int = Field(default=1, ge=1)
     level_required: Optional[str] = None
     notes: Optional[str] = None
+    description: Optional[str] = None
+    documents: Optional[list[dict]] = None
     venue_id: Optional[int] = None
     booking_id: Optional[int] = None
 
@@ -296,6 +298,8 @@ class PostBrief(BaseModel):
 
 class PostDetail(PostBrief):
     notes: Optional[str]
+    description: Optional[str] = None
+    documents: Optional[list[dict]] = None
     venue_id: Optional[int]
     booking_id: Optional[int]
     registrations: list["RegistrationBrief"] = []

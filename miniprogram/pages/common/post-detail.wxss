@@ -266,18 +266,159 @@
   margin-bottom: 20rpx;
 }
 
-.section-title {
+.description-section {
+  background: #fff;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+}
+
+.description-text {
   font-size: 28rpx;
   color: #333;
-  font-weight: bold;
-  margin-bottom: 20rpx;
+  line-height: 1.6;
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notes-text {
+  font-size: 26rpx;
+  color: #999;
+  margin-top: 16rpx;
   display: block;
 }
 
-.avatar-list {
+.section-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20rpx;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+/* Registrations popup */
+.reg-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.reg-popup.show {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.reg-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.reg-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.2s;
+}
+
+.reg-popup.show .reg-panel {
+  transform: translateY(0);
+}
+
+.reg-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.reg-panel-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.reg-panel-close {
+  font-size: 36rpx;
+  color: #999;
+  padding: 0 10rpx;
+}
+
+.reg-list {
+  padding: 20rpx 30rpx;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+.reg-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.reg-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: #f0f0f0;
+  margin-right: 20rpx;
+}
+
+.reg-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.reg-name {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.reg-status {
+  font-size: 24rpx;
+  color: #ff9500;
+  margin-top: 4rpx;
+}
+
+.reg-status.approved {
+  color: #07c160;
+}
+
+.reg-status.rejected {
+  color: #ff5252;
+}
+
+.reg-message {
+  width: 100%;
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 8rpx;
+  word-break: break-word;
+}
+
+.reg-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  color: #999;
+  font-size: 28rpx;
 }
 
 .avatar-item {

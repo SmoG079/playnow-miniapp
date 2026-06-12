@@ -224,6 +224,8 @@ class MatchPost(Base):
     players_needed = Column(Integer, default=1)
     level_required = Column(String(32))
     notes = Column(Text)
+    description = Column(Text)
+    documents = Column(JSON)
     venue_id = Column(BigInteger, ForeignKey("venues.id"))
     booking_id = Column(BigInteger, ForeignKey("booking_orders.id"))
     group_chat_id = Column(String(64))
