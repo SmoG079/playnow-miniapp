@@ -238,6 +238,10 @@ class PayResponse(BaseModel):
 class CancelRequest(BaseModel):
     reason: Optional[str] = None
 
+
+class RefundRequest(BaseModel):
+    reason: Optional[str] = None
+
 class PaginatedResponse(BaseModel):
     items: list[Any]
     total: int

@@ -17,7 +17,7 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams,
-    CancelRequest, PaginatedResponse,
+    CancelRequest, RefundRequest, PaginatedResponse,
 )
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -367,6 +367,90 @@ async def cancel_booking(
     # TODO: Trigger WeChat refund API if paid
 
     return {"msg": "ok", "refund_amount": str(refund_amount)}
+
+
+@router.post("/{booking_id}/refund")
+async def refund_booking(
+    booking_id: int,
+    req: RefundRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refund a paid booking order via WeChat Pay V3."""
+    result = await db.execute(
+        select(BookingOrder, VenueTimeSlot)
+        .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
+        .where(BookingOrder.id == booking_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    order, slot = row
+
+    # Authorization: booking owner, club admin, or platform admin
+    if order.user_id != current_user.id:
+        role = _v(current_user.role)
+        if role == "platform_admin":
+            pass
+        elif role == "club_admin":
+            member = await db.execute(
+                select(ClubMember).where(
+                    ClubMember.club_id == order.club_id,
+                    ClubMember.user_id == current_user.id,
+                )
+            )
+            if not member.scalar_one_or_none():
+                raise HTTPException(status_code=403, detail="Not your booking")
+        else:
+            raise HTTPException(status_code=403, detail="Not your booking")
+
+    if order.status != OrderStatus.paid:
+        raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
+
+    if not order.wx_transaction_id:
+        raise HTTPException(status_code=400, detail="Missing WeChat transaction id")
+
+    wxpay = get_wxpay()
+    out_refund_no = _generate_order_no()
+    try:
+        wxpay.refund(
+            out_refund_no=out_refund_no,
+            transaction_id=order.wx_transaction_id,
+            amount={
+                "refund": int(order.amount * 100),
+                "total": int(order.amount * 100),
+                "currency": "CNY",
+            },
+            reason=req.reason or "用户退款",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WeChat refund failed: {str(e)}")
+
+    order.status = OrderStatus.refunded
+    order.refund_amount = order.amount
+    order.cancel_reason = req.reason or "用户退款"
+    order.cancel_time = datetime.utcnow()
+
+    # Release slot
+    if slot:
+        slot.status = SlotStatus.available
+        slot.locked_by = None
+        slot.locked_at = None
+        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+        await release_lock(lock_key, str(order.user_id))
+
+    # Create refund notification
+    notif = Notification(
+        user_id=order.user_id,
+        type=NotificationType.booking,
+        title="退款成功",
+        content=f"您的订单 {order.order_no} 已成功退款 ¥{order.amount}",
+        ref_id=order.id,
+        ref_type="booking",
+    )
+    db.add(notif)
+
+    return {"msg": "ok", "out_refund_no": out_refund_no}
 
 
 @router.get("/club/{club_id}", response_model=PaginatedResponse)

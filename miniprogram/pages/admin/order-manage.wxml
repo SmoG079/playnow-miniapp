@@ -1,0 +1,52 @@
+<view class="page">
+  <scroll-view class="tab-bar" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="tab-list">
+      <view
+        wx:for="{{statusTabs}}"
+        wx:key="value"
+        class="tab-item {{activeStatus === item.value ? 'active' : ''}}"
+        data-status="{{item.value}}"
+        bindtap="onTabChange"
+      >
+        <text class="tab-text">{{item.label}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="order-list" wx:if="{{orders.length > 0}}">
+    <view class="order-card" wx:for="{{orders}}" wx:key="id">
+      <view class="order-header">
+        <text class="order-no">{{item.order_no}}</text>
+        <text class="order-status {{statusColor(item.status)}}">{{formatStatus(item.status)}}</text>
+      </view>
+
+      <view class="order-body">
+        <view class="order-info">🏟️ {{item.venue_name || '未知场地'}}</view>
+        <view class="order-info">🕐 {{item.slot_date}} {{item.slot_start}} ~ {{item.slot_end}}</view>
+        <view class="order-info">👤 用户ID: {{item.user_id}}</view>
+      </view>
+
+      <view class="order-footer">
+        <text class="order-amount">¥{{item.amount}}</text>
+        <text
+          class="btn-cancel"
+          wx:if="{{item.status === 'pending' || item.status === 'paid'}}"
+          data-order="{{item}}"
+          bindtap="onCancel"
+        >取消</text>
+      </view>
+    </view>
+
+    <view class="load-more" wx:if="{{!hasMore}}">
+      <text>没有更多了</text>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:if="{{orders.length === 0 && !loading}}">
+    <text>暂无订单</text>
+  </view>
+
+  <view class="loading-state" wx:if="{{loading && orders.length === 0}}">
+    <text>加载中...</text>
+  </view>
+</view>

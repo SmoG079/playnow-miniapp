@@ -1,0 +1,88 @@
+.page {
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.action-bar {
+  padding: 20rpx;
+}
+
+.btn-primary {
+  background-color: #07c160;
+  color: #fff;
+  text-align: center;
+  border-radius: 40rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 30rpx;
+}
+
+.club-list {
+  padding: 0 20rpx 20rpx;
+}
+
+.club-card {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+}
+
+.club-cover {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 12rpx;
+  margin-right: 20rpx;
+}
+
+.club-info {
+  flex: 1;
+}
+
+.club-name {
+  display: block;
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.club-address {
+  display: block;
+  font-size: 26rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+.club-status {
+  display: inline-block;
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  margin-top: 10rpx;
+}
+
+.club-status.active {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.club-status.inactive {
+  background-color: #eeeeee;
+  color: #757575;
+}
+
+.arrow {
+  font-size: 40rpx;
+  color: #ccc;
+}
+
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 120rpx 40rpx;
+  color: #999;
+  font-size: 30rpx;
+}
