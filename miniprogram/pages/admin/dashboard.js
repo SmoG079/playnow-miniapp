@@ -41,7 +41,7 @@ Page({
   },
 
   onClubChange(e) {
-    this.setData({ selectedClubIndex: e.detail.value });
+    this.setData({ selectedClubIndex: parseInt(e.detail.value) });
     this.loadStats();
   },
 

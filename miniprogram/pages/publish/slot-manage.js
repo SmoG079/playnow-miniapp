@@ -117,6 +117,10 @@ Page({
     if (dateTo < dateFrom) {
       return wx.showToast({ title: '结束日期不能早于开始日期', icon: 'none' });
     }
+    const dayDiff = (new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24);
+    if (dayDiff > 31) {
+      return wx.showToast({ title: '最多生成31天的时段', icon: 'none' });
+    }
     if (endTime <= startTime) {
       return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
     }
@@ -126,7 +130,10 @@ Page({
 
     try {
       const rules = priceRules
-        .filter(r => r.price && parseFloat(r.price) > 0)
+        .filter(r => {
+          const price = parseFloat(r.price);
+          return !isNaN(price) && price > 0;
+        })
         .map(r => ({
           start_time: r.start_time,
           end_time: r.end_time,

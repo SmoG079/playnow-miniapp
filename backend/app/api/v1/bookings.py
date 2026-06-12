@@ -201,6 +201,14 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     """WeChat payment callback. Handles both payment success and refund notifications."""
     body = await request.body()
 
+    # Parse outer notification envelope first to get event_type
+    try:
+        notification = json.loads(body)
+    except json.JSONDecodeError:
+        return {"code": "FAIL", "message": "Invalid callback payload"}
+
+    event_type = notification.get("event_type", "")
+
     try:
         wxpay = get_wxpay()
         decrypted = wxpay.decrypt_callback(request.headers, body)
@@ -215,7 +223,6 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     except json.JSONDecodeError:
         return {"code": "FAIL", "message": "Invalid callback payload"}
 
-    event_type = data.get("event_type", "")
     out_trade_no = data.get("out_trade_no")
 
     # Log all callbacks
@@ -227,10 +234,9 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         order_id=order.id if order else None,
         type="callback",
         event_type=event_type,
-        raw_data=data,
+        raw_data={"notification": notification, "resource": data},
     )
     db.add(log)
-    await db.commit()
 
     try:
         # Handle refund callbacks
@@ -245,8 +251,10 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
             return await _handle_payment_closed(data, db)
 
         # Other events - acknowledge but no action needed
+        await db.commit()
         return {"code": "SUCCESS"}
     except Exception as e:
+        await db.rollback()
         # Always return a valid WeChat response; rely on WeChat retry for real failures
         return {"code": "FAIL", "message": f"Internal error: {str(e)}"}
 
@@ -424,17 +432,6 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
                 )
                 db.add(notif)
 
-    elif refund_status == "ABNORMAL":
-        if refund_record:
-            refund_record.status = "abnormal"
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.refund_status = "abnormal"
-
     elif refund_status == "CLOSED":
         if refund_record:
             refund_record.status = "closed"
@@ -459,7 +456,12 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
                             slot.locked_by = order.user_id
                             slot.locked_at = datetime.utcnow()
                             lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-                            await acquire_lock(lock_key, str(order.user_id), settings.BOOKING_LOCK_TTL_SECONDS)
+                            acquired = await acquire_lock(lock_key, str(order.user_id), settings.BOOKING_LOCK_TTL_SECONDS)
+                            if not acquired:
+                                # Lock contention: another booking may be in progress; leave slot available and log
+                                slot.status = SlotStatus.available
+                                slot.locked_by = None
+                                slot.locked_at = None
 
     await db.commit()
     return {"code": "SUCCESS"}

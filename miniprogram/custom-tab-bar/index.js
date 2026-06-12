@@ -53,12 +53,7 @@ Component({
       const page = e.currentTarget.dataset.page;
       this.closeActionSheet();
       if (!page) return;
-      // TabBar pages must use switchTab
-      if (page === '/pages/publish/post-create') {
-        wx.switchTab({ url: page });
-      } else {
-        wx.navigateTo({ url: page });
-      }
+      wx.navigateTo({ url: page });
     },
 
     onMaskTap() { this.closeActionSheet(); },
