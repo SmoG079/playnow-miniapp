@@ -362,12 +362,14 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
             )
             order = order_result.scalar_one_or_none()
             if order:
-                # Create refund record retroactively
+                # Create refund record retroactively using actual amount from callback if available
+                actual_refund_cents = data.get("amount", {}).get("refund")
+                actual_refund = Decimal(actual_refund_cents) / Decimal(100) if actual_refund_cents is not None else (order.refund_amount or order.amount)
                 refund_record = RefundRecord(
                     order_id=order.id,
                     out_refund_no=out_refund_no,
                     wx_refund_id=wx_refund_id,
-                    amount=order.refund_amount or order.amount,
+                    amount=actual_refund,
                     reason=order.cancel_reason or "用户退款",
                     status="pending",
                 )
@@ -673,6 +675,8 @@ async def refund_booking(
             reason=req.reason or "管理员退款",
         )
     except Exception as e:
+        order.refund_status = "failed"
+        await db.commit()
         raise HTTPException(status_code=500, detail=f"WeChat refund failed: {str(e)}")
 
     order.status = OrderStatus.refunding
