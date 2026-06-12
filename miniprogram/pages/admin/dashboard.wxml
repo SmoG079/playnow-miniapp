@@ -32,7 +32,7 @@
       <text class="stat-label">今日收入</text>
     </view>
     <view class="stat-card">
-      <text class="stat-num">{{(stats.venue_utilization || 0).toFixed(1)}}%</text>
+      <text class="stat-num">{{stats.venue_utilization_str}}</text>
       <text class="stat-label">场地利用率</text>
     </view>
   </view>

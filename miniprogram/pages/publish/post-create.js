@@ -84,6 +84,7 @@ Page({
         },
       });
       wx.showToast({ title: '发布成功', icon: 'success' });
+      app.globalData.needRefreshFeed = true;
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1500);
     } catch (e) {
       console.error(e);

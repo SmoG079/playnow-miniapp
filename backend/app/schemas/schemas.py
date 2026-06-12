@@ -147,12 +147,19 @@ class VenueDetail(VenueBrief):
 
 # ── Time Slot ──
 
+class SlotPriceRule(BaseModel):
+    start_time: time
+    end_time: time
+    price: Decimal = Field(gt=0)
+
+
 class SlotGenerateRequest(BaseModel):
     date_from: date
     date_to: date
     start_time: time = time(8, 0)
     end_time: time = time(22, 0)
     interval_minutes: int = Field(default=60, ge=30)
+    price_rules: list[SlotPriceRule] = Field(default_factory=list)
 
 class SlotBrief(BaseModel):
     id: int

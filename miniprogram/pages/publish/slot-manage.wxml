@@ -45,6 +45,25 @@
         </view>
       </picker>
     </view>
+
+    <view class="form-group">
+      <view class="form-label-row">
+        <text class="form-label">分时段定价</text>
+        <text class="form-label-action" bindtap="onAddPriceRule">+ 添加规则</text>
+      </view>
+      <view wx:if="{{priceRules.length === 0}}" class="hint-text">未设置则使用场地标准价格</view>
+      <view wx:for="{{priceRules}}" wx:key="index" class="price-rule">
+        <picker mode="time" value="{{item.start_time}}" data-index="{{index}}" data-field="start_time" bindchange="onRuleFieldChange">
+          <view class="time-input">{{item.start_time}}</view>
+        </picker>
+        <text class="rule-sep">至</text>
+        <picker mode="time" value="{{item.end_time}}" data-index="{{index}}" data-field="end_time" bindchange="onRuleFieldChange">
+          <view class="time-input">{{item.end_time}}</view>
+        </picker>
+        <input class="price-input" type="digit" placeholder="价格" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="onRuleFieldChange" />
+        <text class="rule-remove" data-index="{{index}}" bindtap="onRemovePriceRule">✕</text>
+      </view>
+    </view>
   </view>
 
   <button class="btn-generate {{generating ? 'disabled' : ''}}" bindtap="onGenerate" disabled="{{generating}}">
@@ -61,6 +80,6 @@
     <text class="hint-title">说明</text>
     <text class="hint-text">1. 已存在的时段会自动跳过，不会重复创建</text>
     <text class="hint-text">2. 每次最多生成31天的时段</text>
-    <text class="hint-text">3. 生成的时段默认价格为场地标准价格</text>
+    <text class="hint-text">3. 价格规则按开始时间匹配，未匹配时段使用场地标准价格</text>
   </view>
 </view>

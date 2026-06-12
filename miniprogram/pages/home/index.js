@@ -94,6 +94,10 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
+    if (app.globalData.needRefreshFeed) {
+      app.globalData.needRefreshFeed = false;
+      this.loadFeed();
+    }
   },
 
   onPullDownRefresh() {
@@ -230,11 +234,18 @@ Page({
   },
 
   onFilterLevel() {
+    const items = ['全部等级', ...NTRP_LEVELS];
     wx.showActionSheet({
-      itemList: ['全部等级', '2.0以下', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0+'],
+      itemList: items,
       success: (res) => {
-        // TODO: implement level filter
-        console.log('Level filter:', res.tapIndex);
+        const tapIndex = res.tapIndex;
+        if (tapIndex === 0) {
+          this.setData({ filterLevels: [] });
+        } else {
+          const level = NTRP_LEVELS[tapIndex - 1];
+          this.setData({ filterLevels: [level] });
+        }
+        this.loadFeed();
       }
     });
   },
@@ -432,12 +443,13 @@ Page({
 
   onConfirmFilters() {
     const activeFilterCount = this.computeActiveFilterCount();
-    const { filterSort, filterDate } = this.data;
+    const { filterSort, filterDate, filterLevels } = this.data;
     this.setData({
       showFilterPopup: false,
       sortBy: filterSort,
       filterDate,
       filterDateLabel: formatDateLabel(filterDate),
+      filterLevels,
       activeFilterCount,
     }, () => {
       this.loadFeed();

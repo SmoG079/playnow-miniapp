@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, date, time
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -144,6 +145,14 @@ async def get_slots(
     ]
 
 
+def _effective_price_for_slot(start_time: time, price_rules: list, venue_price: Decimal) -> Decimal:
+    """Return the first matching price rule price, else venue default."""
+    for rule in price_rules:
+        if rule.start_time <= start_time < rule.end_time:
+            return rule.price
+    return venue_price
+
+
 @router.post("/{venue_id}/slots/batch")
 async def generate_slots(
     venue_id: int,
@@ -172,11 +181,15 @@ async def generate_slots(
                 )
             )
             if not existing.scalar_one_or_none():
+                price = _effective_price_for_slot(
+                    slot_start.time(), req.price_rules, venue.price_per_hour
+                )
                 slot = VenueTimeSlot(
                     venue_id=venue_id,
                     date=current_date,
                     start_time=slot_start.time(),
                     end_time=next_time.time(),
+                    price_override=price if price != venue.price_per_hour else None,
                 )
                 db.add(slot)
                 created += 1

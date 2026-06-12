@@ -13,6 +13,7 @@ Page({
     intervalIndex: 1, // 60 min default
     intervals: [30, 60, 90, 120],
     intervalLabels: ['30分钟', '60分钟', '90分钟', '120分钟'],
+    priceRules: [],
     generating: false,
     result: null,
   },
@@ -90,8 +91,26 @@ Page({
     this.setData({ intervalIndex: parseInt(e.detail.value) });
   },
 
+  onAddPriceRule() {
+    const rules = this.data.priceRules.concat([{ start_time: '08:00', end_time: '12:00', price: '' }]);
+    this.setData({ priceRules: rules });
+  },
+
+  onRemovePriceRule(e) {
+    const idx = e.currentTarget.dataset.index;
+    const rules = this.data.priceRules.filter((_, i) => i !== idx);
+    this.setData({ priceRules: rules });
+  },
+
+  onRuleFieldChange(e) {
+    const { index, field } = e.currentTarget.dataset;
+    const value = e.detail.value;
+    const rules = this.data.priceRules.map((r, i) => i === index ? { ...r, [field]: value } : r);
+    this.setData({ priceRules: rules });
+  },
+
   async onGenerate() {
-    const { venues, venueIndex, dateFrom, dateTo, startTime, endTime, intervals, intervalIndex } = this.data;
+    const { venues, venueIndex, dateFrom, dateTo, startTime, endTime, intervals, intervalIndex, priceRules } = this.data;
     if (venues.length === 0) {
       return wx.showToast({ title: '没有可用场地', icon: 'none' });
     }
@@ -106,6 +125,13 @@ Page({
     this.setData({ generating: true, result: null });
 
     try {
+      const rules = priceRules
+        .filter(r => r.price && parseFloat(r.price) > 0)
+        .map(r => ({
+          start_time: r.start_time,
+          end_time: r.end_time,
+          price: parseFloat(r.price),
+        }));
       const res = await app.request({
         url: `/venues/${venue.id}/slots/batch`,
         method: 'POST',
@@ -115,6 +141,7 @@ Page({
           start_time: startTime,
           end_time: endTime,
           interval_minutes: intervals[intervalIndex],
+          price_rules: rules,
         },
       });
       this.setData({ result: res });

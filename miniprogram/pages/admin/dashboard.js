@@ -31,6 +31,7 @@ Page({
     this.setData({ loading: true });
     try {
       const stats = await app.request({ url: `/clubs/${clubId}/stats` });
+      stats.venue_utilization_str = `${(stats.venue_utilization || 0).toFixed(1)}%`;
       this.setData({ stats, loading: false });
     } catch (e) {
       console.error(e);

@@ -47,7 +47,10 @@ App({
         url: this.globalData.baseURL + url,
         method,
         data,
-        header,
+        header: {
+          ...header,
+          'Content-Type': 'application/json',
+        },
         timeout: 30000,
         success: (res) => {
           if (res.statusCode === 200) {

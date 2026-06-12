@@ -31,14 +31,6 @@
       <text>{{filterDateLabel || '时间'}}</text>
       <text class="filter-arrow">▼</text>
     </view>
-    <view class="filter-btn" bindtap="onFilterSort">
-      <text>{{sortBy === 'distance' ? '距离最近' : '最新发布'}}</text>
-      <text class="filter-arrow">▼</text>
-    </view>
-    <view class="filter-btn" bindtap="onFilterLevel">
-      <text>评级</text>
-      <text class="filter-arrow">▼</text>
-    </view>
     <view class="filter-btn {{activeFilterCount > 0 ? 'active' : ''}}" bindtap="onFilterMore">
       <text>筛选</text>
       <text wx:if="{{activeFilterCount > 0}}" class="filter-badge">{{activeFilterCount}}</text>
@@ -134,22 +126,6 @@
         </view>
       </view>
 
-      <!-- Time Section -->
-      <view class="filter-section">
-        <text class="filter-section-title">时间范围</text>
-        <view class="filter-options">
-          <view
-            wx:for="{{TIME_OPTIONS}}"
-            wx:key="value"
-            class="filter-option {{filterTime === item.value ? 'active' : ''}}"
-            data-value="{{item.value}}"
-            bindtap="onFilterTimeChange"
-          >
-            <text>{{item.label}}</text>
-          </view>
-        </view>
-      </view>
-
       <!-- Level Section -->
       <view class="filter-section">
         <text class="filter-section-title">NTRP 等级</text>
@@ -162,6 +138,22 @@
             bindtap="onFilterLevelChange"
           >
             <text>{{item}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- Time Section -->
+      <view class="filter-section">
+        <text class="filter-section-title">时间范围</text>
+        <view class="filter-options">
+          <view
+            wx:for="{{TIME_OPTIONS}}"
+            wx:key="value"
+            class="filter-option {{filterTime === item.value ? 'active' : ''}}"
+            data-value="{{item.value}}"
+            bindtap="onFilterTimeChange"
+          >
+            <text>{{item.label}}</text>
           </view>
         </view>
       </view>
