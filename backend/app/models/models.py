@@ -166,6 +166,9 @@ class BookingOrder(Base):
     cancel_reason = Column(String(256))
     cancel_time = Column(DateTime)
     refund_amount = Column(DECIMAL(10, 2))
+    refund_id = Column(String(64))
+    refund_time = Column(DateTime)
+    refund_status = Column(String(32), default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="bookings")
@@ -173,6 +176,7 @@ class BookingOrder(Base):
     slot = relationship("VenueTimeSlot", back_populates="bookings")
     club = relationship("Club", back_populates="bookings")
     settlement = relationship("SettlementRecord", back_populates="order", uselist=False)
+    refund_records = relationship("RefundRecord", back_populates="order")
 
 
 class SettlementStatus(str, enum.Enum):
@@ -328,3 +332,34 @@ class Notification(Base):
     __table_args__ = (Index("idx_user_read", "user_id", "is_read"),)
 
     user = relationship("User", back_populates="notifications")
+
+
+class RefundRecord(Base):
+    __tablename__ = "refund_records"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=False)
+    out_refund_no = Column(String(32), nullable=False, unique=True)
+    wx_refund_id = Column(String(64))
+    amount = Column(DECIMAL(10, 2), nullable=False)
+    reason = Column(String(256))
+    status = Column(String(32), default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+    __table_args__ = (Index("idx_refund_order", "order_id"),)
+
+    order = relationship("BookingOrder", back_populates="refund_records")
+
+
+class PaymentLog(Base):
+    __tablename__ = "payment_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    order_id = Column(BigInteger)
+    type = Column(String(32))
+    event_type = Column(String(64))
+    raw_data = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("idx_payment_order", "order_id"),)

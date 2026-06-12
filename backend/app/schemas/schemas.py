@@ -241,6 +241,7 @@ class CancelRequest(BaseModel):
 
 class RefundRequest(BaseModel):
     reason: Optional[str] = None
+    amount: Optional[Decimal] = None  # 部分退款金额，不填则全额退款
 
 class PaginatedResponse(BaseModel):
     items: list[Any]
@@ -319,7 +320,7 @@ class PostListParams(BaseModel):
     status: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
-    sort_by: Optional[str] = Field(default='created', regex='^(created|distance)$')
+    sort_by: Optional[str] = Field(default='created', pattern='^(created|distance)$')
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=50)
 
