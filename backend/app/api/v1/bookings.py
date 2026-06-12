@@ -13,7 +13,7 @@ from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _
 from app.models.models import (
     User, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
     SettlementRecord, Notification, NotificationType, Club, ClubMember,
-    TournamentRegistration, TournamentRegStatus, RefundRecord, PaymentLog,
+    Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, PaymentLog,
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams, PayResponse,
@@ -570,8 +570,9 @@ async def cancel_booking(
                 reason=req.reason or "用户取消订单",
             )
         except Exception as e:
-            # Refund API failed; keep order paid and slot reserved so money is not lost
+            # Refund API failed; record failure and keep order paid/slot reserved
             order.refund_status = "failed"
+            await db.commit()
             raise HTTPException(status_code=502, detail=f"Refund request failed: {str(e)}")
 
         order.status = OrderStatus.refunding
@@ -588,14 +589,16 @@ async def cancel_booking(
         )
         db.add(refund_record)
         # Slot stays booked until REFUND.SUCCESS callback arrives
+        await db.commit()
     else:
-        # Pending or zero-refund: cancel immediately and release slot
+        # Pending order: cancel immediately and release slot
         order.status = OrderStatus.cancelled
         slot.status = SlotStatus.available
         slot.locked_by = None
         slot.locked_at = None
         lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
         await release_lock(lock_key, str(order.user_id))
+        await db.commit()
 
     return {"msg": "ok", "refund_amount": str(refund_amount)}
 
@@ -690,6 +693,7 @@ async def refund_booking(
     db.add(refund_record)
 
     # Slot stays booked until REFUND.SUCCESS callback arrives
+    await db.commit()
 
     return {"msg": "ok", "out_refund_no": out_refund_no, "refund_amount": str(refund_amount), "status": "refunding"}
 

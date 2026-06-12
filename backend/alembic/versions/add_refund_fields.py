@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.create_table(
         'refund_records',
         sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column('order_id', sa.BigInteger(), nullable=False),
+        sa.Column('order_id', sa.BigInteger(), sa.ForeignKey('booking_orders.id'), nullable=False),
         sa.Column('out_refund_no', sa.String(32), nullable=False, unique=True),
         sa.Column('wx_refund_id', sa.String(64), nullable=True),
         sa.Column('amount', sa.DECIMAL(10, 2), nullable=False),
