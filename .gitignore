@@ -28,6 +28,7 @@ backend/ssl/*.key
 
 # Claude
 .claude/
+.worktrees/
 
 # Temp files
 需求.txt
