@@ -156,7 +156,7 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
                 logger.info("Profit-sharing order finished (SUCCESS): %s", settlement.wx_split_order_no)
                 # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
                 try:
-                    await wxpay.profitsharing_unfreeze(
+                    wxpay.profitsharing_unfreeze(
                         transaction_id=order.wx_transaction_id,
                         out_order_no=settlement.out_order_no,
                         description="解冻剩余未分账资金",
@@ -231,7 +231,7 @@ async def query_settlement_status(session: AsyncSession, settlement_id: int) -> 
             settlement.fail_reason = None
             # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
             try:
-                await wxpay.profitsharing_unfreeze(
+                wxpay.profitsharing_unfreeze(
                     transaction_id=order.wx_transaction_id,
                     out_order_no=settlement.out_order_no,
                     description="解冻剩余未分账资金",

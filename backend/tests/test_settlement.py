@@ -29,7 +29,7 @@ def mock_wxpay():
         "order_id": "WX123",
         "state": "PROCESSING",
     })
-    wxpay.profitsharing_unfreeze = AsyncMock(return_value={})
+    wxpay.profitsharing_unfreeze = MagicMock(return_value={})
     return wxpay
 
 
@@ -119,8 +119,8 @@ async def test_unfreeze_called_when_immediate_finished_all_success(mock_wxpay, m
         result = await execute_settlement(session, settlement_id=1)
 
     assert result.status == SettlementStatus.completed
-    mock_wxpay.profitsharing_unfreeze.assert_awaited_once()
-    call_kwargs = mock_wxpay.profitsharing_unfreeze.await_args.kwargs
+    mock_wxpay.profitsharing_unfreeze.assert_called_once()
+    call_kwargs = mock_wxpay.profitsharing_unfreeze.call_args.kwargs
     assert call_kwargs["transaction_id"] == "TX123"
     assert call_kwargs["out_order_no"] == settlement.out_order_no
     assert call_kwargs["sub_mchid"] == "SUB123"
@@ -195,8 +195,8 @@ async def test_unfreeze_called_when_query_finishes_all_success(mock_wxpay, mock_
         result = await query_settlement_status(session, settlement_id=1)
 
     assert result.status == SettlementStatus.completed
-    mock_wxpay.profitsharing_unfreeze.assert_awaited_once()
-    call_kwargs = mock_wxpay.profitsharing_unfreeze.await_args.kwargs
+    mock_wxpay.profitsharing_unfreeze.assert_called_once()
+    call_kwargs = mock_wxpay.profitsharing_unfreeze.call_args.kwargs
     assert call_kwargs["transaction_id"] == "TX123"
     assert call_kwargs["out_order_no"] == "PSORD001"
     assert call_kwargs["sub_mchid"] == "SUB123"
@@ -243,7 +243,7 @@ async def test_unfreeze_failure_does_not_revert_completed_status(mock_wxpay, moc
             {"result": "SUCCESS"},
         ],
     })
-    mock_wxpay.profitsharing_unfreeze = AsyncMock(side_effect=Exception("WeChat API timeout"))
+    mock_wxpay.profitsharing_unfreeze = MagicMock(side_effect=Exception("WeChat API timeout"))
     session = FakeSession((settlement, order, club))
 
     with patch("app.services.settlement.get_wxpay", return_value=mock_wxpay), \
@@ -251,7 +251,7 @@ async def test_unfreeze_failure_does_not_revert_completed_status(mock_wxpay, moc
         result = await execute_settlement(session, settlement_id=1)
 
     assert result.status == SettlementStatus.completed
-    assert "unfreeze" in (result.fail_reason or "").lower() or "WeChat API timeout" in (result.fail_reason or "")
+    assert result.fail_reason and "unfreeze" in result.fail_reason.lower()
 
 
 @pytest.mark.asyncio
@@ -270,7 +270,7 @@ async def test_unfreeze_failure_in_query_does_not_revert_completed(mock_wxpay, m
             {"result": "SUCCESS"},
         ],
     })
-    mock_wxpay.profitsharing_unfreeze = AsyncMock(side_effect=Exception("WeChat API timeout"))
+    mock_wxpay.profitsharing_unfreeze = MagicMock(side_effect=Exception("WeChat API timeout"))
     session = FakeSession((settlement, order, club))
 
     with patch("app.services.settlement.get_wxpay", return_value=mock_wxpay), \
@@ -278,7 +278,7 @@ async def test_unfreeze_failure_in_query_does_not_revert_completed(mock_wxpay, m
         result = await query_settlement_status(session, settlement_id=1)
 
     assert result.status == SettlementStatus.completed
-    assert "unfreeze" in (result.fail_reason or "").lower() or "WeChat API timeout" in (result.fail_reason or "")
+    assert result.fail_reason and "unfreeze" in result.fail_reason.lower()
 
 
 # ---------------------------------------------------------------------------
