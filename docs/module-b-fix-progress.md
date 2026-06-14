@@ -73,6 +73,22 @@
 
 ## 变更日志
 
+### 2026-06-15
+- 完成所有 P1 高优先级问题修复（时区统一、未来时段校验、Celery async_to_sync、分账解冻条件、receiver sum 同步、速率限制、成功页状态 UI、确认页倒计时、动态退款阈值、data-id 传参）
+- 开展模块 B 上线前评审，发现并修复阻塞级问题：
+  - Celery 任务缺少 `select`/`update` 导入导致所有异步任务失败（含时段生成）
+  - `generate_slots` 接口未提交事务
+  - `update_slot_status` 死代码
+  - `utils/request.js` 拒绝 201
+  - `app.js` 刷新重试无限递归
+  - 回调 nonce 去重竞态
+  - `create_booking` 未显式提交
+  - 退款回调 slot 释放未校验所有权
+  - 退款重试状态机不完善
+  - 前端计时器泄漏、`success.js` 登录守卫缺失
+- 31 项后端测试全部通过
+- 更新 `docs/module-b-production-readiness.md`
+
 ### 2026-06-13 (fix-null-nicknames)
 - 修复用户昵称/头像/手机号为空的问题：
   - 后端 `User` 模型新增 `session_key` 字段，用于服务端解密手机号
