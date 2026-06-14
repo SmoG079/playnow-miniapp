@@ -68,14 +68,15 @@ async def create_booking(
     slot = result.scalar_one_or_none()
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
+
+    # P1-2: reject slots whose start time has already passed (before row lock / expensive work)
+    tz = ZoneInfo("Asia/Shanghai")
+    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz, microsecond=0)
+    if datetime.now(tz).replace(microsecond=0) >= slot_datetime:
+        raise HTTPException(status_code=400, detail="Slot time has already passed")
+
     if _v(slot.status) != "available":
         raise HTTPException(status_code=409, detail="Slot is not available")
-
-    # P1-2: reject slots whose start time has already passed
-    tz = ZoneInfo("Asia/Shanghai")
-    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
-    if datetime.now(tz) >= slot_datetime:
-        raise HTTPException(status_code=400, detail="Slot time has already passed")
 
     # Get venue + club
     venue_result = await db.execute(select(Venue).where(Venue.id == slot.venue_id))

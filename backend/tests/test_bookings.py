@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time, date
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from unittest.mock import MagicMock, AsyncMock, patch, call
@@ -122,22 +122,24 @@ def settings_mock():
 # P1-2: reject past slots
 # ---------------------------------------------------------------------------
 
+def _make_end_time(d: date, t: time) -> time:
+    """Return a time one hour after the given date+time."""
+    return (datetime.combine(d, t) + timedelta(hours=1)).time()
+
+
 @pytest.mark.asyncio
-async def test_create_booking_rejects_past_slot(user, venue, club, settings_mock):
-    """
-    P1-2: create_booking must reject a slot whose start time has already passed.
-    """
+async def test_create_booking_rejects_yesterday(user, venue, club, settings_mock):
+    """P1-2: reject a slot from yesterday."""
     tz = ZoneInfo("Asia/Shanghai")
-    now = datetime.now(tz)
-    past_date = (now - timedelta(days=1)).date()
-    past_time = now.time()
+    past_date = (datetime.now(tz) - timedelta(days=1)).date()
+    slot_time = time(10, 0)
 
     slot = VenueTimeSlot(
         id=1,
         venue_id=venue.id,
         date=past_date,
-        start_time=past_time,
-        end_time=(datetime.combine(past_date, past_time) + timedelta(hours=1)).time(),
+        start_time=slot_time,
+        end_time=_make_end_time(past_date, slot_time),
         status=SlotStatus.available,
     )
 
@@ -159,21 +161,83 @@ async def test_create_booking_rejects_past_slot(user, venue, club, settings_mock
 
 
 @pytest.mark.asyncio
-async def test_create_booking_accepts_future_slot(user, venue, club, settings_mock):
-    """
-    P1-2: create_booking should succeed for a slot in the future.
-    """
+async def test_create_booking_rejects_today_past_time(user, venue, club, settings_mock):
+    """P1-2: reject a slot from today whose start time has already passed."""
     tz = ZoneInfo("Asia/Shanghai")
-    now = datetime.now(tz)
-    future_date = (now + timedelta(days=1)).date()
-    future_time = now.time()
+    today = datetime.now(tz).date()
+    past_time = time(0, 0)  # midnight is always in the past
+
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=today,
+        start_time=past_time,
+        end_time=_make_end_time(today, past_time),
+        status=SlotStatus.available,
+    )
+
+    session = FakeSession(rows_map={
+        "VenueTimeSlot": slot,
+        "Venue": venue,
+        "Club": club,
+    })
+
+    req = BookingCreateRequest(slot_id=1)
+
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+        with pytest.raises(HTTPException) as exc_info:
+            await create_booking(req, current_user=user, db=session)
+
+    assert exc_info.value.status_code == 400
+    assert "already passed" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_booking_accepts_today_future_time(user, venue, club, settings_mock):
+    """P1-2: accept a slot from today whose start time is still in the future."""
+    tz = ZoneInfo("Asia/Shanghai")
+    today = datetime.now(tz).date()
+    future_time = time(23, 59)  # near end of day, almost always in the future
+
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=today,
+        start_time=future_time,
+        end_time=_make_end_time(today, future_time),
+        status=SlotStatus.available,
+    )
+
+    session = FakeSession(rows_map={
+        "VenueTimeSlot": slot,
+        "Venue": venue,
+        "Club": club,
+    })
+
+    req = BookingCreateRequest(slot_id=1)
+
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+        result = await create_booking(req, current_user=user, db=session)
+
+    assert result.status == "pending"
+    assert result.slot_id == 1
+
+
+@pytest.mark.asyncio
+async def test_create_booking_accepts_tomorrow(user, venue, club, settings_mock):
+    """P1-2: accept a slot from tomorrow."""
+    tz = ZoneInfo("Asia/Shanghai")
+    future_date = (datetime.now(tz) + timedelta(days=1)).date()
+    slot_time = time(10, 0)
 
     slot = VenueTimeSlot(
         id=1,
         venue_id=venue.id,
         date=future_date,
-        start_time=future_time,
-        end_time=(datetime.combine(future_date, future_time) + timedelta(hours=1)).time(),
+        start_time=slot_time,
+        end_time=_make_end_time(future_date, slot_time),
         status=SlotStatus.available,
     )
 
