@@ -4,7 +4,12 @@
     <text class="loading-text">加载中...</text>
   </view>
 
-  <block wx:if="{{!loading && booking}}">
+  <view class="error-state" wx:if="{{!loading && error}}">
+    <text class="error-text">加载订单失败</text>
+    <button class="btn-outline" bindtap="loadBooking">重试</button>
+  </view>
+
+  <block wx:if="{{!loading && !error && booking}}">
     <view class="success-header">
       <view class="{{getStatusMeta(booking.status, polling).icon}}"></view>
       <text class="success-title">{{getStatusMeta(booking.status, polling).title}}</text>

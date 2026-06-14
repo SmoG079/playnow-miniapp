@@ -12,6 +12,9 @@ function validatePayParams(payParams) {
       return `缺少支付参数: ${key}`;
     }
   }
+  if (!payParams.package || !payParams.package.startsWith('prepay_id=')) {
+    return '支付参数 package 格式错误';
+  }
   return null;
 }
 
@@ -48,7 +51,7 @@ async function payOrder(orderId) {
           if (err.errMsg.includes('cancel')) {
             reject(new Error('用户取消支付'));
           } else {
-            reject(err);
+            reject(new Error(err.errMsg || err.message || '支付失败'));
           }
         },
       });
@@ -88,7 +91,7 @@ async function payTournament(tournamentId) {
           if (err.errMsg.includes('cancel')) {
             reject(new Error('用户取消支付'));
           } else {
-            reject(err);
+            reject(new Error(err.errMsg || err.message || '支付失败'));
           }
         },
       });

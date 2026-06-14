@@ -54,6 +54,13 @@ Page({
     if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${this.data.slotId}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${this.data.venueName}&club_name=${this.data.clubName}` })) {
       return;
     }
+    if (this.data.booking && (this.data.booking.status === 'pending' || this.data.booking.status === 'locked')) {
+      this._startCountdown(this.data.booking);
+    }
+  },
+
+  onHide() {
+    this._clearCountdown();
   },
 
   _calcDuration(start, end) {

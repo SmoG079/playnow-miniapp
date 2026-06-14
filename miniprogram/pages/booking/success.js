@@ -9,27 +9,36 @@ Page({
     orderNo: '',
     booking: null,
     loading: true,
+    error: false,
     pollCount: 0,
     polling: false,
   },
 
   onLoad(options) {
+    if (!app.requireLogin()) return;
     const bookingId = options.booking_id;
     const orderNo = options.order_no;
     if (!bookingId) {
       wx.showToast({ title: '参数错误', icon: 'none' });
       return wx.redirectTo({ url: '/pages/home/index' });
     }
-    this.setData({ bookingId: parseInt(bookingId), orderNo });
+    this.setData({ bookingId: parseInt(bookingId), orderNo, error: false });
     this.loadBooking();
   },
 
-  onUnload() {
+  onShow() {
+    if (this.data.booking && this.data.booking.status === 'pending') {
+      this.setData({ polling: true });
+      this._startPolling();
+    }
+  },
+
+  onHide() {
     this._stopPolling();
   },
 
   async loadBooking() {
-    this.setData({ loading: true });
+    this.setData({ loading: true, error: false });
     try {
       const booking = await app.request({
         url: `/bookings/${this.data.bookingId}`,
@@ -41,7 +50,7 @@ Page({
         this._startPolling();
       }
     } catch (e) {
-      this.setData({ loading: false });
+      this.setData({ loading: false, error: true });
       wx.showToast({ title: '加载订单失败', icon: 'none' });
     }
   },
