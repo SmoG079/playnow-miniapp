@@ -135,7 +135,7 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
             transaction_id=order.wx_transaction_id,
             out_order_no=settlement.out_order_no,
             receivers=receivers,
-            unfreeze_unsplit=True,
+            unfreeze_unsplit=False,
             sub_mchid=club.sub_merchant_id,
         )
         settlement.wx_split_order_no = resp.get("order_id")
@@ -154,18 +154,30 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
                 settlement.retry_count = 0
                 settlement.fail_reason = None
                 logger.info("Profit-sharing order finished (SUCCESS): %s", settlement.wx_split_order_no)
+                # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
+                try:
+                    await wxpay.profitsharing_unfreeze(
+                        transaction_id=order.wx_transaction_id,
+                        out_order_no=settlement.out_order_no,
+                        description="解冻剩余未分账资金",
+                        sub_mchid=club.sub_merchant_id,
+                    )
+                    logger.info("Unfreeze unsplit funds succeeded for settlement %s", settlement.id)
+                except Exception as unfreeze_exc:
+                    settlement.fail_reason = f"Unfreeze failed: {unfreeze_exc}"[:500]
+                    logger.exception("Unfreeze unsplit funds failed for settlement %s", settlement.id)
             else:
                 settlement.status = SettlementStatus.failed
-                settlement.retry_count += 1
+                settlement.retry_count = (settlement.retry_count or 0) + 1
                 settlement.fail_reason = f"state=FINISHED but not all receivers SUCCESS: {resp}"
                 logger.error("Profit-sharing finished with failures: %s", resp)
         else:
             settlement.status = SettlementStatus.failed
-            settlement.retry_count += 1
+            settlement.retry_count = (settlement.retry_count or 0) + 1
             settlement.fail_reason = f"Unexpected state={state}, response={resp}"
             logger.error("Unexpected profit-sharing state: %s", resp)
     except Exception as exc:
-        settlement.retry_count += 1
+        settlement.retry_count = (settlement.retry_count or 0) + 1
         if settlement.retry_count >= settings.SETTLEMENT_MAX_RETRIES:
             settlement.status = SettlementStatus.failed
         else:
@@ -217,15 +229,27 @@ async def query_settlement_status(session: AsyncSession, settlement_id: int) -> 
             settlement.completed_at = datetime.utcnow()
             settlement.retry_count = 0
             settlement.fail_reason = None
+            # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
+            try:
+                await wxpay.profitsharing_unfreeze(
+                    transaction_id=order.wx_transaction_id,
+                    out_order_no=settlement.out_order_no,
+                    description="解冻剩余未分账资金",
+                    sub_mchid=club.sub_merchant_id,
+                )
+                logger.info("Unfreeze unsplit funds succeeded for settlement %s", settlement.id)
+            except Exception as unfreeze_exc:
+                settlement.fail_reason = f"Unfreeze failed: {unfreeze_exc}"[:500]
+                logger.exception("Unfreeze unsplit funds failed for settlement %s", settlement.id)
         elif state == "FINISHED":
             settlement.status = SettlementStatus.failed
-            settlement.retry_count += 1
+            settlement.retry_count = (settlement.retry_count or 0) + 1
             settlement.fail_reason = f"state=FINISHED but not all receivers SUCCESS: {receivers}"
         elif state == "PROCESSING":
             settlement.status = SettlementStatus.processing
         else:
             settlement.status = SettlementStatus.failed
-            settlement.retry_count += 1
+            settlement.retry_count = (settlement.retry_count or 0) + 1
             settlement.fail_reason = f"state={state}, receivers={receivers}"
 
     except Exception as exc:
