@@ -64,10 +64,10 @@
 | P2-3 | _refund_slot_release 死代码 | ✅ | Claude | 已删除 |
 | P2-4 | update_slot_status 死/不可达代码 | ✅ | Claude | `venues.py:240-252` 已改为 PATCH 端点 |
 | P2-5 | venue-detail 网格未区分 locked/booked 视觉状态 | ✅ | Claude | 已区分样式 |
-| P2-6 | club-list 缺少 onReachBottom 分页 | ⏳ | 待分配 | `club-list.js:45-65` |
-| P2-7 | club-detail 是空占位符 | ⏳ | 待分配 | `club-detail.js:1`, `club-detail.wxml:1` |
-| P2-8 | venue-detail/club-list 导航命名混乱 | ⏳ | 待分配 | `club-list.js:107` |
-| P2-9 | 文档与实现不同步 | ⏳ | 待分配 | `docs/workflow-backend-api.md` 等 |
+| P2-6 | club-list 缺少 onReachBottom 分页 | ✅ | Claude | 已添加分页（bf0ae26） |
+| P2-7 | club-detail 是空占位符 | ✅ | Claude | 已移除空页面及 app.json 注册（bf0ae26） |
+| P2-8 | venue-detail/club-list 导航命名混乱 | ✅ | Claude | 已添加注释说明（bf0ae26） |
+| P2-9 | 文档与实现不同步 | ✅ | Claude | 已同步 workflow-backend-api.md（319726f） |
 
 ---
 
@@ -94,6 +94,11 @@
   - `refund_status` / `RefundRecord.status` 改为 Enum
   - 删除 `_refund_slot_release` 死代码
   - `venue-detail` 区分 booked/locked 视觉状态
+- 本轮复查新增修复：
+  - `refund_booking` 添加缺失的路由装饰器
+  - `club-list` 添加 `onReachBottom` 分页
+  - 移除空 `club-detail` 页面及 `app.json` 注册
+  - 同步 `docs/workflow-backend-api.md` 至当前实现
 - 31 项后端测试全部通过
 - 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
 

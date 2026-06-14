@@ -79,25 +79,32 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 | P2-3 | `_refund_slot_release` 死代码 | `app/api/v1/bookings.py` | 维护负担 | 删除 | ✅ 已修复（4136a74） |
 | P2-5 | `venue-detail` 未区分 locked/booked 视觉状态 | `miniprogram/pages/booking/venue-detail.wxml/wxss` | 用户无法区分 | 分别显示 "已预约" / "锁定中" 并加样式 | ✅ 已修复（4136a74） |
 | P2-4 | `update_slot_status` 死/不可达代码 | `app/api/v1/venues.py:240-252` | 逻辑错误 | 已随 B-3 修复 |
-| P2-6 | `club-list` 缺少 `onReachBottom` 分页 | `miniprogram/pages/booking/club-list.js` | 只能显示前 20 条 | 添加分页 | ⏳ 待安排 |
-| P2-7 | `club-detail` 是空占位符 | `miniprogram/pages/booking/club-detail.js/wxml` | 页面不可用 | 实现或移除导航 | ⏳ 待安排 |
-| P2-8 | `venue-detail/club-list` 导航命名混乱 | `miniprogram/pages/booking/club-list.js:107` | 可读性差 | 统一命名 | ⏳ 待安排 |
-| P2-9 | 文档与实现不同步 | `docs/` | 新开发者误解 | 更新文档 | ⏳ 待安排 |
+| P2-6 | `club-list` 缺少 `onReachBottom` 分页 | `miniprogram/pages/booking/club-list.js` | 只能显示前 20 条 | 添加分页 | ✅ 已修复（bf0ae26） |
+| P2-7 | `club-detail` 是空占位符 | `miniprogram/pages/booking/club-detail.js/wxml` | 页面不可用 | 移除空页面及 app.json 注册 | ✅ 已修复（bf0ae26） |
+| P2-8 | `venue-detail/club-list` 导航命名混乱 | `miniprogram/pages/booking/club-list.js:107` | 可读性差 | 添加注释说明 venue-detail 为俱乐部预订页 | ✅ 已修复（bf0ae26） |
+| P2-9 | 文档与实现不同步 | `docs/workflow-backend-api.md` | 新开发者误解 | 重写 booking/payment/refund/settlement 流程 | ✅ 已修复（319726f） |
 
 ## 结论与建议
 
 - 已修复所有 P0/P1 评审问题。
-- 上线前评审发现的阻塞/高/中优先级问题已全部修复；B-8/B-9 也已修复。
-- 已完成部分 P2 优化：`order_no` 索引、`refund_status` Enum、死代码清理、`venue-detail` 视觉区分。
-- 剩余 P2 问题为功能增强/文档类，不影响核心支付与预订流程上线：
-  - `club-list` 分页
-  - `club-detail` 空占位
-  - 导航命名统一
-  - 文档同步
+- 上线前评审及本轮复查发现的所有阻塞/高/中优先级问题已全部修复，包括：
+  - Celery 导入缺失、`generate_slots` 未提交、`update_slot_status` 死代码
+  - `utils/request.js` 201 处理、`app.js` 无限递归、回调 nonce 竞态
+  - `create_booking` 未显式提交、退款回调 slot 所有权、退款重试状态机
+  - **本轮新增发现**：`refund_booking` 未注册路由、`club-list` 无分页、`club-detail` 空占位
+- 所有 P2 项已处理：索引、Enum、死代码清理、`venue-detail` 视觉区分、`club-list` 分页、`club-detail` 移除、导航注释、文档同步。
 - 时段生成失败根因已定位并修复（缺少 sqlalchemy 导入）。
-- 建议下一步：在测试环境部署并观察 Celery worker/beat 日志，重点验证 `generate_daily_slots` 正常执行、支付回调异步处理、退款重试任务。
+- 当前模块后端 31 项测试全部通过，工作区干净。
+- 建议下一步：在测试环境部署并观察 Celery worker/beat 日志，跑通完整支付-退款-结算链路。
 
 ## 变更日志
+
+### 2026-06-15（本轮）
+- 复查发现 `refund_booking` 缺少路由装饰器并修复（cbded9c）
+- 修复 `club-list` 分页、移除空 `club-detail` 页面、添加导航注释（bf0ae26）
+- 同步 `docs/workflow-backend-api.md` 至当前实现（319726f）
+- 更新 `module-b-production-readiness.md` 和 `module-b-fix-progress.md`
+- 31 项后端测试全部通过
 
 ### 2026-06-15
 - 完成所有 P1 高优先级问题修复
