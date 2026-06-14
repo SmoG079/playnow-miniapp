@@ -73,6 +73,23 @@
 
 ## 变更日志
 
+### 2026-06-15（第三轮复查）
+- 复查发现新的阻塞/高优先级问题并修复：
+  - 退款回调未释放 `booked` 状态 slot（BLOCKER）
+  - `_update_order_after_refund` 无条件释放 slot 竞态
+  - 分账 `execute_settlement` 与 `query_settlement_status` 提交边界
+  - `cancel_booking` / `refund_booking` 缺少行锁
+  - `create_booking` 提交后异常误放 Redis 锁
+- 修复前端边界问题：
+  - `confirm.js` `options` 空值保护
+  - `success.js` `onUnload` 轮询清理
+  - URL 参数 `encodeURIComponent`
+  - `wxpay.js` `errMsg` 空指针保护
+- 新增速率限制：赛事支付 `pay_tournament`、`create_booking`
+- 修复因 `create_booking` 限流导致的测试失败
+- 31 项后端测试全部通过
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
+
 ### 2026-06-15
 - 完成所有 P1 高优先级问题修复（时区统一、未来时段校验、Celery async_to_sync、分账解冻条件、receiver sum 同步、速率限制、成功页状态 UI、确认页倒计时、动态退款阈值、data-id 传参）
 - 开展模块 B 上线前评审，发现并修复阻塞级问题：

@@ -46,6 +46,21 @@
 | F-3 | `confirm.js` 仅在 `onLoad` 检查登录 | `miniprogram/pages/booking/confirm.js` | 后台返回后可能处于未登录状态 | `onShow` 增加登录守卫 | ✅ 已修复（816791e） |
 | F-4 | `my-bookings` 退款计算时区错误 | `miniprogram/pages/profile/my-bookings.js:136-139` | 用户设备时区与后端不一致时退款金额错误 | 后端返回 `slot_datetime` ISO 时间 | ✅ 已修复（816791e） |
 
+| # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
+|---|------|------|------|----------|------|
+| B-10 | 退款回调未释放 `booked` slot | `app/services/payment_callback.py:196-207` | 退款成功后场地永久显示已预约 | 释放 `locked` 和 `booked` 且无其他活跃订单的 slot | ✅ 已修复（e36b5e6） |
+| B-11 | `_update_order_after_refund` 无条件释放 slot | `app/tasks/tasks.py:181-201` | 可能误释放被其他用户预订的 slot | 加所有权/状态校验 | ✅ 已修复（e36b5e6） |
+| B-12 | 分账查询失败回滚 `processing` 状态 | `app/tasks/tasks.py:145-154` / `app/api/v1/bookings.py:782-799` | 重复创建微信分账订单 | `execute_settlement` 后立即 `commit` | ✅ 已修复（4c6498f） |
+| B-13 | `cancel_booking` / `refund_booking` 无行锁 | `app/api/v1/bookings.py:349-474`, `477+` | 并发取消/退款产生重复退款 | 添加 `.with_for_update()` | ✅ 已修复（a9b8c2a） |
+| B-14 | `create_booking` 提交后异常误放锁 | `app/api/v1/bookings.py:66-156` | DB-Redis 状态不一致 | `return` 移出 try/except | ✅ 已修复（a9b8c2a） |
+| F-9 | `confirm.js` 无 `options` 空值保护 | `miniprogram/pages/booking/confirm.js:34` | 无参数进入页面崩溃 | `options = options \|\| {}` | ✅ 已修复（2aeaf9b） |
+| F-10 | `success.js` 缺少 `onUnload` 清理轮询 | `miniprogram/pages/booking/success.js` | 页面销毁后仍轮询 | 添加 `onUnload` | ✅ 已修复（2aeaf9b） |
+| F-11 | `confirm.js` `onShow` 用空值拼 redirect | `miniprogram/pages/booking/confirm.js:54` | 登录回跳 URL 错误 | slotId 存在时才拼完整 URL | ✅ 已修复（2aeaf9b） |
+| F-12 | URL 参数未编码 | `confirm.js`, `club-list.js` | 名称含特殊字符时 URL 错误 | `encodeURIComponent` | ✅ 已修复（2aeaf9b） |
+| F-13 | `wxpay.js` `errMsg` 可能 undefined | `miniprogram/utils/wxpay.js` | 空指针异常 | 加 `errMsg &&` 保护 | ✅ 已修复（2aeaf9b） |
+| P-4 | 赛事支付无速率限制 | `app/api/v1/tournaments.py:272` | 可刷单/DoS | 添加 `check_rate_limit` | ✅ 已修复（c023839） |
+| P-5 | `create_booking` 无速率限制 | `app/api/v1/bookings.py:66` | 批量锁定不同 slot | 添加 `check_rate_limit` | ✅ 已修复（c023839） |
+
 ### 中 / 低优先级
 
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
@@ -87,17 +102,27 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 ## 结论与建议
 
 - 已修复所有 P0/P1 评审问题。
-- 上线前评审及本轮复查发现的所有阻塞/高/中优先级问题已全部修复，包括：
-  - Celery 导入缺失、`generate_slots` 未提交、`update_slot_status` 死代码
-  - `utils/request.js` 201 处理、`app.js` 无限递归、回调 nonce 竞态
-  - `create_booking` 未显式提交、退款回调 slot 所有权、退款重试状态机
-  - **本轮新增发现**：`refund_booking` 未注册路由、`club-list` 无分页、`club-detail` 空占位
-- 所有 P2 项已处理：索引、Enum、死代码清理、`venue-detail` 视觉区分、`club-list` 分页、`club-detail` 移除、导航注释、文档同步。
-- 时段生成失败根因已定位并修复（缺少 sqlalchemy 导入）。
+- 上线前评审及多轮复查发现的所有阻塞/高优先级问题已全部修复。
+- **关键修复**：退款成功后 `booked` slot 现在会被正确释放，避免场地永久被占；分账 `processing` 状态在查询前已持久化；取消/退款接口添加行锁防止并发问题。
+- 所有 P2 项已处理完毕。
+- 新增速率限制覆盖赛事支付和创建订单，防止刷单/资源耗尽。
+- 前端登录回跳、URL 编码、轮询清理等边界问题已修复。
 - 当前模块后端 31 项测试全部通过，工作区干净。
-- 建议下一步：在测试环境部署并观察 Celery worker/beat 日志，跑通完整支付-退款-结算链路。
+- 建议下一步：在测试环境部署并跑通完整支付-退款-结算链路，重点观察 Celery worker/beat 日志。
 
 ## 变更日志
+
+### 2026-06-15（第三轮）
+- 复查发现退款回调未释放 `booked` slot（BLOCKER），已修复（e36b5e6）
+- 修复 `_update_order_after_refund` 无条件释放 slot 的竞态（e36b5e6）
+- 修复分账 `execute_settlement` 与 `query_settlement_status` 之间的提交边界（4c6498f）
+- 为 `cancel_booking` / `refund_booking` 添加 `.with_for_update()`（a9b8c2a）
+- 修复 `create_booking` 提交后异常误放 Redis 锁（a9b8c2a）
+- 修复前端 `confirm.js` / `success.js` / `club-list.js` / `wxpay.js` 边界问题（2aeaf9b）
+- 为 `pay_tournament` 和 `create_booking` 添加速率限制（c023839）
+- 修复因新增限流导致的 `create_booking` 测试（a6f5972）
+- 31 项后端测试全部通过
+- 更新 `module-b-production-readiness.md` 和 `module-b-fix-progress.md`
 
 ### 2026-06-15（本轮）
 - 复查发现 `refund_booking` 缺少路由装饰器并修复（cbded9c）
