@@ -546,3 +546,55 @@ async def test_get_booking_config_returns_free_cancel_hours():
         result = await get_booking_config()
 
     assert result == {"free_cancel_hours": 24}
+
+
+# ---------------------------------------------------------------------------
+# P1-7: rate limiting 429 tests for protected endpoints
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pay_booking_returns_429_when_rate_limited(user):
+    """POST /bookings/{id}/pay should return 429 when check_rate_limit raises."""
+    from app.api.v1.bookings import pay_booking
+
+    with patch(
+        "app.api.v1.bookings.check_rate_limit",
+        new=AsyncMock(side_effect=HTTPException(status_code=429, detail="Rate limit exceeded")),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await pay_booking(1, current_user=user, db=FakeSession())
+
+    assert exc_info.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_returns_429_when_rate_limited(user):
+    """POST /bookings/{id}/cancel should return 429 when check_rate_limit raises."""
+    from app.api.v1.bookings import cancel_booking
+
+    req = CancelRequest(reason="test")
+    with patch(
+        "app.api.v1.bookings.check_rate_limit",
+        new=AsyncMock(side_effect=HTTPException(status_code=429, detail="Rate limit exceeded")),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_booking(1, req, current_user=user, db=FakeSession())
+
+    assert exc_info.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_refund_booking_returns_429_when_rate_limited(user):
+    """POST /bookings/{id}/refund should return 429 when check_rate_limit raises."""
+    from app.api.v1.bookings import refund_booking
+    from app.schemas.schemas import RefundRequest
+
+    req = RefundRequest(reason="test")
+    with patch(
+        "app.api.v1.bookings.check_rate_limit",
+        new=AsyncMock(side_effect=HTTPException(status_code=429, detail="Rate limit exceeded")),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await refund_booking(1, req, current_user=user, db=FakeSession())
+
+    assert exc_info.value.status_code == 429
