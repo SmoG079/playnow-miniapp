@@ -73,6 +73,13 @@
 
 ## 变更日志
 
+### 2026-06-15（第五轮复查）
+- 集成评审发现 Docker Compose 部署阻塞项并修复：
+  - `REDIS_URL` 错误指向 MySQL 端口
+  - 缺少 `celery_worker` / `celery_beat` 服务
+  - `.env.example` 缺少结算/退款/限流配置
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
+
 ### 2026-06-15（第四轮复查）
 - 复查通过后端/前端/支付安全专项评审
 - 修复 `tasks.py` 缺少 `_v` 导入导致的 Celery 退款任务 `NameError`（ec11b50）

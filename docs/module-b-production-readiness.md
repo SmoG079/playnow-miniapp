@@ -63,6 +63,10 @@
 
 | B-15 | `tasks.py` 缺少 `_v` 导入 | `app/tasks/tasks.py:1-20` | Celery 退款任务运行时报 `NameError` | 添加 `from app.api.deps import _v` | ✅ 已修复（ec11b50） |
 
+| B-16 | Docker Compose `REDIS_URL` 指向 MySQL 端口 | `docker-compose.yml:22` | Redis 连接失败，锁/限流/Celery 全失效 | 改为 `redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0` | ✅ 已修复（91f767e） |
+| B-17 | Docker Compose 缺少 Celery worker/beat | `docker-compose.yml` | 时段释放、结算、退款重试均不执行 | 添加 `celery_worker` 和 `celery_beat` 服务 | ✅ 已修复（91f767e） |
+| B-18 | `.env.example` 缺少结算/退款/限流配置 | `backend/.env.example` | 运维无法获知全部可调参数 | 补充相关环境变量 | ✅ 已修复（ee38892） |
+
 ### 中 / 低优先级
 
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
@@ -105,20 +109,27 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 
 - 已修复所有 P0/P1 评审问题。
 - 上线前评审及多轮复查发现的所有阻塞/高优先级问题已全部修复。
-- **最新修复**：`tasks.py` 缺少 `_v` 导入，会导致 Celery 退款任务 `NameError`；已 hotfix。
-- 后端、前端、支付安全专项评审均通过，未发现新的阻塞/高优先级问题。
+- **部署阻塞项已修复**：
+  - Docker Compose `REDIS_URL` 指向 Redis 服务而非 MySQL
+  - 添加 `celery_worker` 和 `celery_beat` 服务
+  - `.env.example` 补充结算/退款/限流等全部可调参数
+- 后端、前端、支付安全专项评审均通过。
 - 当前模块后端 31 项测试全部通过，工作区干净。
-- 建议下一步：在测试环境部署并跑通完整支付-退款-结算链路，重点观察 Celery worker/beat 日志。
+- 建议下一步：在测试环境使用 `docker-compose up -d` 启动完整栈，验证：
+  - API 容器能连接 Redis 和 MySQL
+  - Celery worker/beat 正常启动并执行任务
+  - 跑通完整支付-退款-结算链路
 
 ## 变更日志
 
-### 2026-06-15（第四轮）
-- 复查通过后端/前端/支付安全专项评审
-- 修复 `tasks.py` 缺少 `_v` 导入导致的 Celery 退款任务 `NameError`（ec11b50）
-- 31 项后端测试全部通过
-- 更新 `module-b-production-readiness.md`
+### 2026-06-15（第五轮）
+- 集成评审发现 Docker Compose 部署阻塞项并修复：
+  - 修复 `REDIS_URL` 指向 MySQL 端口的错误（91f767e）
+  - 添加 `celery_worker` 和 `celery_beat` 服务（91f767e）
+  - 补充 `.env.example` 中结算、退款、限流等环境变量（ee38892）
+- 更新 `module-b-production-readiness.md` 和 `module-b-fix-progress.md`
 
-### 2026-06-15（第三轮）
+### 2026-06-15（第四轮）
 - 复查发现退款回调未释放 `booked` slot（BLOCKER），已修复（e36b5e6）
 - 修复 `_update_order_after_refund` 无条件释放 slot 的竞态（e36b5e6）
 - 修复分账 `execute_settlement` 与 `query_settlement_status` 之间的提交边界（4c6498f）
