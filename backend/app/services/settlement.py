@@ -113,8 +113,10 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
             club_amount_cents += diff
             settlement.club_amount = Decimal(club_amount_cents) / Decimal("100")
             # Update the receiver dict in place
-            if receivers and receivers[0]["account"] == club.sub_merchant_id:
-                receivers[0]["amount"] = club_amount_cents
+            for r in receivers:
+                if r["account"] == club.sub_merchant_id:
+                    r["amount"] = club_amount_cents
+                    break
         else:
             platform_amount_cents += diff
             settlement.platform_amount = Decimal(platform_amount_cents) / Decimal("100")
