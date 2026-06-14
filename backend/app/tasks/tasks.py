@@ -25,38 +25,37 @@ async def _release_expired_locks_impl():
     released_count = 0
     async with async_session_factory() as session:
         now = datetime.utcnow()  # UTC naive (consistent with DB timestamp convention)
+        cutoff = now - timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS)
         result = await session.execute(
             select(VenueTimeSlot).where(
                 VenueTimeSlot.status == SlotStatus.locked,
                 VenueTimeSlot.locked_at.isnot(None),
+                VenueTimeSlot.locked_at <= cutoff,
             )
         )
         expired_slots = result.scalars().all()
 
         for slot in expired_slots:
-            if slot.locked_at:
-                elapsed = (now - slot.locked_at).total_seconds()
-                if elapsed >= settings.BOOKING_LOCK_TTL_SECONDS:
-                    lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-                    # P0-8: Only release lock if we know who owns it, BEFORE clearing locked_by
-                    owner_id = slot.locked_by
-                    if owner_id is not None:
-                        await release_lock(lock_key, str(owner_id))
+            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+            # P0-8: Only release lock if we know who owns it, BEFORE clearing locked_by
+            owner_id = slot.locked_by
+            if owner_id is not None:
+                await release_lock(lock_key, str(owner_id))
 
-                    slot.status = SlotStatus.available
-                    slot.locked_by = None
-                    slot.locked_at = None
+            slot.status = SlotStatus.available
+            slot.locked_by = None
+            slot.locked_at = None
 
-                    # Cancel pending bookings for this slot
-                    await session.execute(
-                        update(BookingOrder)
-                        .where(
-                            BookingOrder.slot_id == slot.id,
-                            BookingOrder.status == OrderStatus.pending,
-                        )
-                        .values(status=OrderStatus.cancelled, cancel_reason="Payment timeout")
-                    )
-                    released_count += 1
+            # Cancel pending bookings for this slot
+            await session.execute(
+                update(BookingOrder)
+                .where(
+                    BookingOrder.slot_id == slot.id,
+                    BookingOrder.status == OrderStatus.pending,
+                )
+                .values(status=OrderStatus.cancelled, cancel_reason="Payment timeout")
+            )
+            released_count += 1
 
         await session.commit()
         return released_count

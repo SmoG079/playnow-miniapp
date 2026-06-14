@@ -664,8 +664,12 @@ async def club_orders(
     count_query = select(func.count(BookingOrder.id)).where(BookingOrder.club_id == club_id)
 
     if status:
-        query = query.where(BookingOrder.status == status)
-        count_query = count_query.where(BookingOrder.status == status)
+        try:
+            order_status = OrderStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        query = query.where(BookingOrder.status == order_status)
+        count_query = count_query.where(BookingOrder.status == order_status)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
