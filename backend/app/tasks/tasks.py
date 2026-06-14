@@ -4,6 +4,7 @@ from sqlalchemy import select, update
 from app.core.config import get_settings
 from app.core.database import async_session_factory
 from app.core.redis import release_lock
+from app.api.deps import _v
 from app.models.models import (
     BookingOrder,
     OrderStatus,
