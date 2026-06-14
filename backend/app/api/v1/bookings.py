@@ -32,8 +32,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 settings = get_settings()
 
-# Timezone convention: DB timestamps are UTC naive (datetime.utcnow()); business calculations use
-# timezone-aware datetimes and convert explicitly when needed.
+# Timezone convention: DB timestamps and internal comparisons use UTC-naive datetimes;
+# business calculations convert explicitly from local timezone when needed.
+
+
+def _utc_now() -> datetime:
+    """Return current time as UTC-naive datetime, consistent with DB timestamps."""
+    return datetime.utcnow()
 
 
 REFUND_RETRYABLE_CODES = {"SYSTEM_ERROR", "BIZERR_NEED_RETRY"}
@@ -100,7 +105,7 @@ async def create_booking(
         # Mark slot locked
         slot.status = SlotStatus.locked
         slot.locked_by = current_user.id
-        slot.locked_at = datetime.utcnow()  # UTC naive (consistent with DB convention)
+        slot.locked_at = _utc_now()  # UTC naive (consistent with DB convention)
 
         # Calculate price
         price = slot.price_override if slot.price_override is not None else venue.price_per_hour
@@ -233,12 +238,12 @@ async def pay_booking(
     if _v(slot.status) != "locked" or slot.locked_by != current_user.id:
         raise HTTPException(status_code=409, detail="Slot lock has expired or been taken")
     if slot.locked_at:
-        lock_elapsed = (datetime.utcnow() - slot.locked_at).total_seconds()
+        lock_elapsed = (_utc_now() - slot.locked_at).total_seconds()
         if lock_elapsed >= settings.BOOKING_LOCK_TTL_SECONDS:
             raise HTTPException(status_code=409, detail="Slot lock has expired")
 
     # Idempotency: reuse existing prepay_id if still fresh
-    now = datetime.utcnow()
+    now = _utc_now()
     if order.prepay_id and order.prepay_id_created_at:
         age = (now - order.prepay_id_created_at).total_seconds()
         if age < settings.PREPAY_ID_TTL_SECONDS:
@@ -369,12 +374,12 @@ async def cancel_booking(
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
 
-    # Calculate refund using timezone-aware UTC comparison
+    # Calculate refund using UTC-naive datetimes (consistent with DB timestamp convention)
+    now_utc_naive = _utc_now()
     tz = ZoneInfo("Asia/Shanghai")
-    now_utc = datetime.now(timezone.utc)
     slot_local = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
-    slot_utc = slot_local.astimezone(timezone.utc)
-    hours_before = (slot_utc - now_utc).total_seconds() / 3600
+    slot_utc_naive = slot_local.astimezone(timezone.utc).replace(tzinfo=None)
+    hours_before = (slot_utc_naive - now_utc_naive).total_seconds() / 3600
 
     if hours_before >= settings.FREE_CANCEL_HOURS:
         refund_amount = order.amount
@@ -384,7 +389,7 @@ async def cancel_booking(
         raise HTTPException(status_code=400, detail="Cannot cancel after start time")
 
     order.cancel_reason = req.reason
-    order.cancel_time = datetime.utcnow()  # UTC naive (consistent with DB convention)
+    order.cancel_time = _utc_now()  # UTC naive (consistent with DB convention)
     order.refund_amount = refund_amount
 
     # If paid, trigger WeChat refund first; only release slot once WeChat confirms SUCCESS callback
@@ -421,7 +426,7 @@ async def cancel_booking(
             if _is_refund_retryable(e):
                 # Retryable failure: schedule retry
                 refund_record.status = "failed"
-                refund_record.scheduled_at = datetime.utcnow() + timedelta(seconds=_refund_backoff_seconds(0))
+                refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
                 refund_record.fail_reason = str(e)[:512]
                 await db.commit()
                 from app.tasks.tasks import retry_failed_refunds
@@ -539,7 +544,7 @@ async def refund_booking(
         if _is_refund_retryable(e):
             # Retryable failure: schedule retry
             refund_record.status = "failed"
-            refund_record.scheduled_at = datetime.utcnow() + timedelta(seconds=_refund_backoff_seconds(0))
+            refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
             refund_record.fail_reason = str(e)[:512]
             order.refund_status = "failed"
             await db.commit()
@@ -560,7 +565,7 @@ async def refund_booking(
     order.refund_id = out_refund_no
     order.refund_status = "pending"
     order.cancel_reason = req.reason or "管理员退款"
-    order.cancel_time = datetime.utcnow()
+    order.cancel_time = _utc_now()
 
     # Slot stays booked until REFUND.SUCCESS callback arrives
     await db.commit()

@@ -276,6 +276,134 @@ def _make_cancel_session(order, slot, user, club):
 
 
 @pytest.mark.asyncio
+async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
+    """P1-1: exactly 24 hours before slot should yield full refund (boundary at FREE_CANCEL_HOURS)."""
+    from app.api.v1.bookings import cancel_booking
+    tz = ZoneInfo("Asia/Shanghai")
+    now_local = datetime.now(tz)
+    # Slot is exactly 24 hours in the future from local time, but we need to ensure
+    # the UTC-naive comparison also sees >= 24 hours. Add a small buffer to account
+    # for any sub-second drift between datetime.now(tz) and datetime.utcnow().
+    slot_local = now_local + timedelta(hours=24, minutes=1)
+    slot_date = slot_local.date()
+    slot_time = slot_local.time()
+
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=slot_date,
+        start_time=slot_time,
+        end_time=_make_end_time(slot_date, slot_time),
+        status=SlotStatus.available,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=user.id,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+    )
+    session = _make_cancel_session(order, slot, user, club)
+    settings_mock = MagicMock()
+    settings_mock.FREE_CANCEL_HOURS = 24
+
+    req = CancelRequest(reason="test")
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+        result = await cancel_booking(1, req, current_user=user, db=session)
+
+    assert result["refund_amount"] == "100.00"
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
+    """P1-1: 1 minute before slot should yield 50% refund (boundary just before 0 hours)."""
+    from app.api.v1.bookings import cancel_booking
+    tz = ZoneInfo("Asia/Shanghai")
+    now_local = datetime.now(tz)
+    # Slot is 1 minute in the future
+    slot_local = now_local + timedelta(minutes=1)
+    slot_date = slot_local.date()
+    slot_time = slot_local.time()
+
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=slot_date,
+        start_time=slot_time,
+        end_time=_make_end_time(slot_date, slot_time),
+        status=SlotStatus.available,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=user.id,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+    )
+    session = _make_cancel_session(order, slot, user, club)
+    settings_mock = MagicMock()
+    settings_mock.FREE_CANCEL_HOURS = 24
+
+    req = CancelRequest(reason="test")
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+        result = await cancel_booking(1, req, current_user=user, db=session)
+
+    # Decimal("100.00") * Decimal("0.5") = Decimal("50.000"), cast to str gives "50.000"
+    assert result["refund_amount"] == "50.000"
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
+    """P1-1: cancellation exactly at slot start time should be rejected."""
+    from app.api.v1.bookings import cancel_booking
+    tz = ZoneInfo("Asia/Shanghai")
+    now_local = datetime.now(tz)
+    # Slot is exactly now
+    slot_local = now_local
+    slot_date = slot_local.date()
+    slot_time = slot_local.time()
+
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=slot_date,
+        start_time=slot_time,
+        end_time=_make_end_time(slot_date, slot_time),
+        status=SlotStatus.available,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=user.id,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+    )
+    session = _make_cancel_session(order, slot, user, club)
+    settings_mock = MagicMock()
+    settings_mock.FREE_CANCEL_HOURS = 24
+
+    req = CancelRequest(reason="test")
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_booking(1, req, current_user=user, db=session)
+
+    assert exc_info.value.status_code == 400
+    assert "after start time" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
 async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
     """P1-1: 25 hours before slot should yield full refund (>= FREE_CANCEL_HOURS)."""
     from app.api.v1.bookings import cancel_booking

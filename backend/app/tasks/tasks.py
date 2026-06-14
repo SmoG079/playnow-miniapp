@@ -21,7 +21,7 @@ def release_expired_locks():
     async def _release():
         released_count = 0
         async with async_session_factory() as session:
-            now = datetime.utcnow()  # UTC naive (consistent with DB locked_at timestamps)
+            now = datetime.utcnow()  # UTC naive (consistent with DB timestamp convention)
             result = await session.execute(
                 select(VenueTimeSlot).where(
                     VenueTimeSlot.status == SlotStatus.locked,
