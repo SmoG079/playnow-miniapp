@@ -67,6 +67,9 @@
 | B-17 | Docker Compose 缺少 Celery worker/beat | `docker-compose.yml` | 时段释放、结算、退款重试均不执行 | 添加 `celery_worker` 和 `celery_beat` 服务 | ✅ 已修复（91f767e） |
 | B-18 | `.env.example` 缺少结算/退款/限流配置 | `backend/.env.example` | 运维无法获知全部可调参数 | 补充相关环境变量 | ✅ 已修复（ee38892） |
 
+| B-19 | Celery beat 任务名与注册名不匹配 | `app/tasks/worker.py:21,25` | beat 触发时 `NotRegistered` 错误 | 统一使用 `app.tasks.tasks.*` 全限定名 | ✅ 已修复（c96b106） |
+| B-20 | `tasks.py` 缺少 `logger` 定义 | `app/tasks/tasks.py` | `logger.exception` 调用报 `NameError` | 添加 `logger = logging.getLogger(__name__)` | ✅ 已修复（c96b106） |
+
 ### 中 / 低优先级
 
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
@@ -109,27 +112,22 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 
 - 已修复所有 P0/P1 评审问题。
 - 上线前评审及多轮复查发现的所有阻塞/高优先级问题已全部修复。
-- **部署阻塞项已修复**：
-  - Docker Compose `REDIS_URL` 指向 Redis 服务而非 MySQL
-  - 添加 `celery_worker` 和 `celery_beat` 服务
-  - `.env.example` 补充结算/退款/限流等全部可调参数
-- 后端、前端、支付安全专项评审均通过。
+- **最新修复**：
+  - `tasks.py` 缺少 `logger` 定义导致 `logger.exception` 报错
+  - Celery beat 中 `release_expired_locks` / `generate_daily_slots` 任务名未使用全限定名，会触发 `NotRegistered`
+- 后端、前端、支付安全、集成/部署评审均通过。
 - 当前模块后端 31 项测试全部通过，工作区干净。
-- 建议下一步：在测试环境使用 `docker-compose up -d` 启动完整栈，验证：
-  - API 容器能连接 Redis 和 MySQL
-  - Celery worker/beat 正常启动并执行任务
-  - 跑通完整支付-退款-结算链路
+- 建议下一步：在测试环境执行 `docker-compose up -d`，验证 Celery worker/beat 能正常接收并执行任务。
 
 ## 变更日志
 
-### 2026-06-15（第五轮）
-- 集成评审发现 Docker Compose 部署阻塞项并修复：
-  - 修复 `REDIS_URL` 指向 MySQL 端口的错误（91f767e）
-  - 添加 `celery_worker` 和 `celery_beat` 服务（91f767e）
-  - 补充 `.env.example` 中结算、退款、限流等环境变量（ee38892）
-- 更新 `module-b-production-readiness.md` 和 `module-b-fix-progress.md`
+### 2026-06-15（第六轮）
+- 后端最终评审发现 `tasks.py` 缺少 `logger` 定义（c96b106）
+- 修复 Celery beat 任务名不匹配问题（c96b106）
+- 31 项后端测试全部通过
+- 更新 `module-b-production-readiness.md`
 
-### 2026-06-15（第四轮）
+### 2026-06-15（第五轮）
 - 复查发现退款回调未释放 `booked` slot（BLOCKER），已修复（e36b5e6）
 - 修复 `_update_order_after_refund` 无条件释放 slot 的竞态（e36b5e6）
 - 修复分账 `execute_settlement` 与 `query_settlement_status` 之间的提交边界（4c6498f）

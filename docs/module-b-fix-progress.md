@@ -73,6 +73,13 @@
 
 ## 变更日志
 
+### 2026-06-15（第六轮复查）
+- 后端最终评审发现：
+  - `tasks.py` 缺少 `logger` 定义
+  - Celery beat 任务名与注册名不匹配
+- 已修复并验证 31 项后端测试全部通过
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
+
 ### 2026-06-15（第五轮复查）
 - 集成评审发现 Docker Compose 部署阻塞项并修复：
   - `REDIS_URL` 错误指向 MySQL 端口
