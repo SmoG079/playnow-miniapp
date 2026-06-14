@@ -10,6 +10,7 @@ from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, Venu
 from app.schemas.schemas import (
     VenueCreate, VenueUpdate, VenueBrief, VenueDetail,
     SlotGenerateRequest, SlotBrief, SlotDateGroup,
+    SlotStatusUpdateRequest,
 )
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -203,19 +204,38 @@ async def generate_slots(
             slot_start = next_time
         current_date += timedelta(days=1)
 
+    await db.commit()
     return {"created": created, "msg": f"Generated {created} slots"}
 
 
-def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
-    # Note: caller must ensure slot.venue is loaded or price_override is set
-    price = slot.price_override if slot.price_override is not None else (slot.venue.price_per_hour if slot.venue else 0)
-    status_val = slot.status.value if hasattr(slot.status, "value") else str(slot.status)
-    return SlotBrief(
-        id=slot.id,
-        venue_id=slot.venue_id,
-        date=slot.date,
-        start_time=slot.start_time,
-        end_time=slot.end_time,
-        price=price,
-        status=status_val,
+@router.patch("/{venue_id}/slots/{slot_id}/status")
+async def update_slot_status(
+    venue_id: int,
+    slot_id: int,
+    req: SlotStatusUpdateRequest,
+    _: User = Depends(_require_club_admin_for_venue),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle a single slot between available and maintenance."""
+    result = await db.execute(
+        select(VenueTimeSlot).where(
+            VenueTimeSlot.id == slot_id,
+            VenueTimeSlot.venue_id == venue_id,
+        )
     )
+    slot = result.scalar_one_or_none()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    current_status = _v(slot.status)
+    if current_status in ("locked", "booked"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot change status of a {current_status} slot",
+        )
+
+    new_status = SlotStatus(req.status)
+    slot.status = new_status
+    await db.flush()
+
+    return {"msg": "ok", "slot_id": slot.id, "status": req.status}
