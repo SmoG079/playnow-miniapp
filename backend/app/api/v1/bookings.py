@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 settings = get_settings()
 
+# Timezone convention: DB timestamps are UTC naive (datetime.utcnow()); business calculations use
+# timezone-aware datetimes and convert explicitly when needed.
+
 
 REFUND_RETRYABLE_CODES = {"SYSTEM_ERROR", "BIZERR_NEED_RETRY"}
 
@@ -97,7 +100,7 @@ async def create_booking(
         # Mark slot locked
         slot.status = SlotStatus.locked
         slot.locked_by = current_user.id
-        slot.locked_at = datetime.utcnow()
+        slot.locked_at = datetime.utcnow()  # UTC naive (consistent with DB convention)
 
         # Calculate price
         price = slot.price_override if slot.price_override is not None else venue.price_per_hour
@@ -366,12 +369,12 @@ async def cancel_booking(
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
 
-    # Calculate refund using Asia/Shanghai local time
+    # Calculate refund using timezone-aware UTC comparison
     tz = ZoneInfo("Asia/Shanghai")
-    now_aware = datetime.now(tz)
-    now = now_aware.astimezone(timezone.utc).replace(tzinfo=None)
-    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
-    hours_before = (slot_datetime - now_aware).total_seconds() / 3600
+    now_utc = datetime.now(timezone.utc)
+    slot_local = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
+    slot_utc = slot_local.astimezone(timezone.utc)
+    hours_before = (slot_utc - now_utc).total_seconds() / 3600
 
     if hours_before >= settings.FREE_CANCEL_HOURS:
         refund_amount = order.amount
@@ -381,7 +384,7 @@ async def cancel_booking(
         raise HTTPException(status_code=400, detail="Cannot cancel after start time")
 
     order.cancel_reason = req.reason
-    order.cancel_time = now
+    order.cancel_time = datetime.utcnow()  # UTC naive (consistent with DB convention)
     order.refund_amount = refund_amount
 
     # If paid, trigger WeChat refund first; only release slot once WeChat confirms SUCCESS callback
