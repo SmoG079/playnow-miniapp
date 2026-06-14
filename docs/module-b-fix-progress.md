@@ -59,11 +59,11 @@
 
 | # | 问题 | 状态 | 负责人 | 备注 |
 |---|------|------|--------|------|
-| P2-1 | BookingOrder.order_no 缺少索引 | ⏳ | 待分配 | `models.py:168` |
-| P2-2 | refund_status 未使用 Enum | ⏳ | 待分配 | `models.py:181, 397` |
-| P2-3 | _refund_slot_release 死代码 | ⏳ | 待分配 | `bookings.py:737-743` |
-| P2-4 | update_slot_status 死/不可达代码 | ⏳ | 待分配 | `venues.py:240-252` |
-| P2-5 | venue-detail 网格未区分 locked/booked 视觉状态 | ⏳ | 待分配 | `venue-detail.wxml:92-96` |
+| P2-1 | BookingOrder.order_no 缺少索引 | ✅ | Claude | `models.py:168` 已加 index |
+| P2-2 | refund_status 未使用 Enum | ✅ | Claude | 已改为 Enum(RefundStatus, native_enum=False) |
+| P2-3 | _refund_slot_release 死代码 | ✅ | Claude | 已删除 |
+| P2-4 | update_slot_status 死/不可达代码 | ✅ | Claude | `venues.py:240-252` 已改为 PATCH 端点 |
+| P2-5 | venue-detail 网格未区分 locked/booked 视觉状态 | ✅ | Claude | 已区分样式 |
 | P2-6 | club-list 缺少 onReachBottom 分页 | ⏳ | 待分配 | `club-list.js:45-65` |
 | P2-7 | club-detail 是空占位符 | ⏳ | 待分配 | `club-detail.js:1`, `club-detail.wxml:1` |
 | P2-8 | venue-detail/club-list 导航命名混乱 | ⏳ | 待分配 | `club-list.js:107` |
