@@ -190,11 +190,25 @@ async def _update_order_after_refund(session, order_id: int, status: str, refund
     order, slot = row
     if status == "success":
         order.status = OrderStatus.refunded
-        slot.status = SlotStatus.available
-        slot.locked_by = None
-        slot.locked_at = None
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key, str(order.user_id))
+        should_release = False
+        if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
+            should_release = True
+        elif _v(slot.status) == "booked":
+            other = await session.execute(
+                select(BookingOrder).where(
+                    BookingOrder.slot_id == slot.id,
+                    BookingOrder.id != order.id,
+                    BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
+                )
+            )
+            if not other.scalar_one_or_none():
+                should_release = True
+        if should_release:
+            slot.status = SlotStatus.available
+            slot.locked_by = None
+            slot.locked_at = None
+            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+            await release_lock(lock_key, str(order.user_id))
     elif status in ("closed", "abnormal", "failed"):
         order.status = OrderStatus.paid
         order.refund_status = status

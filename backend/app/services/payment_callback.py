@@ -193,13 +193,27 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
                 order.refund_time = datetime.utcnow()
                 order.refund_status = "success"
 
-                # Release slot
+                # Release slot if it is still held by this order/user
                 slot_result = await db.execute(
                     select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
                 )
                 slot = slot_result.scalar_one_or_none()
                 if slot:
+                    should_release = False
                     if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
+                        should_release = True
+                    elif _v(slot.status) == "booked":
+                        # Verify no other active booking has taken this slot
+                        other = await db.execute(
+                            select(BookingOrder).where(
+                                BookingOrder.slot_id == slot.id,
+                                BookingOrder.id != order.id,
+                                BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
+                            )
+                        )
+                        if not other.scalar_one_or_none():
+                            should_release = True
+                    if should_release:
                         slot.status = SlotStatus.available
                         slot.locked_by = None
                         slot.locked_at = None
