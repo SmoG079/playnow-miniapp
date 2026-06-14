@@ -18,7 +18,7 @@ from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _
 from app.models.models import (
     User, UserRole, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
     SettlementRecord, SettlementStatus, Notification, NotificationType, Club, ClubMember,
-    Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, PaymentLog,
+    Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, RefundStatus, PaymentLog,
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams, PayResponse,
@@ -421,7 +421,7 @@ async def cancel_booking(
             out_refund_no=out_refund_no,
             amount=refund_amount,
             reason=req.reason or "用户取消订单",
-            status="pending",
+            status=RefundStatus.pending,
         )
         db.add(refund_record)
         await db.flush()
@@ -440,7 +440,7 @@ async def cancel_booking(
         except Exception as e:
             if _is_refund_retryable(e):
                 # Retryable failure: schedule retry
-                refund_record.status = "failed"
+                refund_record.status = RefundStatus.failed
                 refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
                 refund_record.fail_reason = str(e)[:512]
                 await db.commit()
@@ -458,7 +458,7 @@ async def cancel_booking(
 
         order.status = OrderStatus.refunding
         order.refund_id = out_refund_no
-        order.refund_status = "pending"
+        order.refund_status = RefundStatus.pending
         # Slot stays booked until REFUND.SUCCESS callback arrives
         await db.commit()
     else:
@@ -474,16 +474,6 @@ async def cancel_booking(
     return {"msg": "ok", "refund_amount": str(refund_amount)}
 
 
-async def _refund_slot_release(slot: VenueTimeSlot, user_id: int):
-    """Release a slot when a refund is accepted by WeChat."""
-    slot.status = SlotStatus.available
-    slot.locked_by = None
-    slot.locked_at = None
-    lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-    await release_lock(lock_key, str(user_id))
-
-
-@router.post("/{booking_id}/refund")
 async def refund_booking(
     booking_id: int,
     req: RefundRequest,
@@ -544,7 +534,7 @@ async def refund_booking(
         out_refund_no=out_refund_no,
         amount=refund_amount,
         reason=req.reason or "管理员退款",
-        status="pending",
+        status=RefundStatus.pending,
     )
     db.add(refund_record)
     await db.flush()
@@ -563,10 +553,10 @@ async def refund_booking(
     except Exception as e:
         if _is_refund_retryable(e):
             # Retryable failure: schedule retry
-            refund_record.status = "failed"
+            refund_record.status = RefundStatus.failed
             refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
             refund_record.fail_reason = str(e)[:512]
-            order.refund_status = "failed"
+            order.refund_status = RefundStatus.failed
             await db.commit()
             from app.tasks.tasks import retry_failed_refunds
             retry_failed_refunds.delay()
@@ -583,7 +573,7 @@ async def refund_booking(
     order.status = OrderStatus.refunding
     order.refund_amount = refund_amount
     order.refund_id = out_refund_no
-    order.refund_status = "pending"
+    order.refund_status = RefundStatus.pending
     order.cancel_reason = req.reason or "管理员退款"
     order.cancel_time = _utc_now()
 

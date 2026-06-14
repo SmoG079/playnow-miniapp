@@ -293,6 +293,16 @@
   font-weight: 500;
 }
 
+.cell-booked {
+  font-size: 22rpx;
+  color: #bbb;
+}
+
+.cell-locked {
+  font-size: 22rpx;
+  color: #ff9500;
+}
+
 .cell-unavailable {
   font-size: 22rpx;
   color: #bbb;

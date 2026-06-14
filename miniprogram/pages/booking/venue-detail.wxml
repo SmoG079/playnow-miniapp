@@ -92,7 +92,8 @@
           <block wx:if="{{item.status === 'available' || item.status === 'locked' || item.status === 'booked'}}">
             <text class="cell-price" wx:if="{{item.status === 'available' && !item.isSelected}}">¥{{item.price}}</text>
             <text class="cell-price" wx:if="{{item.isSelected}}">¥{{item.price}}</text>
-            <text class="cell-unavailable" wx:if="{{item.status !== 'available'}}">不可订</text>
+            <text class="cell-booked" wx:if="{{item.status === 'booked'}}">已预约</text>
+            <text class="cell-locked" wx:if="{{item.status === 'locked'}}">锁定中</text>
           </block>
         </view>
       </view>

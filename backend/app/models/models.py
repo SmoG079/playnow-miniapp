@@ -161,11 +161,20 @@ class OrderStatus(str, enum.Enum):
     completed = "completed"
 
 
+class RefundStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    success = "success"
+    closed = "closed"
+    abnormal = "abnormal"
+    failed = "failed"
+
+
 class BookingOrder(Base):
     __tablename__ = "booking_orders"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    order_no = Column(String(32), nullable=False, unique=True)
+    order_no = Column(String(32), nullable=False, unique=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=False)
     slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=False)
@@ -181,7 +190,7 @@ class BookingOrder(Base):
     refund_amount = Column(DECIMAL(10, 2))
     refund_id = Column(String(64))
     refund_time = Column(DateTime)
-    refund_status = Column(String(32), default=None, nullable=True)
+    refund_status = Column(Enum(RefundStatus, native_enum=False, length=32), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -394,7 +403,7 @@ class RefundRecord(Base):
     wx_refund_id = Column(String(64))
     amount = Column(DECIMAL(10, 2), nullable=False)
     reason = Column(String(256))
-    status = Column(String(32), default="pending")
+    status = Column(Enum(RefundStatus, native_enum=False, length=32), default=RefundStatus.pending, nullable=False)
     retry_count = Column(Integer, default=0)
     scheduled_at = Column(DateTime, nullable=True)
     fail_reason = Column(String(512))
