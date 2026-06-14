@@ -62,7 +62,7 @@ Page({
         url += `&sport=${this.data.sportFilter}`;
       }
       if (this.data.keyword) {
-        url += `&keyword=${this.data.keyword}`;
+        url += `&keyword=${encodeURIComponent(this.data.keyword)}`;
       }
       const res = await app.request({ url });
       const items = res.items || [];

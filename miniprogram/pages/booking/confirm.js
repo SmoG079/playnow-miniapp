@@ -31,13 +31,14 @@ Page({
   _countdownTimer: null,
 
   onLoad(options) {
-    if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${options.slot_id}&venue_id=${options.venue_id}&price=${options.price}&date=${options.date}&start=${options.start}&end=${options.end}&venue_name=${options.venue_name}&club_name=${options.club_name}` })) {
+    options = options || {};
+    if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${options.slot_id}&venue_id=${options.venue_id}&price=${options.price}&date=${options.date}&start=${options.start}&end=${options.end}&venue_name=${encodeURIComponent(options.venue_name || '')}&club_name=${encodeURIComponent(options.club_name || '')}` })) {
       return;
     }
     this.setData({
       slotId: options.slot_id,
       venueId: options.venue_id,
-      price: parseFloat(options.price) || 0,
+      price: parseFloat(options.price || 0).toFixed(2),
       date: options.date,
       startTime: options.start,
       endTime: options.end,
@@ -51,8 +52,12 @@ Page({
   },
 
   onShow() {
-    if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${this.data.slotId}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${this.data.venueName}&club_name=${this.data.clubName}` })) {
-      return;
+    if (this.data.slotId) {
+      if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${this.data.slotId}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${encodeURIComponent(this.data.venueName)}&club_name=${encodeURIComponent(this.data.clubName)}` })) {
+        return;
+      }
+    } else {
+      if (!app.requireLogin()) return;
     }
     if (this.data.booking && (this.data.booking.status === 'pending' || this.data.booking.status === 'locked')) {
       this._startCountdown(this.data.booking);
@@ -155,7 +160,7 @@ Page({
         url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
       });
     } catch (e) {
-      if (e.message !== '用户取消支付') {
+      if ((e && e.message) !== '用户取消支付') {
         wx.showToast({ title: '支付失败，请重试', icon: 'none' });
       }
     } finally {

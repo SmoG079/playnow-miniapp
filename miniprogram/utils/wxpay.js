@@ -48,7 +48,7 @@ async function payOrder(orderId) {
         paySign: payParams.paySign,
         success: () => resolve(true),
         fail: (err) => {
-          if (err.errMsg.includes('cancel')) {
+          if (err.errMsg && err.errMsg.includes('cancel')) {
             reject(new Error('用户取消支付'));
           } else {
             reject(new Error(err.errMsg || err.message || '支付失败'));
@@ -88,7 +88,7 @@ async function payTournament(tournamentId) {
         paySign: payParams.paySign,
         success: () => resolve(true),
         fail: (err) => {
-          if (err.errMsg.includes('cancel')) {
+          if (err.errMsg && err.errMsg.includes('cancel')) {
             reject(new Error('用户取消支付'));
           } else {
             reject(new Error(err.errMsg || err.message || '支付失败'));

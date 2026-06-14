@@ -37,6 +37,10 @@ Page({
     this._stopPolling();
   },
 
+  onUnload() {
+    this._stopPolling();
+  },
+
   async loadBooking() {
     this.setData({ loading: true, error: false });
     try {

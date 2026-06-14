@@ -116,7 +116,7 @@ Page({
         url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
       });
     } catch (e) {
-      if (e.message !== '用户取消支付') {
+      if ((e && e.message) !== '用户取消支付') {
         wx.showToast({ title: '支付失败', icon: 'none' });
       }
     }
