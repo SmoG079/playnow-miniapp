@@ -73,6 +73,12 @@
 
 ## 变更日志
 
+### 2026-06-15（第四轮复查）
+- 复查通过后端/前端/支付安全专项评审
+- 修复 `tasks.py` 缺少 `_v` 导入导致的 Celery 退款任务 `NameError`（ec11b50）
+- 31 项后端测试全部通过
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
+
 ### 2026-06-15（第三轮复查）
 - 复查发现新的阻塞/高优先级问题并修复：
   - 退款回调未释放 `booked` 状态 slot（BLOCKER）

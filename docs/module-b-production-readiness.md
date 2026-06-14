@@ -61,6 +61,8 @@
 | P-4 | 赛事支付无速率限制 | `app/api/v1/tournaments.py:272` | 可刷单/DoS | 添加 `check_rate_limit` | ✅ 已修复（c023839） |
 | P-5 | `create_booking` 无速率限制 | `app/api/v1/bookings.py:66` | 批量锁定不同 slot | 添加 `check_rate_limit` | ✅ 已修复（c023839） |
 
+| B-15 | `tasks.py` 缺少 `_v` 导入 | `app/tasks/tasks.py:1-20` | Celery 退款任务运行时报 `NameError` | 添加 `from app.api.deps import _v` | ✅ 已修复（ec11b50） |
+
 ### 中 / 低优先级
 
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
@@ -103,14 +105,18 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 
 - 已修复所有 P0/P1 评审问题。
 - 上线前评审及多轮复查发现的所有阻塞/高优先级问题已全部修复。
-- **关键修复**：退款成功后 `booked` slot 现在会被正确释放，避免场地永久被占；分账 `processing` 状态在查询前已持久化；取消/退款接口添加行锁防止并发问题。
-- 所有 P2 项已处理完毕。
-- 新增速率限制覆盖赛事支付和创建订单，防止刷单/资源耗尽。
-- 前端登录回跳、URL 编码、轮询清理等边界问题已修复。
+- **最新修复**：`tasks.py` 缺少 `_v` 导入，会导致 Celery 退款任务 `NameError`；已 hotfix。
+- 后端、前端、支付安全专项评审均通过，未发现新的阻塞/高优先级问题。
 - 当前模块后端 31 项测试全部通过，工作区干净。
 - 建议下一步：在测试环境部署并跑通完整支付-退款-结算链路，重点观察 Celery worker/beat 日志。
 
 ## 变更日志
+
+### 2026-06-15（第四轮）
+- 复查通过后端/前端/支付安全专项评审
+- 修复 `tasks.py` 缺少 `_v` 导入导致的 Celery 退款任务 `NameError`（ec11b50）
+- 31 项后端测试全部通过
+- 更新 `module-b-production-readiness.md`
 
 ### 2026-06-15（第三轮）
 - 复查发现退款回调未释放 `booked` slot（BLOCKER），已修复（e36b5e6）
