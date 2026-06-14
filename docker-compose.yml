@@ -19,10 +19,39 @@ services:
       - ./backend/.env
     environment:
       - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
-      - REDIS_URL=redis://redis:***@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
     depends_on:
       - mysql
       - redis
+    restart: unless-stopped
+
+  celery_worker:
+    build: ./backend
+    container_name: club-celery-worker
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+    command: celery -A app.tasks.worker worker -l info -c 2
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+  celery_beat:
+    build: ./backend
+    container_name: club-celery-beat
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+    command: celery -A app.tasks.worker beat -l info
+    depends_on:
+      - mysql
+      - redis
+      - celery_worker
     restart: unless-stopped
 
   mysql:
