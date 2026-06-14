@@ -86,8 +86,16 @@
   - 退款回调 slot 释放未校验所有权
   - 退款重试状态机不完善
   - 前端计时器泄漏、`success.js` 登录守卫缺失
+- 修复上线前评审剩余问题：
+  - `club_orders` 状态过滤字符串 → OrderStatus 枚举
+  - `release_expired_locks` DB 层按 locked_at 过滤
+- 完成部分 P2 优化：
+  - `BookingOrder.order_no` 添加索引
+  - `refund_status` / `RefundRecord.status` 改为 Enum
+  - 删除 `_refund_slot_release` 死代码
+  - `venue-detail` 区分 booked/locked 视觉状态
 - 31 项后端测试全部通过
-- 更新 `docs/module-b-production-readiness.md`
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
 
 ### 2026-06-13 (fix-null-nicknames)
 - 修复用户昵称/头像/手机号为空的问题：

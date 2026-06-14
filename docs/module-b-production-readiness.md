@@ -51,8 +51,8 @@
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
 |---|------|------|------|----------|------|
 | B-7 | `process_callback` 多一层 `db.commit()` | `app/services/payment_callback.py:331` | 调用方也提交，可能双提交 | 移除 `process_callback` 内 commit | ✅ 已修复（dca3793） |
-| B-8 | `club_orders` 状态过滤传字符串 | `app/api/v1/bookings.py:663` | 可能因 asyncmy 类型问题过滤异常 | 校验后转 `OrderStatus(status)` | ⏳ 待安排 |
-| B-9 | `release_expired_locks` 全表加载 locked slot | `app/tasks/tasks.py:27-33` | 高并发时内存/性能压力 | DB 层按 `locked_at` 过滤或分页 | ⏳ 待安排 |
+| B-8 | `club_orders` 状态过滤传字符串 | `app/api/v1/bookings.py:663` | 可能因 asyncmy 类型问题过滤异常 | 校验后转 `OrderStatus(status)` | ✅ 已修复（8d5ffc9） |
+| B-9 | `release_expired_locks` 全表加载 locked slot | `app/tasks/tasks.py:27-33` | 高并发时内存/性能压力 | DB 层按 `locked_at` 过滤 | ✅ 已修复（8d5ffc9） |
 | F-5 | `confirm.js` / `success.js` 后台计时器泄漏 | `confirm.js`, `success.js` | `onHide` 未清理计时器 | `onHide` 清理，`onShow` 恢复 | ✅ 已修复（0ee4abe） |
 | F-6 | `success.js` 无登录守卫和错误状态 | `miniprogram/pages/booking/success.js` | 未登录用户看到空白页 | 增加登录守卫和重试按钮 | ✅ 已修复（0ee4abe） |
 | F-7 | `wxpay.js` 错误对象未标准化 | `miniprogram/utils/wxpay.js:47-53` | 支付失败可能显示 undefined | `reject(new Error(err.errMsg || '支付失败'))` | ✅ 已修复（0ee4abe） |
@@ -70,18 +70,39 @@ python -m py_compile app/tasks/tasks.py
 python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 ```
 
+### P2 问题处理
+
+| # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
+|---|------|------|------|----------|------|
+| P2-1 | `BookingOrder.order_no` 缺少索引 | `app/models/models.py` | 回调查询、订单查询全表扫描 | 添加 `index=True` | ✅ 已修复（4136a74） |
+| P2-2 | `refund_status` 使用 String 而非 Enum | `app/models/models.py` | 缺少 DB 约束，可能出现非法值 | 改为 `Enum(RefundStatus, native_enum=False)` | ✅ 已修复（4136a74） |
+| P2-3 | `_refund_slot_release` 死代码 | `app/api/v1/bookings.py` | 维护负担 | 删除 | ✅ 已修复（4136a74） |
+| P2-5 | `venue-detail` 未区分 locked/booked 视觉状态 | `miniprogram/pages/booking/venue-detail.wxml/wxss` | 用户无法区分 | 分别显示 "已预约" / "锁定中" 并加样式 | ✅ 已修复（4136a74） |
+| P2-4 | `update_slot_status` 死/不可达代码 | `app/api/v1/venues.py:240-252` | 逻辑错误 | 已随 B-3 修复 |
+| P2-6 | `club-list` 缺少 `onReachBottom` 分页 | `miniprogram/pages/booking/club-list.js` | 只能显示前 20 条 | 添加分页 | ⏳ 待安排 |
+| P2-7 | `club-detail` 是空占位符 | `miniprogram/pages/booking/club-detail.js/wxml` | 页面不可用 | 实现或移除导航 | ⏳ 待安排 |
+| P2-8 | `venue-detail/club-list` 导航命名混乱 | `miniprogram/pages/booking/club-list.js:107` | 可读性差 | 统一命名 | ⏳ 待安排 |
+| P2-9 | 文档与实现不同步 | `docs/` | 新开发者误解 | 更新文档 | ⏳ 待安排 |
+
 ## 结论与建议
 
 - 已修复所有 P0/P1 评审问题。
-- 上线前评审发现的阻塞级问题已全部修复，包括 Celery 导入缺失、`generate_slots` 未提交、`update_slot_status` 死代码、`utils/request.js` 201 处理、`app.js` 无限递归、回调 nonce 竞态等。
-- 高优先级和中优先级问题已基本修复；剩余 `club_orders` 状态过滤字符串问题和 `release_expired_locks` 全表加载问题为低影响项，可后续安排。
+- 上线前评审发现的阻塞/高/中优先级问题已全部修复；B-8/B-9 也已修复。
+- 已完成部分 P2 优化：`order_no` 索引、`refund_status` Enum、死代码清理、`venue-detail` 视觉区分。
+- 剩余 P2 问题为功能增强/文档类，不影响核心支付与预订流程上线：
+  - `club-list` 分页
+  - `club-detail` 空占位
+  - 导航命名统一
+  - 文档同步
 - 时段生成失败根因已定位并修复（缺少 sqlalchemy 导入）。
 - 建议下一步：在测试环境部署并观察 Celery worker/beat 日志，重点验证 `generate_daily_slots` 正常执行、支付回调异步处理、退款重试任务。
 
 ## 变更日志
 
 ### 2026-06-15
+- 完成所有 P1 高优先级问题修复
 - 完成上线前评审发现的所有阻塞/高/中优先级问题修复
+- 完成 B-8/B-9 及 P2-1/P2-2/P2-3/P2-5 优化
 - 31 项后端测试全部通过
 - 工作区已提交至 git，无未提交变更
 
