@@ -57,6 +57,7 @@ class Settings(BaseSettings):
 
     # Rate limiting (per-minute limits for sensitive booking endpoints)
     RATE_LIMIT_PAY_PER_MINUTE: int = 10
+    RATE_LIMIT_BOOKING_PER_MINUTE: int = 10
     RATE_LIMIT_CANCEL_PER_MINUTE: int = 10
     RATE_LIMIT_REFUND_PER_MINUTE: int = 5
 

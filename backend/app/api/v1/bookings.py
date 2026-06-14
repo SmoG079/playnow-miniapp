@@ -70,6 +70,12 @@ async def create_booking(
     db: AsyncSession = Depends(get_db),
 ):
     """Lock a slot and create a pending booking order."""
+    settings = get_settings()
+    await check_rate_limit(
+        f"rate:booking:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_BOOKING_PER_MINUTE,
+        window_seconds=60,
+    )
     # Acquire DB row lock first to prevent TOCTOU race condition
     result = await db.execute(
         select(VenueTimeSlot).where(VenueTimeSlot.id == req.slot_id).with_for_update()

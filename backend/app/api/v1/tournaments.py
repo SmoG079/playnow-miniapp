@@ -4,6 +4,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.wechat_pay import get_wxpay, build_jsapi_params
+from app.core.rate_limit import check_rate_limit
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import (
     User, Club, Tournament, TournamentRegistration, TournamentStatus,
@@ -275,6 +276,12 @@ async def pay_tournament(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    settings = get_settings()
+    await check_rate_limit(
+        f"rate:pay:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_PAY_PER_MINUTE,
+        window_seconds=60,
+    )
     result = await db.execute(
         select(TournamentRegistration, Tournament)
         .join(Tournament, TournamentRegistration.tournament_id == Tournament.id)
