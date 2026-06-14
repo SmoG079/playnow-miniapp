@@ -1,27 +1,53 @@
 import json
 import uuid
-from datetime import datetime, timezone
+import httpx
+import time
+import logging
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.config import get_settings
-from app.core.redis import acquire_lock, release_lock
+from app.core.redis import acquire_lock, release_lock, redis_client
 from app.core.wechat_pay import get_wxpay, build_jsapi_params
 from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _v
 from app.models.models import (
-    User, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
-    SettlementRecord, Notification, NotificationType, Club, ClubMember,
+    User, UserRole, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
+    SettlementRecord, SettlementStatus, Notification, NotificationType, Club, ClubMember,
     Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, PaymentLog,
 )
 from app.schemas.schemas import (
     BookingCreateRequest, BookingDetail, BookingListParams, PayResponse,
-    CancelRequest, RefundRequest, PaginatedResponse,
+    CancelRequest, RefundRequest, PaginatedResponse, SettlementDetail,
+)
+from app.services.settlement import (
+    generate_settlement_out_order_no, execute_settlement, query_settlement_status,
+    _to_cents,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 settings = get_settings()
+
+
+REFUND_RETRYABLE_CODES = {"SYSTEM_ERROR", "BIZERR_NEED_RETRY"}
+
+
+def _is_refund_retryable(exc: Exception) -> bool:
+    msg = str(exc).upper()
+    if any(code in msg for code in REFUND_RETRYABLE_CODES):
+        return True
+    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError)):
+        return True
+    return False
+
+
+def _refund_backoff_seconds(attempt: int) -> int:
+    base = settings.REFUND_RETRY_BACKOFF_BASE_SECONDS
+    return min(base * (2 ** attempt), 1800)
 
 
 def _generate_order_no() -> str:
@@ -35,15 +61,21 @@ async def create_booking(
     db: AsyncSession = Depends(get_db),
 ):
     """Lock a slot and create a pending booking order."""
-    # Get slot
+    # Acquire DB row lock first to prevent TOCTOU race condition
     result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id == req.slot_id)
+        select(VenueTimeSlot).where(VenueTimeSlot.id == req.slot_id).with_for_update()
     )
     slot = result.scalar_one_or_none()
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
     if _v(slot.status) != "available":
         raise HTTPException(status_code=409, detail="Slot is not available")
+
+    # P1-2: reject slots whose start time has already passed
+    tz = ZoneInfo("Asia/Shanghai")
+    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
+    if datetime.now(tz) >= slot_datetime:
+        raise HTTPException(status_code=400, detail="Slot time has already passed")
 
     # Get venue + club
     venue_result = await db.execute(select(Venue).where(Venue.id == slot.venue_id))
@@ -54,7 +86,7 @@ async def create_booking(
     club_result = await db.execute(select(Club).where(Club.id == venue.club_id))
     club = club_result.scalar_one_or_none()
 
-    # Try Redis lock
+    # Acquire Redis lock inside the DB transaction
     lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
     acquired = await acquire_lock(lock_key, str(current_user.id), settings.BOOKING_LOCK_TTL_SECONDS)
     if not acquired:
@@ -94,6 +126,8 @@ async def create_booking(
             status=_v(order.status),
             payment_time=order.payment_time,
             wx_transaction_id=order.wx_transaction_id,
+            prepay_id=order.prepay_id,
+            prepay_id_created_at=order.prepay_id_created_at,
             cancel_reason=order.cancel_reason,
             cancel_time=order.cancel_time,
             created_at=order.created_at,
@@ -169,17 +203,37 @@ async def pay_booking(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(BookingOrder).where(BookingOrder.id == booking_id)
+        select(BookingOrder, VenueTimeSlot)
+        .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
+        .where(BookingOrder.id == booking_id)
     )
-    order = result.scalar_one_or_none()
-    if not order:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=404, detail="Booking not found")
+    order, slot = row
+
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
-    if order.status != OrderStatus.pending:
+    if _v(order.status) != "pending":
         raise HTTPException(status_code=400, detail="Order is not pending")
     if not current_user.openid:
         raise HTTPException(status_code=400, detail="User openid not available")
+
+    # Verify slot lock is still valid before creating WeChat Pay order
+    if _v(slot.status) != "locked" or slot.locked_by != current_user.id:
+        raise HTTPException(status_code=409, detail="Slot lock has expired or been taken")
+    if slot.locked_at:
+        lock_elapsed = (datetime.utcnow() - slot.locked_at).total_seconds()
+        if lock_elapsed >= settings.BOOKING_LOCK_TTL_SECONDS:
+            raise HTTPException(status_code=409, detail="Slot lock has expired")
+
+    # Idempotency: reuse existing prepay_id if still fresh
+    now = datetime.utcnow()
+    if order.prepay_id and order.prepay_id_created_at:
+        age = (now - order.prepay_id_created_at).total_seconds()
+        if age < settings.PREPAY_ID_TTL_SECONDS:
+            wxpay = get_wxpay()
+            return build_jsapi_params(wxpay, order.prepay_id)
 
     # Load venue/club info for description
     venue_result = await db.execute(select(Venue).where(Venue.id == order.venue_id))
@@ -191,12 +245,17 @@ async def pay_booking(
         result = wxpay.pay(
             description=description,
             out_trade_no=order.order_no,
-            amount={"total": int(order.amount * 100)},
+            amount={"total": _to_cents(order.amount)},
             payer={"openid": current_user.openid},
         )
         prepay_id = result.get("prepay_id")
         if not prepay_id:
             raise HTTPException(status_code=500, detail="WeChat pay did not return prepay_id")
+
+        order.prepay_id = prepay_id
+        order.prepay_id_created_at = now
+        await db.commit()
+
         return build_jsapi_params(wxpay, prepay_id)
     except HTTPException:
         raise
@@ -206,31 +265,39 @@ async def pay_booking(
 
 @router.post("/wx-notify")
 async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
-    """WeChat payment callback. Handles both payment success and refund notifications."""
+    """WeChat payment callback. Verifies and acknowledges immediately, then queues heavy processing to Celery."""
     body = await request.body()
 
-    # Parse outer notification envelope first to get event_type
-    try:
-        notification = json.loads(body)
-    except json.JSONDecodeError:
-        return {"code": "FAIL", "message": "Invalid callback payload"}
-
-    event_type = notification.get("event_type", "")
-
+    # P0-4: Verify/decrypt callback BEFORE parsing body or recording nonce
     try:
         wxpay = get_wxpay()
-        decrypted = wxpay.decrypt_callback(request.headers, body)
-    except Exception as e:
-        return {"code": "FAIL", "message": f"Signature verification failed: {str(e)}"}
-
-    if not decrypted:
-        return {"code": "FAIL", "message": "Invalid callback signature or decryption failed"}
-
-    try:
+        headers_dict = dict(request.headers)
+        decrypted = wxpay.decrypt_callback(headers_dict, body)
         data = json.loads(decrypted)
-    except json.JSONDecodeError:
-        return {"code": "FAIL", "message": "Invalid callback payload"}
+    except Exception as e:
+        logger.error("Callback verify/decrypt failed: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid callback")
 
+    # P0-6: Timestamp and nonce replay protection (after successful verification)
+    timestamp = request.headers.get("Wechatpay-Timestamp")
+    nonce = request.headers.get("Wechatpay-Nonce")
+    now = int(time.time())
+    if not timestamp or abs(now - int(timestamp)) > 300:
+        logger.warning("Callback timestamp invalid: timestamp=%s now=%s", timestamp, now)
+        raise HTTPException(status_code=400, detail="Callback timestamp invalid")
+
+    if not nonce:
+        logger.warning("Callback missing nonce")
+        raise HTTPException(status_code=400, detail="Callback nonce missing")
+
+    redis = redis_client
+    nonce_key = f"wx:callback:nonce:{nonce}"
+    if await redis.get(nonce_key):
+        logger.warning("Duplicate callback nonce: %s", nonce)
+        raise HTTPException(status_code=400, detail="Duplicate callback nonce")
+    await redis.setex(nonce_key, 3600, "1")
+
+    event_type = data.get("event_type", "")
     out_trade_no = data.get("out_trade_no")
 
     # Log all callbacks
@@ -242,270 +309,15 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         order_id=order.id if order else None,
         type="callback",
         event_type=event_type,
-        raw_data={"notification": notification, "resource": data},
+        raw_data={"headers": dict(request.headers), "decrypted": data},
     )
     db.add(log)
-
-    try:
-        # Handle refund callbacks
-        if event_type.startswith("REFUND."):
-            return await _handle_refund_callback(data, db)
-
-        # Handle payment callbacks
-        if event_type == "TRANSACTION.SUCCESS":
-            return await _handle_payment_success(data, db)
-
-        if event_type == "TRANSACTION.CLOSED":
-            return await _handle_payment_closed(data, db)
-
-        # Other events - acknowledge but no action needed
-        await db.commit()
-        return {"code": "SUCCESS"}
-    except Exception as e:
-        await db.rollback()
-        # Always return a valid WeChat response; rely on WeChat retry for real failures
-        return {"code": "FAIL", "message": f"Internal error: {str(e)}"}
-
-
-async def _handle_payment_success(data: dict, db: AsyncSession):
-    """Handle TRANSACTION.SUCCESS callback."""
-    out_trade_no = data.get("out_trade_no")
-    transaction_id = data.get("transaction_id")
-
-    if not out_trade_no:
-        return {"code": "FAIL", "message": "Missing out_trade_no"}
-
-    result = await db.execute(
-        select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-    )
-    order = result.scalar_one_or_none()
-    if not order:
-        return {"code": "FAIL", "message": "Order not found"}
-
-    # Idempotency: skip terminal states (asyncmy returns enums as strings)
-    if _v(order.status) in ("paid", "refunding", "refunded", "cancelled"):
-        return {"code": "SUCCESS"}
-
-    order.status = OrderStatus.paid
-    order.payment_time = datetime.utcnow()
-    order.wx_transaction_id = transaction_id
-
-    # Handle tournament registration payment
-    tournament_reg_result = await db.execute(
-        select(TournamentRegistration).where(TournamentRegistration.order_id == order.id)
-    )
-    tournament_reg = tournament_reg_result.scalar_one_or_none()
-    if tournament_reg:
-        tournament_reg.status = TournamentRegStatus.confirmed
-        tournament = await db.execute(
-            select(Tournament).where(Tournament.id == tournament_reg.tournament_id)
-        )
-        tournament = tournament.scalar_one_or_none()
-        if tournament:
-            tournament.current_participants = (tournament.current_participants or 0) + 1
-        notif = Notification(
-            user_id=order.user_id,
-            type=NotificationType.tournament,
-            title="赛事报名成功",
-            content=f"您已成功报名赛事，订单号 {order.order_no}",
-            ref_id=tournament_reg.id,
-            ref_type="tournament_registration",
-        )
-        db.add(notif)
-    else:
-        # Mark slot as booked
-        slot_result = await db.execute(
-            select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
-        )
-        slot = slot_result.scalar_one_or_none()
-        if slot:
-            slot.status = SlotStatus.booked
-            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            await release_lock(lock_key, str(order.user_id))
-
-        # Create settlement record
-        club_result = await db.execute(select(Club).where(Club.id == order.club_id))
-        club = club_result.scalar_one_or_none()
-        split_ratio = club.split_ratio if club else Decimal("0.100")
-        platform_amount = order.amount * split_ratio
-        club_amount = order.amount - platform_amount
-
-        settlement = SettlementRecord(
-            order_id=order.id,
-            total_amount=order.amount,
-            platform_amount=platform_amount,
-            club_amount=club_amount,
-            split_ratio=split_ratio,
-            status=SettlementStatus.pending,
-        )
-        db.add(settlement)
-
-        notif = Notification(
-            user_id=order.user_id,
-            type=NotificationType.booking,
-            title="预约成功",
-            content=f"您的场地预约已支付成功，订单号 {order.order_no}",
-            ref_id=order.id,
-            ref_type="booking",
-        )
-        db.add(notif)
-
     await db.commit()
-    return {"code": "SUCCESS"}
 
+    # P0-5: Acknowledge SUCCESS immediately, queue heavy work to Celery
+    from app.tasks.tasks import process_wx_callback
+    process_wx_callback.delay(event_type, data)
 
-async def _handle_refund_callback(data: dict, db: AsyncSession):
-    """Handle REFUND.* callbacks."""
-    out_refund_no = data.get("out_refund_no")
-    out_trade_no = data.get("out_trade_no")
-    refund_status = data.get("refund_status")
-    wx_refund_id = data.get("refund_id")
-
-    if not out_refund_no:
-        return {"code": "FAIL", "message": "Missing out_refund_no"}
-
-    # Find refund record
-    result = await db.execute(
-        select(RefundRecord).where(RefundRecord.out_refund_no == out_refund_no)
-    )
-    refund_record = result.scalar_one_or_none()
-
-    if not refund_record:
-        # Try to find by order
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                # Create refund record retroactively using actual amount from callback if available
-                actual_refund_cents = data.get("amount", {}).get("refund")
-                actual_refund = Decimal(actual_refund_cents) / Decimal(100) if actual_refund_cents is not None else (order.refund_amount or order.amount)
-                refund_record = RefundRecord(
-                    order_id=order.id,
-                    out_refund_no=out_refund_no,
-                    wx_refund_id=wx_refund_id,
-                    amount=actual_refund,
-                    reason=order.cancel_reason or "用户退款",
-                    status="pending",
-                )
-                db.add(refund_record)
-
-    if refund_status == "SUCCESS":
-        if refund_record:
-            refund_record.status = "success"
-            refund_record.wx_refund_id = wx_refund_id
-            refund_record.completed_at = datetime.utcnow()
-
-        # Update order status
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-            )
-            order = order_result.scalar_one_or_none()
-            if not order:
-                await db.commit()
-                return {"code": "SUCCESS"}
-
-            # Idempotency: do nothing if already refunded
-            if _v(order.status) == "refunded":
-                await db.commit()
-                return {"code": "SUCCESS"}
-
-            if _v(order.status) == "refunding":
-                order.status = OrderStatus.refunded
-                order.refund_time = datetime.utcnow()
-                order.refund_status = "success"
-
-                # Release slot
-                slot_result = await db.execute(
-                    select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
-                )
-                slot = slot_result.scalar_one_or_none()
-                if slot:
-                    slot.status = SlotStatus.available
-                    slot.locked_by = None
-                    slot.locked_at = None
-                    lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-                    await release_lock(lock_key, str(order.user_id))
-
-                # Notify user
-                notif = Notification(
-                    user_id=order.user_id,
-                    type=NotificationType.booking,
-                    title="退款成功",
-                    content=f"您的订单 {order.order_no} 退款已成功到账",
-                    ref_id=order.id,
-                    ref_type="booking",
-                )
-                db.add(notif)
-
-    elif refund_status == "CLOSED":
-        if refund_record:
-            refund_record.status = "closed"
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.refund_status = "closed"
-                # Revert to paid if refund closed and reclaim slot
-                if _v(order.status) == "refunding":
-                    order.status = OrderStatus.paid
-                    slot_result = await db.execute(
-                        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
-                    )
-                    slot = slot_result.scalar_one_or_none()
-                    if slot:
-                        # Only reclaim if the slot is still available; otherwise leave it booked by someone else
-                        if slot.status == SlotStatus.available:
-                            slot.status = SlotStatus.booked
-                            slot.locked_by = order.user_id
-                            slot.locked_at = datetime.utcnow()
-                            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-                            acquired = await acquire_lock(lock_key, str(order.user_id), settings.BOOKING_LOCK_TTL_SECONDS)
-                            if not acquired:
-                                # Lock contention: another booking may be in progress; leave slot available and log
-                                slot.status = SlotStatus.available
-                                slot.locked_by = None
-                                slot.locked_at = None
-
-    await db.commit()
-    return {"code": "SUCCESS"}
-
-
-async def _handle_payment_closed(data: dict, db: AsyncSession):
-    """Handle TRANSACTION.CLOSED callback (order closed without payment)."""
-    out_trade_no = data.get("out_trade_no")
-    if not out_trade_no:
-        return {"code": "FAIL", "message": "Missing out_trade_no"}
-
-    result = await db.execute(
-        select(BookingOrder).where(BookingOrder.order_no == out_trade_no)
-    )
-    order = result.scalar_one_or_none()
-    if not order:
-        return {"code": "SUCCESS"}
-
-    if _v(order.status) in ("cancelled", "paid", "refunding", "refunded"):
-        await db.commit()
-        return {"code": "SUCCESS"}
-
-    order.status = OrderStatus.cancelled
-
-    slot_result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
-    )
-    slot = slot_result.scalar_one_or_none()
-    if slot:
-        slot.status = SlotStatus.available
-        slot.locked_by = None
-        slot.locked_at = None
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key, str(order.user_id))
-
-    await db.commit()
     return {"code": "SUCCESS"}
 
 
@@ -547,10 +359,12 @@ async def cancel_booking(
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
 
-    # Calculate refund
-    now = datetime.utcnow()
-    slot_datetime = datetime.combine(slot.date, slot.start_time)
-    hours_before = (slot_datetime - now).total_seconds() / 3600
+    # Calculate refund using Asia/Shanghai local time
+    tz = ZoneInfo("Asia/Shanghai")
+    now_aware = datetime.now(tz)
+    now = now_aware.astimezone(timezone.utc).replace(tzinfo=None)
+    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz)
+    hours_before = (slot_datetime - now_aware).total_seconds() / 3600
 
     if hours_before >= settings.FREE_CANCEL_HOURS:
         refund_amount = order.amount
@@ -570,28 +384,8 @@ async def cancel_booking(
 
         wxpay = get_wxpay()
         out_refund_no = _generate_order_no()
-        try:
-            wxpay.refund(
-                out_refund_no=out_refund_no,
-                transaction_id=order.wx_transaction_id,
-                amount={
-                    "refund": int(refund_amount * 100),
-                    "total": int(order.amount * 100),
-                    "currency": "CNY",
-                },
-                reason=req.reason or "用户取消订单",
-            )
-        except Exception as e:
-            # Refund API failed; record failure and keep order paid/slot reserved
-            order.refund_status = "failed"
-            await db.commit()
-            raise HTTPException(status_code=502, detail=f"Refund request failed: {str(e)}")
 
-        order.status = OrderStatus.refunding
-        order.refund_id = out_refund_no
-        order.refund_status = "pending"
-
-        # Create refund record
+        # Create refund record BEFORE calling WeChat (pre-creation for idempotency)
         refund_record = RefundRecord(
             order_id=order.id,
             out_refund_no=out_refund_no,
@@ -600,6 +394,41 @@ async def cancel_booking(
             status="pending",
         )
         db.add(refund_record)
+        await db.flush()
+
+        try:
+            wxpay.refund(
+                out_refund_no=out_refund_no,
+                transaction_id=order.wx_transaction_id,
+                amount={
+                    "refund": _to_cents(refund_amount),
+                    "total": _to_cents(order.amount),
+                    "currency": "CNY",
+                },
+                reason=req.reason or "用户取消订单",
+            )
+        except Exception as e:
+            if _is_refund_retryable(e):
+                # Retryable failure: schedule retry
+                refund_record.status = "failed"
+                refund_record.scheduled_at = datetime.utcnow() + timedelta(seconds=_refund_backoff_seconds(0))
+                refund_record.fail_reason = str(e)[:512]
+                await db.commit()
+                from app.tasks.tasks import retry_failed_refunds
+                retry_failed_refunds.delay()
+                return {
+                    "msg": "Refund queued for retry",
+                    "status": "refunding",
+                    "out_refund_no": out_refund_no,
+                }
+            # Non-retryable failure
+            refund_record.fail_reason = str(e)[:512]
+            await db.commit()
+            raise HTTPException(status_code=502, detail=f"Refund request failed: {str(e)}")
+
+        order.status = OrderStatus.refunding
+        order.refund_id = out_refund_no
+        order.refund_status = "pending"
         # Slot stays booked until REFUND.SUCCESS callback arrives
         await db.commit()
     else:
@@ -673,19 +502,46 @@ async def refund_booking(
 
     wxpay = get_wxpay()
     out_refund_no = _generate_order_no()
+
+    # Create refund record BEFORE calling WeChat (pre-creation for idempotency)
+    refund_record = RefundRecord(
+        order_id=order.id,
+        out_refund_no=out_refund_no,
+        amount=refund_amount,
+        reason=req.reason or "管理员退款",
+        status="pending",
+    )
+    db.add(refund_record)
+    await db.flush()
+
     try:
         wxpay.refund(
             out_refund_no=out_refund_no,
             transaction_id=order.wx_transaction_id,
             amount={
-                "refund": int(refund_amount * 100),
-                "total": int(order.amount * 100),
+                "refund": _to_cents(refund_amount),
+                "total": _to_cents(order.amount),
                 "currency": "CNY",
             },
             reason=req.reason or "管理员退款",
         )
     except Exception as e:
-        order.refund_status = "failed"
+        if _is_refund_retryable(e):
+            # Retryable failure: schedule retry
+            refund_record.status = "failed"
+            refund_record.scheduled_at = datetime.utcnow() + timedelta(seconds=_refund_backoff_seconds(0))
+            refund_record.fail_reason = str(e)[:512]
+            order.refund_status = "failed"
+            await db.commit()
+            from app.tasks.tasks import retry_failed_refunds
+            retry_failed_refunds.delay()
+            return {
+                "msg": "Refund queued for retry",
+                "status": "refunding",
+                "out_refund_no": out_refund_no,
+            }
+        # Non-retryable failure
+        refund_record.fail_reason = str(e)[:512]
         await db.commit()
         raise HTTPException(status_code=500, detail=f"WeChat refund failed: {str(e)}")
 
@@ -695,16 +551,6 @@ async def refund_booking(
     order.refund_status = "pending"
     order.cancel_reason = req.reason or "管理员退款"
     order.cancel_time = datetime.utcnow()
-
-    # Create refund record
-    refund_record = RefundRecord(
-        order_id=order.id,
-        out_refund_no=out_refund_no,
-        amount=refund_amount,
-        reason=req.reason or "管理员退款",
-        status="pending",
-    )
-    db.add(refund_record)
 
     # Slot stays booked until REFUND.SUCCESS callback arrives
     await db.commit()
@@ -800,7 +646,8 @@ async def club_orders(
             id=order.id, order_no=order.order_no, user_id=order.user_id,
             venue_id=order.venue_id, slot_id=order.slot_id, club_id=order.club_id,
             amount=order.amount, status=_v(order.status), payment_time=order.payment_time,
-            wx_transaction_id=order.wx_transaction_id, cancel_reason=order.cancel_reason,
+            wx_transaction_id=order.wx_transaction_id, prepay_id=order.prepay_id,
+            prepay_id_created_at=order.prepay_id_created_at, cancel_reason=order.cancel_reason,
             cancel_time=order.cancel_time, created_at=order.created_at,
             venue_name=venue_name, club_name=None, slot_date=slot_date,
             slot_start=slot_start, slot_end=slot_end,
@@ -809,3 +656,137 @@ async def club_orders(
         ))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/settlements", response_model=PaginatedResponse)
+async def list_settlements(
+    status: str = Query(None),
+    club_id: int = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(SettlementRecord, BookingOrder.order_no)
+        .join(BookingOrder, SettlementRecord.order_id == BookingOrder.id)
+        .order_by(SettlementRecord.created_at.desc())
+    )
+    count_stmt = (
+        select(func.count(SettlementRecord.id))
+        .join(BookingOrder, SettlementRecord.order_id == BookingOrder.id)
+    )
+
+    if status:
+        stmt = stmt.where(SettlementRecord.status == status)
+        count_stmt = count_stmt.where(SettlementRecord.status == status)
+    if club_id:
+        stmt = stmt.where(BookingOrder.club_id == club_id)
+        count_stmt = count_stmt.where(BookingOrder.club_id == club_id)
+
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    offset = (page - 1) * page_size
+    result = await db.execute(stmt.offset(offset).limit(page_size))
+    rows = result.all()
+
+    items = []
+    for rec, order_no in rows:
+        items.append(SettlementDetail(
+            id=rec.id,
+            order_id=rec.order_id,
+            order_no=order_no,
+            total_amount=rec.total_amount,
+            platform_amount=rec.platform_amount,
+            club_amount=rec.club_amount,
+            split_ratio=rec.split_ratio,
+            status=_v(rec.status),
+            wx_split_order_no=rec.wx_split_order_no,
+            out_order_no=rec.out_order_no,
+            retry_count=rec.retry_count,
+            scheduled_at=rec.scheduled_at,
+            completed_at=rec.completed_at,
+            fail_reason=rec.fail_reason,
+            created_at=rec.created_at,
+        ))
+
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post("/settlements/{settlement_id}/query", response_model=SettlementDetail)
+async def query_settlement(
+    settlement_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_platform_admin),
+):
+    rec = await query_settlement_status(db, settlement_id)
+    await db.commit()
+
+    # Fetch order_no for the response
+    order_result = await db.execute(
+        select(BookingOrder.order_no).where(BookingOrder.id == rec.order_id)
+    )
+    order_no = order_result.scalar() or ""
+
+    return SettlementDetail(
+        id=rec.id,
+        order_id=rec.order_id,
+        order_no=order_no,
+        total_amount=rec.total_amount,
+        platform_amount=rec.platform_amount,
+        club_amount=rec.club_amount,
+        split_ratio=rec.split_ratio,
+        status=_v(rec.status),
+        wx_split_order_no=rec.wx_split_order_no,
+        out_order_no=rec.out_order_no,
+        retry_count=rec.retry_count,
+        scheduled_at=rec.scheduled_at,
+        completed_at=rec.completed_at,
+        fail_reason=rec.fail_reason,
+        created_at=rec.created_at,
+    )
+
+
+@router.post("/settlements/{settlement_id}/retry", response_model=SettlementDetail)
+async def retry_settlement(
+    settlement_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_platform_admin),
+):
+    rec = await db.get(SettlementRecord, settlement_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Settlement not found")
+    if _v(rec.status) == "completed":
+        raise HTTPException(status_code=400, detail="Settlement already completed")
+    rec.status = SettlementStatus.pending
+    rec.retry_count = 0
+    await db.commit()
+    rec = await execute_settlement(db, settlement_id)
+    if _v(rec.status) == "processing":
+        rec = await query_settlement_status(db, settlement_id)
+    await db.commit()
+
+    # Fetch order_no for the response
+    order_result = await db.execute(
+        select(BookingOrder.order_no).where(BookingOrder.id == rec.order_id)
+    )
+    order_no = order_result.scalar() or ""
+
+    return SettlementDetail(
+        id=rec.id,
+        order_id=rec.order_id,
+        order_no=order_no,
+        total_amount=rec.total_amount,
+        platform_amount=rec.platform_amount,
+        club_amount=rec.club_amount,
+        split_ratio=rec.split_ratio,
+        status=_v(rec.status),
+        wx_split_order_no=rec.wx_split_order_no,
+        out_order_no=rec.out_order_no,
+        retry_count=rec.retry_count,
+        scheduled_at=rec.scheduled_at,
+        completed_at=rec.completed_at,
+        fail_reason=rec.fail_reason,
+        created_at=rec.created_at,
+    )
