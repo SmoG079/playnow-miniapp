@@ -312,7 +312,8 @@ async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     assert result["refund_amount"] == "100.00"
@@ -353,7 +354,8 @@ async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     # Decimal("100.00") * Decimal("0.5") = Decimal("50.000"), cast to str gives "50.000"
@@ -395,7 +397,8 @@ async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await cancel_booking(1, req, current_user=user, db=session)
 
@@ -438,7 +441,8 @@ async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     assert result["refund_amount"] == "100.00"
@@ -479,7 +483,8 @@ async def test_cancel_booking_half_refund_12_hours_before(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     # Decimal("100.00") * Decimal("0.5") = Decimal("50.000"), cast to str gives "50.000"
@@ -521,7 +526,8 @@ async def test_cancel_booking_rejects_after_start_time(user, venue, club):
 
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.release_lock", new=AsyncMock()):
+         patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await cancel_booking(1, req, current_user=user, db=session)
 

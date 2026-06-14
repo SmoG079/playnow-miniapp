@@ -40,7 +40,25 @@ class Settings(BaseSettings):
 
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
+    PREPAY_ID_TTL_SECONDS: int = 300
     FREE_CANCEL_HOURS: int = 24
+
+    # Settlement / profit-sharing
+    SETTLEMENT_DELAY_DAYS: int = 30
+    SETTLEMENT_MAX_RETRIES: int = 3
+    SETTLEMENT_BATCH_SIZE: int = 100
+    SETTLEMENT_PLATFORM_ACCOUNT: str = ""  # platform mch_id or openid
+
+    # Refund retry
+    REFUND_MAX_RETRIES: int = 5
+    REFUND_RETRY_BACKOFF_BASE_SECONDS: int = 30
+    REFUND_POLL_INTERVAL_MINUTES: int = 5
+    REFUND_BATCH_SIZE: int = 50
+
+    # Rate limiting (per-minute limits for sensitive booking endpoints)
+    RATE_LIMIT_PAY_PER_MINUTE: int = 10
+    RATE_LIMIT_CANCEL_PER_MINUTE: int = 10
+    RATE_LIMIT_REFUND_PER_MINUTE: int = 5
 
 
 @lru_cache()

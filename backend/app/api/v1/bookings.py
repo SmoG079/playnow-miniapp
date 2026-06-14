@@ -12,6 +12,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock, redis_client
+from app.core.rate_limit import check_rate_limit
 from app.core.wechat_pay import get_wxpay, build_jsapi_params
 from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _v
 from app.models.models import (
@@ -217,6 +218,11 @@ async def pay_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(
+        f"rate:pay:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_PAY_PER_MINUTE,
+        window_seconds=60,
+    )
     result = await db.execute(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
@@ -343,6 +349,11 @@ async def cancel_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(
+        f"rate:cancel:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_CANCEL_PER_MINUTE,
+        window_seconds=60,
+    )
     result = await db.execute(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
@@ -476,6 +487,11 @@ async def refund_booking(
     db: AsyncSession = Depends(get_db),
 ):
     """Refund a paid booking order via WeChat Pay V3 (club/platform admin only)."""
+    await check_rate_limit(
+        f"rate:refund:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_REFUND_PER_MINUTE,
+        window_seconds=60,
+    )
     result = await db.execute(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
