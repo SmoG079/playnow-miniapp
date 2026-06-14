@@ -303,9 +303,9 @@
   color: #ff9500;
 }
 
-.cell-unavailable {
+.cell-maintenance {
   font-size: 22rpx;
-  color: #bbb;
+  color: #ff3b30;
 }
 
 /* Empty / Loading */

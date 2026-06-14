@@ -38,7 +38,7 @@ Page({
     this.setData({
       slotId: options.slot_id,
       venueId: options.venue_id,
-      price: parseFloat(options.price || 0).toFixed(2),
+      price: parseFloat(options.price || 0),
       date: options.date,
       startTime: options.start,
       endTime: options.end,
@@ -160,7 +160,8 @@ Page({
         url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
       });
     } catch (e) {
-      if ((e && e.message) !== '用户取消支付') {
+      const isCancel = e && e.message === '用户取消支付';
+      if (!isCancel) {
         wx.showToast({ title: '支付失败，请重试', icon: 'none' });
       }
     } finally {

@@ -94,6 +94,7 @@
             <text class="cell-price" wx:if="{{item.isSelected}}">¥{{item.price}}</text>
             <text class="cell-booked" wx:if="{{item.status === 'booked'}}">已预约</text>
             <text class="cell-locked" wx:if="{{item.status === 'locked'}}">锁定中</text>
+            <text class="cell-maintenance" wx:if="{{item.status === 'maintenance'}}">维护中</text>
           </block>
         </view>
       </view>

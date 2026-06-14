@@ -25,7 +25,10 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.resetAndLoadClubs().then(() => wx.stopPullDownRefresh());
+    this.resetAndLoadClubs().then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
   },
 
   onReachBottom() {

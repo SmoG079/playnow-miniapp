@@ -25,7 +25,7 @@
 
   <view class="price-card">
     <text class="price-label">应付金额</text>
-    <text class="price-value">¥{{price}}</text>
+    <text class="price-value">¥{{price.toFixed(2)}}</text>
   </view>
 
   <view class="countdown-bar" wx:if="{{countdownText}}">

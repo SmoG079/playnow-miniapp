@@ -133,7 +133,11 @@ Page({
     // Estimate refund rate based on backend FREE_CANCEL_HOURS
     const freeCancelHours = this.data.freeCancelHours;
     const now = new Date();
-    const slotDate = booking.slot_datetime ? new Date(booking.slot_datetime) : null;
+    const slotDate = booking.slot_datetime
+      ? new Date(booking.slot_datetime)
+      : (booking.slot_date && booking.slot_start)
+        ? new Date(`${booking.slot_date}T${booking.slot_start}`)
+        : null;
     if (!slotDate || isNaN(slotDate.getTime())) {
       return wx.showToast({ title: '订单时间信息有误', icon: 'none' });
     }
@@ -189,7 +193,10 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadBookings(true).then(() => wx.stopPullDownRefresh());
+    this.loadBookings(true).then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
   },
 
   formatStatus(status) {

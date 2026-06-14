@@ -28,7 +28,7 @@ Page({
 
   onShow() {
     if (this.data.booking && this.data.booking.status === 'pending') {
-      this.setData({ polling: true });
+      this.setData({ polling: true, pollCount: 0 });
       this._startPolling();
     }
   },
@@ -61,6 +61,7 @@ Page({
 
   _startPolling() {
     if (this._pollTimer) clearTimeout(this._pollTimer);
+    if (!this.data.polling) return;
     const poll = async () => {
       if (this.data.pollCount >= MAX_POLL_COUNT) {
         this.setData({ polling: false });
