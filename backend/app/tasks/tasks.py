@@ -19,6 +19,8 @@ from app.services.settlement import _to_cents
 from app.tasks.worker import celery_app
 from asgiref.sync import async_to_sync
 
+logger = logging.getLogger(__name__)
+
 
 async def _release_expired_locks_impl():
     """Release venue time slots that have been locked but not paid within TTL."""
