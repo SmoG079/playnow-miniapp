@@ -156,7 +156,8 @@ async def test_create_booking_rejects_yesterday(user, venue, club, settings_mock
     req = BookingCreateRequest(slot_id=1)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await create_booking(req, current_user=user, db=session)
 
@@ -189,7 +190,8 @@ async def test_create_booking_rejects_today_past_time(user, venue, club, setting
     req = BookingCreateRequest(slot_id=1)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await create_booking(req, current_user=user, db=session)
 
@@ -222,7 +224,8 @@ async def test_create_booking_accepts_today_future_time(user, venue, club, setti
     req = BookingCreateRequest(slot_id=1)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
@@ -254,7 +257,8 @@ async def test_create_booking_accepts_tomorrow(user, venue, club, settings_mock)
     req = BookingCreateRequest(slot_id=1)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)):
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
