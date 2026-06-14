@@ -73,6 +73,14 @@
 
 ## 变更日志
 
+### 2026-06-15（第七轮复查）
+- 后端/前端/部署最终扫描发现并修复：
+  - 后端：`venues.py` `_slot_to_brief` 缺失、回调时间戳非法值、赛事 `_to_cents`、Celery 任务名、赛事 `slot_id` nullable、赛事时区比较
+  - 前端：`confirm.js` price 类型、`success.js` 轮询重置与并发保护、`my-bookings` slot 时间 fallback、`venue-detail` 维护标签、下拉刷新
+  - 部署：`.env.example` Redis URL 密码一致性、`REDIS_PASSWORD`、MySQL healthcheck depends_on
+- 31 项后端测试全部通过
+- 更新 `docs/module-b-production-readiness.md` 和 `docs/module-b-fix-progress.md`
+
 ### 2026-06-15（第六轮复查）
 - 后端最终评审发现：
   - `tasks.py` 缺少 `logger` 定义

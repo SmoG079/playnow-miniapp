@@ -70,7 +70,25 @@
 | B-19 | Celery beat 任务名与注册名不匹配 | `app/tasks/worker.py:21,25` | beat 触发时 `NotRegistered` 错误 | 统一使用 `app.tasks.tasks.*` 全限定名 | ✅ 已修复（c96b106） |
 | B-20 | `tasks.py` 缺少 `logger` 定义 | `app/tasks/tasks.py` | `logger.exception` 调用报 `NameError` | 添加 `logger = logging.getLogger(__name__)` | ✅ 已修复（c96b106） |
 
+| B-21 | `venues.py` 缺少 `_slot_to_brief` | `app/api/v1/venues.py:124` | `get_slots` 运行时报 `NameError` | 补全 `_slot_to_brief` 函数 | ✅ 已修复（421d55d） |
+| B-22 | 回调时间戳未处理非数字 | `app/api/v1/bookings.py:315` | 非法时间戳导致 500 | `try/except` 返回 400 | ✅ 已修复（421d55d） |
+| B-23 | 赛事支付金额截断 | `app/api/v1/tournaments.py:322` | `int(amount*100)` 可能少 1 分 | 使用 `_to_cents()` | ✅ 已修复（421d55d） |
+| B-24 | Celery 任务名仍不匹配 | `app/tasks/tasks.py:67,120` / `worker.py:21,25` | beat 触发 `NotRegistered` | 装饰器与 schedule 统一全限定名 | ✅ 已修复（421d55d） |
+| B-25 | 赛事订单 `slot_id` 非空冲突 | `app/models/models.py` | 赛事报名创建订单时 `slot_id=None` 违反约束 | `slot_id` 改为 `nullable=True` | ✅ 已修复（421d55d） |
+| B-26 | 赛事时段时区比较异常 | `app/api/v1/tournaments.py:350` | naive/aware 时间比较 `TypeError` | 统一转换为 naive | ✅ 已修复（421d55d） |
+| F-14 | `confirm.js` price 存为字符串 | `miniprogram/pages/booking/confirm.js:41` | 数值类型不一致 | data 存 number，WXML 用 `toFixed(2)` | ✅ 已修复（8c4e608） |
+| F-15 | `success.js` pollCount 未重置 | `miniprogram/pages/booking/success.js` | 多次进入提前停止轮询 | `onShow` 重置 `pollCount` | ✅ 已修复（8c4e608） |
+| F-16 | `success.js` 轮询并发风险 | `miniprogram/pages/booking/success.js:65` | 可能同时运行多轮询 | 加 `if (!this.data.polling) return` | ✅ 已修复（8c4e608） |
+| F-17 | `my-bookings` 无 slot_datetime 兼容 | `miniprogram/pages/profile/my-bookings.js:136` | 后端未返回时退款计算失败 | fallback 到 `slot_date` + `slot_start` | ✅ 已修复（8c4e608） |
+| F-18 | `venue-detail` maintenance 无标签 | `miniprogram/pages/booking/venue-detail.wxml:92` | 用户看不到维护状态 | 添加 "维护中" 标签和样式 | ✅ 已修复（8c4e608） |
+| F-19 | 下拉刷新可能不停止 | `my-bookings.js`, `club-list.js` | 加载失败时刷新指示器卡住 | `.then` 加 rejection handler | ✅ 已修复（8c4e608） |
+| D-1 | `.env.example` Redis URL 无密码 | `backend/.env.example:9` | 与 docker-compose 密码要求不一致 | 改为带密码 URL | ✅ 已修复（91cc319） |
+| D-2 | `.env.example` 缺少 `REDIS_PASSWORD` | `backend/.env.example` | 运维不知道要配置 | 添加 `REDIS_PASSWORD` | ✅ 已修复（91cc319） |
+| D-3 | MySQL healthcheck 未接入 depends_on | `docker-compose.yml` | 服务可能在 MySQL 就绪前启动 | 使用 `condition: service_healthy` | ✅ 已修复（91cc319） |
+
 ### 中 / 低优先级
+
+_无剩余中/低优先级问题。_
 
 | # | 问题 | 位置 | 影响 | 修复建议 | 状态 |
 |---|------|------|------|----------|------|
@@ -112,22 +130,25 @@ python -c "from app.tasks.tasks import generate_daily_slots; print('import ok')"
 
 - 已修复所有 P0/P1 评审问题。
 - 上线前评审及多轮复查发现的所有阻塞/高优先级问题已全部修复。
-- **最新修复**：
-  - `tasks.py` 缺少 `logger` 定义导致 `logger.exception` 报错
-  - Celery beat 中 `release_expired_locks` / `generate_daily_slots` 任务名未使用全限定名，会触发 `NotRegistered`
+- **第七轮修复**：
+  - 后端：补全 `_slot_to_brief`、回调时间戳校验、赛事金额 `_to_cents`、Celery 任务名统一、赛事订单 `slot_id` nullable、赛事时段时区比较
+  - 前端：`confirm.js` price 类型、`success.js` 轮询重置与并发保护、`my-bookings` slot 时间 fallback、`venue-detail` 维护标签、下拉刷新清理
+  - 部署：`.env.example` Redis 密码一致、`REDIS_PASSWORD` 变量、MySQL healthcheck 接入 depends_on
 - 后端、前端、支付安全、集成/部署评审均通过。
 - 当前模块后端 31 项测试全部通过，工作区干净。
-- 建议下一步：在测试环境执行 `docker-compose up -d`，验证 Celery worker/beat 能正常接收并执行任务。
+- 建议下一步：在测试环境执行 `docker-compose up -d` 启动完整栈，跑通创建订单 → 支付 → 退款 → 结算全链路。
 
 ## 变更日志
 
-### 2026-06-15（第六轮）
-- 后端最终评审发现 `tasks.py` 缺少 `logger` 定义（c96b106）
-- 修复 Celery beat 任务名不匹配问题（c96b106）
+### 2026-06-15（第七轮）
+- 后端/前端/部署最终扫描发现并修复剩余问题：
+  - 后端：`_slot_to_brief` 缺失、回调时间戳非法值、赛事 `_to_cents`、Celery 任务名、赛事 `slot_id` nullable、赛事时区比较（421d55d）
+  - 前端：`confirm.js` price 类型、`success.js` 轮询、`my-bookings` slot 时间 fallback、维护标签、下拉刷新（8c4e608）
+  - 部署：Redis 密码一致性、`REDIS_PASSWORD`、MySQL healthcheck depends_on（91cc319）
 - 31 项后端测试全部通过
-- 更新 `module-b-production-readiness.md`
+- 更新 `module-b-production-readiness.md` 和 `module-b-fix-progress.md`
 
-### 2026-06-15（第五轮）
+### 2026-06-15（第六轮）
 - 复查发现退款回调未释放 `booked` slot（BLOCKER），已修复（e36b5e6）
 - 修复 `_update_order_after_refund` 无条件释放 slot 的竞态（e36b5e6）
 - 修复分账 `execute_settlement` 与 `query_settlement_status` 之间的提交边界（4c6498f）
