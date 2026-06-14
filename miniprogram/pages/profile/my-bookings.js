@@ -133,10 +133,11 @@ Page({
     // Estimate refund rate based on backend FREE_CANCEL_HOURS
     const freeCancelHours = this.data.freeCancelHours;
     const now = new Date();
-    const slotDate = new Date(booking.slot_date + 'T00:00:00');
-    const [sh, sm] = booking.slot_start.split(':').map(Number);
-    slotDate.setHours(sh, sm, 0, 0);
-    const hoursBefore = (slotDate - now) / (1000 * 60 * 60);
+    const slotDate = booking.slot_datetime ? new Date(booking.slot_datetime) : null;
+    if (!slotDate || isNaN(slotDate.getTime())) {
+      return wx.showToast({ title: '订单时间信息有误', icon: 'none' });
+    }
+    const hoursBefore = (slotDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let refundRate = 0;
     if (hoursBefore >= freeCancelHours) refundRate = 1;

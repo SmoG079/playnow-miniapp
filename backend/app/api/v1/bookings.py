@@ -147,6 +147,7 @@ async def create_booking(
             slot_date=slot.date,
             slot_start=slot.start_time,
             slot_end=slot.end_time,
+            slot_datetime=datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat(),
             refund_amount=order.refund_amount,
             refund_id=order.refund_id,
             refund_time=order.refund_time,
@@ -206,6 +207,7 @@ async def get_booking(
         slot_date=slot.date,
         slot_start=slot.start_time,
         slot_end=slot.end_time,
+        slot_datetime=datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat(),
         refund_amount=order.refund_amount,
         refund_id=order.refund_id,
         refund_time=order.refund_time,
@@ -684,6 +686,7 @@ async def club_orders(
             cancel_time=order.cancel_time, created_at=order.created_at,
             venue_name=venue_name, club_name=None, slot_date=slot_date,
             slot_start=slot_start, slot_end=slot_end,
+            slot_datetime=datetime.combine(slot_date, slot_start).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat(),
             refund_amount=order.refund_amount, refund_id=order.refund_id,
             refund_time=order.refund_time, refund_status=order.refund_status,
         ))

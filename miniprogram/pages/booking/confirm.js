@@ -50,6 +50,12 @@ Page({
     }
   },
 
+  onShow() {
+    if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${this.data.slotId}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${this.data.venueName}&club_name=${this.data.clubName}` })) {
+      return;
+    }
+  },
+
   _calcDuration(start, end) {
     if (!start || !end) return '';
     const [sh, sm] = start.split(':').map(Number);
