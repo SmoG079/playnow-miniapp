@@ -124,6 +124,7 @@ async def create_booking(
         db.add(order)
         await db.flush()
         await db.refresh(order)
+        await db.commit()
 
         return BookingDetail(
             id=order.id,
@@ -313,10 +314,11 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
 
     redis = redis_client
     nonce_key = f"wx:callback:nonce:{nonce}"
-    if await redis.get(nonce_key):
-        logger.warning("Duplicate callback nonce: %s", nonce)
-        raise HTTPException(status_code=400, detail="Duplicate callback nonce")
-    await redis.setex(nonce_key, 3600, "1")
+    # SET NX EX atomically; if key exists, SET returns None
+    set_result = await redis.set(nonce_key, "1", nx=True, ex=3600)
+    if set_result is None:
+        logger.warning("Duplicate WeChat callback nonce: %s", nonce)
+        return {"code": "SUCCESS"}
 
     event_type = data.get("event_type", "")
     out_trade_no = data.get("out_trade_no")
