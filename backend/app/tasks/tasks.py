@@ -1,20 +1,25 @@
 import logging
 from datetime import datetime, timezone, date, time, timedelta
-from sqlalchemy import select, update
+from app.core.config import get_settings
+from app.core.database import async_session_factory
+from app.core.redis import release_lock
+from app.models.models import (
+    BookingOrder,
+    OrderStatus,
+    RefundRecord,
+    SettlementRecord,
+    SettlementStatus,
+    SlotStatus,
+    VenueTimeSlot,
+)
+from app.services.payment_callback import process_callback
+from app.services.settlement import _to_cents
 from app.tasks.worker import celery_app
 from asgiref.sync import async_to_sync
-
-logger = logging.getLogger(__name__)
-from app.core.database import async_session_factory, engine
-from app.core.redis import release_lock
-from app.models.models import VenueTimeSlot, SlotStatus, BookingOrder, OrderStatus
-from app.services.payment_callback import process_callback
 
 
 async def _release_expired_locks_impl():
     """Release venue time slots that have been locked but not paid within TTL."""
-    from app.core.config import get_settings
-
     settings = get_settings()
     released_count = 0
     async with async_session_factory() as session:
@@ -117,11 +122,7 @@ def generate_daily_slots():
 
 async def _execute_pending_settlements_impl():
     """Poll for due pending settlements and execute profit-sharing."""
-    from sqlalchemy import select
-    from app.core.database import async_session_factory
-    from app.core.config import get_settings
-    from app.services.settlement import execute_settlement, query_settlement_status, _to_cents
-    from app.models.models import SettlementRecord, SettlementStatus
+    from app.services.settlement import execute_settlement, query_settlement_status
 
     settings = get_settings()
     async with async_session_factory() as session:
@@ -161,7 +162,6 @@ def execute_pending_settlements():
 
 
 def _refund_backoff_seconds(attempt: int) -> int:
-    from app.core.config import get_settings
     settings = get_settings()
     base = settings.REFUND_RETRY_BACKOFF_BASE_SECONDS
     return min(base * (2 ** attempt), 1800)
@@ -179,7 +179,6 @@ def _is_refund_retryable(exc: Exception) -> bool:
 
 
 async def _update_order_after_refund(session, order_id: int, status: str, refund_id: str = None):
-    from sqlalchemy import select
     result = await session.execute(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
@@ -203,11 +202,7 @@ async def _update_order_after_refund(session, order_id: int, status: str, refund
 
 async def _retry_failed_refunds_impl():
     """Retry failed or pending refund submissions to WeChat Pay."""
-    from sqlalchemy import select
-    from app.core.database import async_session_factory
-    from app.core.config import get_settings
     from app.core.wechat_pay import get_wxpay
-    from app.models.models import RefundRecord
 
     settings = get_settings()
     async with async_session_factory() as session:
@@ -291,10 +286,7 @@ def retry_failed_refunds():
 
 async def _poll_processing_refunds_impl():
     """Poll WeChat for refunds stuck in PROCESSING status."""
-    from sqlalchemy import select
-    from app.core.database import async_session_factory
     from app.core.wechat_pay import get_wxpay
-    from app.models.models import RefundRecord
 
     async with async_session_factory() as session:
         now = datetime.utcnow()
@@ -346,8 +338,6 @@ def poll_processing_refunds():
 
 async def _process_wx_callback_impl(event_type: str, data: dict):
     """Process WeChat Pay callback asynchronously after immediate acknowledgment."""
-    from app.core.database import async_session_factory
-
     async with async_session_factory() as session:
         try:
             result = await process_callback(event_type, data, session)
