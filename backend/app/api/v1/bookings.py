@@ -474,6 +474,7 @@ async def cancel_booking(
     return {"msg": "ok", "refund_amount": str(refund_amount)}
 
 
+@router.post("/{booking_id}/refund")
 async def refund_booking(
     booking_id: int,
     req: RefundRequest,
