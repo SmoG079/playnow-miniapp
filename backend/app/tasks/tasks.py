@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone, date, time, timedelta
+from sqlalchemy import select, update
 from app.core.config import get_settings
 from app.core.database import async_session_factory
 from app.core.redis import release_lock
