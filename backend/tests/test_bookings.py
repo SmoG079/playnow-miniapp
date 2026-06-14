@@ -255,3 +255,20 @@ async def test_create_booking_accepts_tomorrow(user, venue, club, settings_mock)
 
     assert result.status == "pending"
     assert result.slot_id == 1
+
+
+# ---------------------------------------------------------------------------
+# P1-10: booking config endpoint
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_booking_config_returns_free_cancel_hours():
+    """P1-10: /bookings/config should return free_cancel_hours from settings."""
+    from app.api.v1.bookings import get_booking_config
+    settings_mock = MagicMock()
+    settings_mock.FREE_CANCEL_HOURS = 24
+
+    with patch("app.api.v1.bookings.settings", settings_mock):
+        result = await get_booking_config()
+
+    assert result == {"free_cancel_hours": 24}

@@ -19,11 +19,24 @@ Page({
     page: 1,
     pageSize: 20,
     hasMore: true,
+    freeCancelHours: 24,
   },
 
   onShow() {
     if (!perm.requireLogin()) return;
+    this.loadConfig();
     this.loadBookings(true);
+  },
+
+  async loadConfig() {
+    try {
+      const res = await app.request({ url: '/bookings/config' });
+      if (res && typeof res.free_cancel_hours === 'number') {
+        this.setData({ freeCancelHours: res.free_cancel_hours });
+      }
+    } catch (e) {
+      console.error('loadConfig failed', e);
+    }
   },
 
   async loadBookings(reset = false) {
@@ -117,7 +130,8 @@ Page({
     }
     if (booking.status !== 'paid') return;
 
-    // Estimate refund rate based on backend FREE_CANCEL_HOURS=24
+    // Estimate refund rate based on backend FREE_CANCEL_HOURS
+    const freeCancelHours = this.data.freeCancelHours;
     const now = new Date();
     const slotDate = new Date(booking.slot_date + 'T00:00:00');
     const [sh, sm] = booking.slot_start.split(':').map(Number);
@@ -125,7 +139,7 @@ Page({
     const hoursBefore = (slotDate - now) / (1000 * 60 * 60);
 
     let refundRate = 0;
-    if (hoursBefore >= 24) refundRate = 1;
+    if (hoursBefore >= freeCancelHours) refundRate = 1;
     else if (hoursBefore >= 0) refundRate = 0.5;
 
     if (refundRate === 0) {
@@ -138,8 +152,8 @@ Page({
 
     const refundAmount = (booking.amount * refundRate).toFixed(2);
     const refundText = refundRate === 1
-      ? '开场前24小时以上取消，可全额退款'
-      : '开场前24小时内取消，将退款50%';
+      ? `开场前${freeCancelHours}小时以上取消，可全额退款`
+      : `开场前${freeCancelHours}小时内取消，将退款50%`;
 
     wx.showModal({
       title: '取消并退款',

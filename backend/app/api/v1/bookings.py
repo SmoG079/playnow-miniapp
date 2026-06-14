@@ -147,6 +147,12 @@ async def create_booking(
         raise
 
 
+@router.get("/config")
+async def get_booking_config():
+    """Return public booking configuration (e.g. free cancellation window)."""
+    return {"free_cancel_hours": settings.FREE_CANCEL_HOURS}
+
+
 @router.get("/{booking_id}", response_model=BookingDetail)
 async def get_booking(
     booking_id: int,
