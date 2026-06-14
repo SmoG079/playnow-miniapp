@@ -20,9 +20,13 @@ App({
   },
 
   /** Redirect to login if not authenticated. Returns true if logged in. */
-  requireLogin() {
+  requireLogin(options = {}) {
     if (this.globalData.token) return true;
-    wx.navigateTo({ url: '/pages/common/login' });
+    const { redirect } = options;
+    const url = redirect
+      ? `/pages/common/login?redirect=${encodeURIComponent(redirect)}`
+      : '/pages/common/login';
+    wx.navigateTo({ url });
     return false;
   },
 
@@ -37,7 +41,7 @@ App({
     }
   },
 
-  request({ url, method = 'GET', data = {}, skipAuth = false }) {
+  request({ url, method = 'GET', data = {}, skipAuth = false, skipRefresh = false }) {
     return new Promise((resolve, reject) => {
       const header = {};
       if (!skipAuth && this.globalData.token) {
@@ -53,9 +57,9 @@ App({
         },
         timeout: 30000,
         success: (res) => {
-          if (res.statusCode === 200) {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(res.data);
-          } else if (res.statusCode === 401) {
+          } else if (res.statusCode === 401 && !skipRefresh) {
             this.refreshTokenAndRetry({ url, method, data, resolve, reject });
           } else {
             wx.showToast({ title: (res.data && res.data.detail) || '请求失败', icon: 'none' });
@@ -77,13 +81,14 @@ App({
         method: 'POST',
         data: { refresh_token: this.globalData.refreshToken },
         skipAuth: true,
+        skipRefresh: true,
       });
       this.globalData.token = res.access_token;
       this.globalData.refreshToken = res.refresh_token;
       wx.setStorageSync('access_token', res.access_token);
       wx.setStorageSync('refresh_token', res.refresh_token);
       // Retry original request
-      const retryRes = await this.request({ url, method, data });
+      const retryRes = await this.request({ url, method, data, skipRefresh: true });
       resolve(retryRes);
     } catch (e) {
       // Refresh failed, go to login
