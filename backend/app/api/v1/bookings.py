@@ -794,8 +794,13 @@ async def retry_settlement(
     rec.retry_count = 0
     await db.commit()
     rec = await execute_settlement(db, settlement_id)
+    await db.commit()  # persist processing state / wx_split_order_no
     if _v(rec.status) == "processing":
-        rec = await query_settlement_status(db, settlement_id)
+        try:
+            rec = await query_settlement_status(db, settlement_id)
+            await db.commit()
+        except Exception:
+            logger.exception("Settlement %s query status failed during retry, but processing state is committed", settlement_id)
     await db.commit()
 
     # Fetch order_no for the response

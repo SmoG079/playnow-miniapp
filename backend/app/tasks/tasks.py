@@ -144,9 +144,13 @@ async def _execute_pending_settlements_impl():
         for sid in ids:
             try:
                 rec = await execute_settlement(session, sid)
+                await session.commit()  # persist processing state / wx_split_order_no
                 if rec.status == SettlementStatus.processing and rec.wx_split_order_no:
-                    await query_settlement_status(session, sid)
-                await session.commit()
+                    try:
+                        await query_settlement_status(session, sid)
+                        await session.commit()
+                    except Exception:
+                        logger.exception("Settlement %s query status failed, but processing state is committed", sid)
                 processed += 1
             except Exception:
                 logger.exception("Settlement %s failed during batch execution", sid)
