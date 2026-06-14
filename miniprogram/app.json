@@ -2,7 +2,6 @@
   "pages": [
     "pages/home/index",
     "pages/booking/club-list",
-    "pages/booking/club-detail",
     "pages/booking/venue-detail",
     "pages/booking/confirm",
     "pages/booking/success",

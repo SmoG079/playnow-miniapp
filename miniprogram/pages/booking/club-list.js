@@ -4,6 +4,8 @@ Page({
   data: {
     clubs: [],
     loading: false,
+    page: 1,
+    hasMore: true,
     keyword: '',
     sportFilter: '',
     latitude: null,
@@ -23,7 +25,13 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadClubs().then(() => wx.stopPullDownRefresh());
+    this.resetAndLoadClubs().then(() => wx.stopPullDownRefresh());
+  },
+
+  onReachBottom() {
+    if (this.data.hasMore && !this.data.loading) {
+      this.loadClubs(true);
+    }
   },
 
   getLocation() {
@@ -42,10 +50,11 @@ Page({
     });
   },
 
-  async loadClubs() {
+  async loadClubs(append = false) {
     this.setData({ loading: true });
     try {
-      let url = '/clubs?page=1&page_size=20';
+      const page = append ? this.data.page + 1 : 1;
+      let url = `/clubs?page=${page}&page_size=20`;
       if (this.data.latitude && this.data.sortBy === 'distance') {
         url += `&lat=${this.data.latitude}&lng=${this.data.longitude}&sort_by=distance`;
       }
@@ -56,7 +65,13 @@ Page({
         url += `&keyword=${this.data.keyword}`;
       }
       const res = await app.request({ url });
-      this.setData({ clubs: res.items || [] });
+      const items = res.items || [];
+      const clubs = append ? this.data.clubs.concat(items) : items;
+      this.setData({
+        clubs,
+        page,
+        hasMore: items.length === 20,
+      });
     } catch (e) {
       console.error('Load clubs failed', e);
     } finally {
@@ -64,27 +79,33 @@ Page({
     }
   },
 
+  resetAndLoadClubs() {
+    this.setData({ page: 1, hasMore: true, clubs: [] }, () => {
+      this.loadClubs();
+    });
+  },
+
   onSearchInput(e) {
     this.setData({ keyword: e.detail.value });
   },
 
   onSearch() {
-    this.loadClubs();
+    this.resetAndLoadClubs();
   },
 
   onSportFilter(e) {
     const val = e.currentTarget.dataset.value;
     this.setData({ sportFilter: val });
-    this.loadClubs();
+    this.resetAndLoadClubs();
   },
 
   onSortToggle() {
     if (this.data.sortBy === 'distance') {
-      this.setData({ sortBy: 'default' }, () => this.loadClubs());
+      this.setData({ sortBy: 'default' }, () => this.resetAndLoadClubs());
       return;
     }
     if (this.data.latitude) {
-      this.setData({ sortBy: 'distance' }, () => this.loadClubs());
+      this.setData({ sortBy: 'distance' }, () => this.resetAndLoadClubs());
       return;
     }
     wx.showModal({
@@ -104,6 +125,7 @@ Page({
 
   onClubDetail(e) {
     const id = e.currentTarget.dataset.id;
+    // venue-detail is the club booking page: it loads club info + venue slots
     wx.navigateTo({ url: `/pages/booking/venue-detail?id=${id}` });
   },
 
