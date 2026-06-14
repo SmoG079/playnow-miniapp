@@ -329,5 +329,4 @@ async def process_callback(event_type: str, data: dict, db: AsyncSession):
     if event_type == "TRANSACTION.CLOSED":
         return await _handle_payment_closed(data, db)
     # Other events - acknowledge but no action needed
-    await db.commit()
     return {"code": "SUCCESS"}
