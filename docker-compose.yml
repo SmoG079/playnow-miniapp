@@ -21,8 +21,10 @@ services:
       - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   celery_worker:
@@ -35,8 +37,10 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
     command: celery -A app.tasks.worker worker -l info -c 2
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   celery_beat:
@@ -49,10 +53,12 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
     command: celery -A app.tasks.worker beat -l info
     depends_on:
-      - mysql
-      - redis
-      - celery_worker
-    restart: unless-stopped
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      celery_worker:
+        condition: service_started
 
   mysql:
     image: mysql:8.0
