@@ -45,11 +45,17 @@
         <text class="amount">¥{{item.amount}}</text>
         <view class="actions">
           <text
-            class="btn-cancel"
+            class="btn-pay-now"
             wx:if="{{item.status === 'pending'}}"
-            data-booking="{{item}}"
+            data-id="{{item.id}}"
+            bindtap="onPayNow"
+          >立即支付</text>
+          <text
+            class="btn-cancel"
+            wx:if="{{item.status === 'pending' || item.status === 'paid'}}"
+            data-id="{{item.id}}"
             bindtap="onCancelBooking"
-          >取消</text>
+          >{{item.status === 'paid' ? '取消/退款' : '取消'}}</text>
         </view>
       </view>
     </view>

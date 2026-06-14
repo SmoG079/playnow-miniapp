@@ -1,5 +1,6 @@
 const app = getApp();
 const perm = require('../../utils/permission');
+const wxpay = require('../../utils/wxpay');
 
 const STATUS_TABS = [
   { label: '全部', value: '' },
@@ -56,10 +57,26 @@ Page({
     this.loadBookings(true);
   },
 
+  _getBookingById(id) {
+    return this.data.bookings.find((b) => b.id === id);
+  },
+
+  _showBookingExpiredAndReload() {
+    wx.showToast({ title: '订单信息已过期，请刷新', icon: 'none' });
+    this.loadBookings(true);
+  },
+
   onCancelBooking(e) {
-    const booking = e.currentTarget.dataset.booking;
-    if (!booking || booking.status !== 'pending') {
+    const id = e.currentTarget.dataset.id;
+    const booking = this._getBookingById(id);
+    if (!booking) {
+      return this._showBookingExpiredAndReload();
+    }
+    if (booking.status !== 'pending' && booking.status !== 'paid') {
       return wx.showToast({ title: '该订单无法取消', icon: 'none' });
+    }
+    if (booking.status === 'paid') {
+      return this.onCancelOrRefund(e);
     }
     wx.showModal({
       title: '取消预约',
@@ -71,17 +88,82 @@ Page({
     });
   },
 
+  async onPayNow(e) {
+    const id = e.currentTarget.dataset.id;
+    const booking = this._getBookingById(id);
+    if (!booking) {
+      return this._showBookingExpiredAndReload();
+    }
+    if (booking.status !== 'pending') {
+      return wx.showToast({ title: '该订单无法支付', icon: 'none' });
+    }
+    try {
+      await wxpay.payBooking(booking.id);
+      wx.redirectTo({
+        url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
+      });
+    } catch (e) {
+      if (e.message !== '用户取消支付') {
+        wx.showToast({ title: '支付失败', icon: 'none' });
+      }
+    }
+  },
+
+  onCancelOrRefund(e) {
+    const id = e.currentTarget.dataset.id;
+    const booking = this._getBookingById(id);
+    if (!booking) {
+      return this._showBookingExpiredAndReload();
+    }
+    if (booking.status !== 'paid') return;
+
+    // Estimate refund rate based on backend FREE_CANCEL_HOURS=24
+    const now = new Date();
+    const slotDate = new Date(booking.slot_date + 'T00:00:00');
+    const [sh, sm] = booking.slot_start.split(':').map(Number);
+    slotDate.setHours(sh, sm, 0, 0);
+    const hoursBefore = (slotDate - now) / (1000 * 60 * 60);
+
+    let refundRate = 0;
+    if (hoursBefore >= 24) refundRate = 1;
+    else if (hoursBefore >= 0) refundRate = 0.5;
+
+    if (refundRate === 0) {
+      return wx.showModal({
+        title: '无法退款',
+        content: '已过开场时间，无法取消订单',
+        showCancel: false,
+      });
+    }
+
+    const refundAmount = (booking.amount * refundRate).toFixed(2);
+    const refundText = refundRate === 1
+      ? '开场前24小时以上取消，可全额退款'
+      : '开场前24小时内取消，将退款50%';
+
+    wx.showModal({
+      title: '取消并退款',
+      content: `确定取消订单 ${booking.order_no} 吗？\n\n${refundText}\n预计退款金额：¥${refundAmount}`,
+      confirmColor: '#f44336',
+      success: (res) => {
+        if (res.confirm) this.doCancel(booking.id);
+      },
+    });
+  },
+
   async doCancel(bookingId) {
     try {
-      await app.request({
+      const res = await app.request({
         url: `/bookings/${bookingId}/cancel`,
         method: 'POST',
         data: { reason: '用户取消' },
       });
-      wx.showToast({ title: '已取消', icon: 'success' });
+      const msg = res.refund_amount ? `已发起退款 ¥${res.refund_amount}` : '已取消';
+      wx.showToast({ title: msg, icon: 'success' });
       this.loadBookings(true);
     } catch (e) {
-      wx.showToast({ title: '取消失败', icon: 'none' });
+      const detail = (e.data && e.data.detail) || '取消失败';
+      wx.showToast({ title: detail, icon: 'none' });
     }
   },
 
