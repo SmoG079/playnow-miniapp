@@ -177,7 +177,7 @@ class BookingOrder(Base):
     order_no = Column(String(32), nullable=False, unique=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=False)
-    slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=False)
+    slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=True)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
     amount = Column(DECIMAL(10, 2), nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.pending, index=True, nullable=False)

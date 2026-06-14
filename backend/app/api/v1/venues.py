@@ -127,6 +127,18 @@ async def get_slots(
     ]
 
 
+def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
+    return SlotBrief(
+        id=slot.id,
+        venue_id=slot.venue_id,
+        date=slot.date,
+        start_time=slot.start_time,
+        end_time=slot.end_time,
+        price=slot.price_override if slot.price_override is not None else (slot.venue.price_per_hour if slot.venue else Decimal("0")),
+        status=_v(slot.status),
+    )
+
+
 def _effective_price_for_slot(start_time: time, price_rules: list, venue_price: Decimal) -> Decimal:
     """Return the first matching price rule price, else venue default."""
     for rule in price_rules:

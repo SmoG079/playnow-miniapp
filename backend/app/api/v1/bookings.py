@@ -312,7 +312,11 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     timestamp = request.headers.get("Wechatpay-Timestamp")
     nonce = request.headers.get("Wechatpay-Nonce")
     now = int(time.time())
-    if not timestamp or abs(now - int(timestamp)) > 300:
+    try:
+        ts = int(timestamp)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid callback timestamp")
+    if not timestamp or abs(now - ts) > 300:
         logger.warning("Callback timestamp invalid: timestamp=%s now=%s", timestamp, now)
         raise HTTPException(status_code=400, detail="Callback timestamp invalid")
 

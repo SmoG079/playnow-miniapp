@@ -64,7 +64,7 @@ async def _release_expired_locks_impl():
         return released_count
 
 
-@celery_app.task(name="release_expired_locks")
+@celery_app.task(name="app.tasks.tasks.release_expired_locks")
 def release_expired_locks():
     released = async_to_sync(_release_expired_locks_impl)()
     return f"Released {released} expired locks"
@@ -117,7 +117,7 @@ async def _generate_daily_slots_impl():
         return created_total
 
 
-@celery_app.task(name="generate_daily_slots")
+@celery_app.task(name="app.tasks.tasks.generate_daily_slots")
 def generate_daily_slots():
     created = async_to_sync(_generate_daily_slots_impl)()
     return f"Generated {created} slots"

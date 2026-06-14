@@ -1,3 +1,4 @@
+from app.services.settlement import _to_cents
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -319,7 +320,7 @@ async def pay_tournament(
         result = wxpay.pay(
             description=tournament.title,
             out_trade_no=order.order_no,
-            amount={"total": int(order.amount * 100)},
+            amount={"total": _to_cents(order.amount)},
             payer={"openid": current_user.openid},
         )
         prepay_id = result.get("prepay_id")
@@ -335,6 +336,8 @@ async def pay_tournament(
 async def _lock_tournament_slots(db: AsyncSession, venue_id: int, start_time, end_time):
     """Lock all venue slots within the tournament time range."""
     from datetime import datetime as dt
+    req_start = start_time.replace(tzinfo=None) if start_time.tzinfo else start_time
+    req_end = end_time.replace(tzinfo=None) if end_time.tzinfo else end_time
     result = await db.execute(
         select(VenueTimeSlot).where(
             VenueTimeSlot.venue_id == venue_id,
@@ -347,5 +350,5 @@ async def _lock_tournament_slots(db: AsyncSession, venue_id: int, start_time, en
     for slot in slots:
         slot_start = dt.combine(slot.date, slot.start_time)
         slot_end = dt.combine(slot.date, slot.end_time)
-        if slot_start < end_time and slot_end > start_time:
+        if slot_start < req_end and slot_end > req_start:
             slot.status = SlotStatus.maintenance
