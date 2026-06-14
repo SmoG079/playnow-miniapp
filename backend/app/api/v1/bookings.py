@@ -125,37 +125,37 @@ async def create_booking(
         await db.flush()
         await db.refresh(order)
         await db.commit()
-
-        return BookingDetail(
-            id=order.id,
-            order_no=order.order_no,
-            user_id=order.user_id,
-            venue_id=order.venue_id,
-            slot_id=order.slot_id,
-            club_id=order.club_id,
-            amount=order.amount,
-            status=_v(order.status),
-            payment_time=order.payment_time,
-            wx_transaction_id=order.wx_transaction_id,
-            prepay_id=order.prepay_id,
-            prepay_id_created_at=order.prepay_id_created_at,
-            cancel_reason=order.cancel_reason,
-            cancel_time=order.cancel_time,
-            created_at=order.created_at,
-            venue_name=venue.name,
-            club_name=club.name if club else None,
-            slot_date=slot.date,
-            slot_start=slot.start_time,
-            slot_end=slot.end_time,
-            slot_datetime=datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat(),
-            refund_amount=order.refund_amount,
-            refund_id=order.refund_id,
-            refund_time=order.refund_time,
-            refund_status=order.refund_status,
-        )
     except Exception:
         await release_lock(lock_key, str(current_user.id))
         raise
+
+    return BookingDetail(
+        id=order.id,
+        order_no=order.order_no,
+        user_id=order.user_id,
+        venue_id=order.venue_id,
+        slot_id=order.slot_id,
+        club_id=order.club_id,
+        amount=order.amount,
+        status=_v(order.status),
+        payment_time=order.payment_time,
+        wx_transaction_id=order.wx_transaction_id,
+        prepay_id=order.prepay_id,
+        prepay_id_created_at=order.prepay_id_created_at,
+        cancel_reason=order.cancel_reason,
+        cancel_time=order.cancel_time,
+        created_at=order.created_at,
+        venue_name=venue.name,
+        club_name=club.name if club else None,
+        slot_date=slot.date,
+        slot_start=slot.start_time,
+        slot_end=slot.end_time,
+        slot_datetime=datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat(),
+        refund_amount=order.refund_amount,
+        refund_id=order.refund_id,
+        refund_time=order.refund_time,
+        refund_status=order.refund_status,
+    )
 
 
 @router.get("/config")
@@ -362,6 +362,7 @@ async def cancel_booking(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
         .where(BookingOrder.id == booking_id)
+        .with_for_update()
     )
     row = result.one_or_none()
     if not row:
@@ -491,6 +492,7 @@ async def refund_booking(
         select(BookingOrder, VenueTimeSlot)
         .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
         .where(BookingOrder.id == booking_id)
+        .with_for_update()
     )
     row = result.one_or_none()
     if not row:
