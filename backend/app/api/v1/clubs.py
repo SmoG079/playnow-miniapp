@@ -1,11 +1,12 @@
 from datetime import date, time
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord
 from app.models.models import ClubMemberRole
+from app.utils.geo import haversine
 from app.schemas.schemas import (
     ClubCreate, ClubUpdate, ClubBrief, ClubDetail, PaginatedResponse,
     VenueBrief, ClubListParams, ClubStats,
@@ -44,8 +45,31 @@ async def list_clubs(
     result = await db.execute(query.offset(offset).limit(page_size).order_by(Club.id.desc()))
     clubs = result.scalars().all()
 
+    has_location = lat is not None and lng is not None
+    items = []
+    for c in clubs:
+        distance = None
+        if has_location and c.latitude is not None and c.longitude is not None:
+            distance = haversine(
+                lat, lng,
+                float(c.latitude), float(c.longitude),
+            )
+        items.append(ClubBrief.model_validate(c, update={"distance": distance}))
+
+    if has_location:
+        items.sort(key=lambda x: x.distance if x.distance is not None else float("inf"))
+
+    # Increment exposure count for listed clubs
+    if clubs:
+        await db.execute(
+            update(Club)
+            .where(Club.id.in_([c.id for c in clubs]))
+            .values(exposure_count=Club.exposure_count + 1)
+        )
+        await db.flush()
+
     return PaginatedResponse(
-        items=[ClubBrief.model_validate(c) for c in clubs],
+        items=items,
         total=total, page=page, page_size=page_size,
     )
 
@@ -92,6 +116,9 @@ async def get_club(club_id: int, db: AsyncSession = Depends(get_db)):
     if not club:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Club not found")
+
+    club.view_count += 1
+    await db.flush()
 
     return await _club_to_detail_async(club, db)
 
@@ -165,6 +192,12 @@ async def club_stats(
     from datetime import date as date_type
     today = date_type.today()
 
+    # Load club for view/exposure counts
+    club_result = await db.execute(select(Club).where(Club.id == club_id))
+    club = club_result.scalar_one_or_none()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+
     # Total venues
     v_result = await db.execute(
         select(func.count(Venue.id)).where(Venue.club_id == club_id)
@@ -209,6 +242,8 @@ async def club_stats(
         venue_utilization=0.0,  # TODO: calculate real utilization
         today_orders=today_orders,
         today_revenue=today_revenue,
+        view_count=club.view_count,
+        exposure_count=club.exposure_count,
     )
 
 

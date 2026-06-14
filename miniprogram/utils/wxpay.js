@@ -1,6 +1,21 @@
 const app = getApp();
 
 /**
+ * Validate WeChat payment parameters.
+ * @param {object} payParams
+ * @returns {string|null} Error message if invalid, null if valid
+ */
+function validatePayParams(payParams) {
+  const required = ['timeStamp', 'nonceStr', 'package', 'signType', 'paySign'];
+  for (const key of required) {
+    if (!payParams[key]) {
+      return `缺少支付参数: ${key}`;
+    }
+  }
+  return null;
+}
+
+/**
  * Initiate WeChat payment for any pending order.
  * @param {number} orderId - The booking order ID
  * @returns {Promise} Resolves when payment is done
@@ -13,7 +28,14 @@ async function payOrder(orderId) {
       method: 'POST',
     });
 
-    // 2. Call wx.requestPayment
+    // 2. Validate params
+    const validationError = validatePayParams(payParams);
+    if (validationError) {
+      wx.showToast({ title: validationError, icon: 'none' });
+      return Promise.reject(new Error(validationError));
+    }
+
+    // 3. Call wx.requestPayment
     return new Promise((resolve, reject) => {
       wx.requestPayment({
         timeStamp: payParams.timeStamp,
@@ -47,6 +69,12 @@ async function payTournament(tournamentId) {
       url: `/tournaments/${tournamentId}/pay`,
       method: 'POST',
     });
+
+    const validationError = validatePayParams(payParams);
+    if (validationError) {
+      wx.showToast({ title: validationError, icon: 'none' });
+      return Promise.reject(new Error(validationError));
+    }
 
     return new Promise((resolve, reject) => {
       wx.requestPayment({

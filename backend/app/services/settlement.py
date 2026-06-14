@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.api.deps import _v
 from app.core.config import get_settings
 from app.core.wechat_pay import get_wxpay
 from app.models.models import SettlementRecord, SettlementStatus, BookingOrder, OrderStatus, Club
@@ -42,11 +43,11 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
 
     settlement, order, club = row
 
-    if settlement.status not in (SettlementStatus.pending, SettlementStatus.failed):
+    if _v(settlement.status) not in ("pending", "failed"):
         logger.info("Settlement %s already executed (status=%s)", settlement.id, settlement.status)
         return settlement
 
-    if order.status != OrderStatus.paid:
+    if _v(order.status) != "paid":
         settlement.status = SettlementStatus.failed
         settlement.fail_reason = f"Order status is {order.status}, expected paid"
         return settlement
@@ -207,7 +208,7 @@ async def query_settlement_status(session: AsyncSession, settlement_id: int) -> 
 
     settlement, order, club = row
 
-    if settlement.status in (SettlementStatus.completed, SettlementStatus.failed):
+    if _v(settlement.status) in ("completed", "failed"):
         return settlement
 
     if not settlement.out_order_no or not order.wx_transaction_id:

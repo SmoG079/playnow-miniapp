@@ -146,6 +146,15 @@
   border-radius: 8rpx;
 }
 
+.btn-pay-now {
+  font-size: 26rpx;
+  color: #fff;
+  background-color: #07c160;
+  padding: 8rpx 24rpx;
+  border-radius: 8rpx;
+  margin-right: 16rpx;
+}
+
 /* Load More */
 .load-more {
   text-align: center;

@@ -1,5 +1,12 @@
 <view class="page">
   <view class="card">
+    <view class="avatar-edit">
+      <button class="avatar-wrapper" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image class="avatar" src="{{avatarUrl || '/images/default-avatar.png'}}" mode="aspectFill" />
+        <text class="avatar-tip">点击更换头像</text>
+      </button>
+    </view>
+
     <text class="form-label">昵称</text>
     <input class="form-input" placeholder="输入昵称" value="{{nickname}}" bindinput="onNicknameInput" />
 

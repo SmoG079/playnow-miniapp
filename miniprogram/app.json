@@ -12,6 +12,7 @@
     "pages/publish/venue-manage",
     "pages/publish/slot-manage",
     "pages/publish/order-manage",
+    "pages/publish/post-registration-approve",
     "pages/chat/index",
     "pages/chat/conversation",
     "pages/profile/index",

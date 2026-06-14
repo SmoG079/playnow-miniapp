@@ -8,6 +8,7 @@ Page({
     sportFilter: '',
     latitude: null,
     longitude: null,
+    sortBy: 'default', // 'default' | 'distance'
   },
 
   onLoad() {
@@ -29,7 +30,11 @@ Page({
     wx.getLocation({
       type: 'gcj02',
       success: (res) => {
-        this.setData({ latitude: res.latitude, longitude: res.longitude });
+        this.setData({ latitude: res.latitude, longitude: res.longitude }, () => {
+          if (this.data.sortBy === 'distance') {
+            this.loadClubs();
+          }
+        });
       },
       fail: () => {
         // Location denied, still show clubs without distance
@@ -41,8 +46,8 @@ Page({
     this.setData({ loading: true });
     try {
       let url = '/clubs?page=1&page_size=20';
-      if (this.data.latitude) {
-        url += `&lat=${this.data.latitude}&lng=${this.data.longitude}`;
+      if (this.data.latitude && this.data.sortBy === 'distance') {
+        url += `&lat=${this.data.latitude}&lng=${this.data.longitude}&sort_by=distance`;
       }
       if (this.data.sportFilter) {
         url += `&sport=${this.data.sportFilter}`;
@@ -71,6 +76,26 @@ Page({
     const val = e.currentTarget.dataset.value;
     this.setData({ sportFilter: val });
     this.loadClubs();
+  },
+
+  onSortToggle() {
+    if (this.data.sortBy === 'distance') {
+      this.setData({ sortBy: 'default' }, () => this.loadClubs());
+      return;
+    }
+    if (this.data.latitude) {
+      this.setData({ sortBy: 'distance' }, () => this.loadClubs());
+      return;
+    }
+    wx.showModal({
+      title: '需要位置权限',
+      content: '按距离排序需要获取您的位置',
+      success: (res) => {
+        if (res.confirm) {
+          this.getLocation();
+        }
+      },
+    });
   },
 
   onCreateClub() {

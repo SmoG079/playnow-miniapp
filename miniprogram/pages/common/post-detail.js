@@ -5,10 +5,16 @@ Page({
     post: null,
     loading: true,
     isRegistered: false,
+    myRegistrationStatus: '',
     isFull: false,
     isOwner: false,
     registrations: [],
     showRegPopup: false,
+
+    comments: [],
+    commentLoading: false,
+    commentInput: '',
+    replyTo: null, // { id, nickname }
   },
 
   onLoad(options) {
@@ -32,6 +38,7 @@ Page({
       const currentUserId = app.globalData.userInfo && app.globalData.userInfo.id;
       const isOwner = post.user_id === currentUserId;
       const isRegistered = post.registrations && post.registrations.some(r => r.user_id === currentUserId && ['pending', 'approved'].includes(r.status));
+      const myRegistration = isRegistered ? post.registrations.find(r => r.user_id === currentUserId) : null;
       const isFull = post.registration_count >= post.players_needed;
 
       // Compute weekday from preferred_date
@@ -47,10 +54,12 @@ Page({
         post,
         isOwner,
         isRegistered,
+        myRegistrationStatus: myRegistration ? myRegistration.status : '',
         isFull,
         registrations: post.registrations || [],
         loading: false,
       });
+      this.loadComments();
     } catch (e) {
       console.error(e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -59,19 +68,25 @@ Page({
   },
 
   onRegister() {
+    // Must be logged in to register/cancel/manage registrations
+    if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
+      return;
+    }
+
     if (this.data.isOwner) {
-      // 管理报名 - 跳转到管理页面
+      // 管理报名 - 跳转到审核页面
       wx.navigateTo({
-        url: `/pages/publish/order-manage?postId=${this.data.postId}`,
+        url: `/pages/publish/post-registration-approve?postId=${this.data.postId}`,
       });
       return;
     }
 
     if (this.data.isRegistered) {
       // 取消报名
+      const statusText = this.data.myRegistrationStatus === 'pending' ? '待审核' : '已通过';
       wx.showModal({
         title: '确认取消',
-        content: '确定取消报名吗？',
+        content: `确定取消${statusText}的报名吗？`,
         success: async (res) => {
           if (res.confirm) {
             try {
@@ -100,7 +115,8 @@ Page({
                 method: 'POST',
                 data: { message: '' },
               });
-              wx.showToast({ title: '报名成功', icon: 'success' });
+              const msg = this.data.post.approval_required ? '报名已提交，等待审核' : '报名成功';
+              wx.showToast({ title: msg, icon: 'success' });
               this.loadPost(this.data.postId);
             } catch (e) {
               const msg = (e.data && e.data.detail) || '报名失败';
@@ -197,11 +213,96 @@ Page({
   },
 
   onOpenChat() {
+    if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
+      return;
+    }
     const post = this.data.post;
     if (post && post.group_chat_id) {
       wx.showToast({ title: '群聊功能待接入', icon: 'none' });
     } else {
       wx.showToast({ title: '暂无群聊', icon: 'none' });
+    }
+  },
+
+  async loadComments() {
+    this.setData({ commentLoading: true });
+    try {
+      const res = await app.request({ url: `/posts/${this.data.postId}/comments?page=1&page_size=50` });
+      this.setData({ comments: res.items || [] });
+    } catch (e) {
+      console.error('Load comments failed', e);
+    } finally {
+      this.setData({ commentLoading: false });
+    }
+  },
+
+  onCommentInput(e) {
+    this.setData({ commentInput: e.detail.value });
+  },
+
+  onReplyTap(e) {
+    const { id, nickname } = e.currentTarget.dataset;
+    this.setData({ replyTo: { id, nickname } });
+  },
+
+  onCancelReply() {
+    this.setData({ replyTo: null });
+  },
+
+  async onSubmitComment() {
+    if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
+      return;
+    }
+    const content = (this.data.commentInput || '').trim();
+    if (!content) {
+      return wx.showToast({ title: '请输入评论内容', icon: 'none' });
+    }
+    try {
+      await app.request({
+        url: `/posts/${this.data.postId}/comments`,
+        method: 'POST',
+        data: {
+          content,
+          parent_id: this.data.replyTo ? this.data.replyTo.id : null,
+        },
+      });
+      this.setData({ commentInput: '', replyTo: null });
+      this.loadComments();
+    } catch (e) {
+      wx.showToast({ title: '评论失败', icon: 'none' });
+    }
+  },
+
+  onCommentLongPress(e) {
+    const { id, userid } = e.currentTarget.dataset;
+    const currentUserId = app.globalData.userInfo && app.globalData.userInfo.id;
+    const isOwner = this.data.isOwner;
+    const isAuthor = userid === currentUserId;
+    if (!isAuthor && !isOwner) return;
+
+    wx.showActionSheet({
+      itemList: ['删除'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          this.deleteComment(id);
+        }
+      },
+    });
+  },
+
+  async deleteComment(commentId) {
+    if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
+      return;
+    }
+    try {
+      await app.request({
+        url: `/posts/${this.data.postId}/comments/${commentId}`,
+        method: 'DELETE',
+      });
+      wx.showToast({ title: '已删除', icon: 'success' });
+      this.loadComments();
+    } catch (e) {
+      wx.showToast({ title: '删除失败', icon: 'none' });
     }
   },
 });

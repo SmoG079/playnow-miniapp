@@ -82,4 +82,35 @@
     <text class="hint-text">2. 每次最多生成31天的时段</text>
     <text class="hint-text">3. 价格规则按开始时间匹配，未匹配时段使用场地标准价格</text>
   </view>
+
+  <!-- Existing Slots -->
+  <view class="slot-list-card" wx:if="{{venues.length > 0}}">
+    <text class="result-title">已生成时段</text>
+    <view wx:if="{{slotsLoading}}" class="loading-state">
+      <text>加载中...</text>
+    </view>
+    <view wx:elif="{{slots.length === 0}}" class="empty-state">
+      <text>该日期范围暂无时段</text>
+    </view>
+    <view wx:else class="slot-list">
+      <view class="slot-item" wx:for="{{slots}}" wx:key="id">
+        <view class="slot-info">
+          <text class="slot-date">{{item.date_label}}</text>
+          <text class="slot-time">{{item.start_time}} - {{item.end_time}}</text>
+          <text class="slot-price">¥{{item.price}}</text>
+        </view>
+        <view class="slot-status">
+          <text class="status-text {{item.status}}">{{item.status === 'available' ? '可订' : item.status === 'maintenance' ? '维护' : item.status === 'booked' ? '已订' : '锁定'}}</text>
+          <button
+            wx:if="{{item.status === 'available' || item.status === 'maintenance'}}"
+            class="toggle-btn {{item.status === 'maintenance' ? 'enable' : 'disable'}}"
+            size="mini"
+            data-slot-id="{{item.id}}"
+            data-status="{{item.status}}"
+            bindtap="onToggleSlotStatus"
+          >{{item.status === 'available' ? '维护' : '恢复'}}</button>
+        </view>
+      </view>
+    </view>
+  </view>
 </view>

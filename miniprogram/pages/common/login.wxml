@@ -1,6 +1,6 @@
 <view class="login-page">
   <view class="login-header">
-    <image class="logo" src="/images/logo.png" mode="aspectFit" />
+    <image class="logo" src="/images/default-venue.png" mode="aspectFit" />
     <text class="app-name">运动俱乐部</text>
     <text class="app-desc">约球 · 订场 · 比赛</text>
   </view>
@@ -19,6 +19,7 @@
         type="nickname"
         placeholder="请输入昵称"
         value="{{nickname}}"
+        bindinput="onNicknameInput"
       />
     </view>
 

@@ -19,6 +19,7 @@ Page({
     description: '',
     notes: '',
     documents: [],
+    approvalRequired: false,
     loading: false,
   },
 
@@ -87,6 +88,10 @@ Page({
     this.setData({ levelIndex: parseInt(e.detail.value) });
   },
 
+  onApprovalChange(e) {
+    this.setData({ approvalRequired: e.detail.value });
+  },
+
   async onAddDocument() {
     try {
       const res = await wx.chooseMessageFile({
@@ -139,6 +144,7 @@ Page({
           venue_id: this.data.venueIndex > -1 ? this.data.venueIds[this.data.venueIndex] : null,
           booking_id: null,
           documents: this.data.documents.length > 0 ? this.data.documents : null,
+          approval_required: this.data.approvalRequired,
         },
       });
       wx.showToast({ title: '发布成功', icon: 'success' });

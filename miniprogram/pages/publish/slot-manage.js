@@ -16,6 +16,9 @@ Page({
     priceRules: [],
     generating: false,
     result: null,
+
+    slots: [],
+    slotsLoading: false,
   },
 
   onLoad(options) {
@@ -61,22 +64,66 @@ Page({
         if (idx >= 0) venueIndex = idx;
       }
       this.setData({ venues, venueIndex });
+      if (venues.length > 0) {
+        this.loadSlots();
+      }
     } catch (e) {
       console.error(e);
       wx.showToast({ title: '加载场地失败', icon: 'none' });
     }
   },
 
+  async loadSlots() {
+    if (this.data.venues.length === 0) return;
+    const venue = this.data.venues[this.data.venueIndex];
+    this.setData({ slotsLoading: true });
+    try {
+      const res = await app.request({
+        url: `/venues/${venue.id}/slots?date_from=${this.data.dateFrom}&date_to=${this.data.dateTo}`,
+      });
+      const slots = [];
+      (res || []).forEach(group => {
+        (group.slots || []).forEach(s => {
+          slots.push({ ...s, date_label: group.date });
+        });
+      });
+      this.setData({ slots });
+    } catch (e) {
+      console.error(e);
+      wx.showToast({ title: '加载时段失败', icon: 'none' });
+    } finally {
+      this.setData({ slotsLoading: false });
+    }
+  },
+
+  async onToggleSlotStatus(e) {
+    const { slotId, status } = e.currentTarget.dataset;
+    const venue = this.data.venues[this.data.venueIndex];
+    const nextStatus = status === 'available' ? 'maintenance' : 'available';
+    try {
+      await app.request({
+        url: `/venues/${venue.id}/slots/${slotId}/status`,
+        method: 'PATCH',
+        data: { status: nextStatus },
+      });
+      wx.showToast({ title: '状态已更新', icon: 'success' });
+      this.loadSlots();
+    } catch (e) {
+      const msg = (e.data && e.data.detail) || '更新失败';
+      wx.showToast({ title: msg, icon: 'none' });
+    }
+  },
+
   onVenueChange(e) {
-    this.setData({ venueIndex: parseInt(e.detail.value) });
+    this.setData({ venueIndex: parseInt(e.detail.value) }, () => this.loadSlots());
   },
 
   onDateFromChange(e) {
-    this.setData({ dateFrom: e.detail.value });
+    this.setData({ dateFrom: e.detail.value }, () => this.loadSlots());
   },
 
   onDateToChange(e) {
-    this.setData({ dateTo: e.detail.value });
+    this.setData({ dateTo: e.detail.value }, () => this.loadSlots());
   },
 
   onStartTimeChange(e) {
@@ -153,6 +200,7 @@ Page({
       });
       this.setData({ result: res });
       wx.showToast({ title: `新增${res.created}个时段`, icon: 'success' });
+      this.loadSlots();
     } catch (e) {
       console.error(e);
       wx.showToast({ title: '生成失败', icon: 'none' });

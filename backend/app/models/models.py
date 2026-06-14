@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, time
 from sqlalchemy import (
     Column, BigInteger, String, Text, Integer, DateTime, Date, Time,
     Enum, Boolean, DECIMAL, UniqueConstraint, Index, ForeignKey, JSON,
@@ -23,6 +23,7 @@ class User(Base):
     nickname = Column(String(64))
     avatar_url = Column(String(512))
     phone = Column(String(20))
+    session_key = Column(String(64))
     ntrp_level = Column(DECIMAL(2,1), nullable=True, comment='NTRP网球等级')
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -34,6 +35,7 @@ class User(Base):
     tournament_registrations = relationship("TournamentRegistration", back_populates="user")
     managed_clubs = relationship("ClubMember", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
+    comments = relationship("Comment", back_populates="user")
 
 
 class ClubStatus(str, enum.Enum):
@@ -58,6 +60,8 @@ class Club(Base):
     contact_phone = Column(String(20))
     split_ratio = Column(DECIMAL(4, 3), default=0.100, nullable=False)
     sub_merchant_id = Column(String(64))
+    view_count = Column(BigInteger, default=0, nullable=False)
+    exposure_count = Column(BigInteger, default=0, nullable=False)
     status = Column(Enum(ClubStatus), default=ClubStatus.active, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -106,6 +110,9 @@ class Venue(Base):
     cover_image = Column(String(512))
     status = Column(Enum(VenueStatus), default=VenueStatus.active, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
+    opening_time = Column(Time, default=time(8, 0), nullable=False)
+    closing_time = Column(Time, default=time(22, 0), nullable=False)
+    slot_interval_minutes = Column(Integer, default=60, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -167,12 +174,14 @@ class BookingOrder(Base):
     status = Column(Enum(OrderStatus), default=OrderStatus.pending, index=True, nullable=False)
     payment_time = Column(DateTime)
     wx_transaction_id = Column(String(64))
+    prepay_id = Column(String(64))
+    prepay_id_created_at = Column(DateTime)
     cancel_reason = Column(String(256))
     cancel_time = Column(DateTime)
     refund_amount = Column(DECIMAL(10, 2))
     refund_id = Column(String(64))
     refund_time = Column(DateTime)
-    refund_status = Column(String(32), default="pending", nullable=False)
+    refund_status = Column(String(32), default=None, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -200,14 +209,21 @@ class SettlementRecord(Base):
     platform_amount = Column(DECIMAL(10, 2), nullable=False)
     club_amount = Column(DECIMAL(10, 2), nullable=False)
     split_ratio = Column(DECIMAL(4, 3), nullable=False)
-    wx_split_order_no = Column(String(64))
+    wx_split_order_no = Column(String(64))          # WeChat profit-sharing order id
+    out_order_no = Column(String(64), unique=True)  # merchant profit-sharing order no
     status = Column(Enum(SettlementStatus), default=SettlementStatus.pending, nullable=False)
     fail_reason = Column(String(512))
+    retry_count = Column(Integer, default=0)
+    scheduled_at = Column(DateTime, nullable=False) # when settlement may execute
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime)
 
     order = relationship("BookingOrder", back_populates="settlement")
+
+    __table_args__ = (
+        Index("idx_settlement_status_scheduled", "status", "scheduled_at"),
+    )
 
 
 class MatchPostStatus(str, enum.Enum):
@@ -235,6 +251,7 @@ class MatchPost(Base):
     venue_id = Column(BigInteger, ForeignKey("venues.id"))
     booking_id = Column(BigInteger, ForeignKey("booking_orders.id"))
     group_chat_id = Column(String(64))
+    approval_required = Column(Boolean, default=False, nullable=False)
     status = Column(Enum(MatchPostStatus), default=MatchPostStatus.open, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -243,6 +260,7 @@ class MatchPost(Base):
     club = relationship("Club", back_populates="match_posts")
     user = relationship("User", back_populates="match_posts")
     registrations = relationship("MatchRegistration", back_populates="post")
+    comments = relationship("Comment", back_populates="post", order_by="Comment.created_at.desc()")
 
 
 class RegistrationStatus(str, enum.Enum):
@@ -265,6 +283,24 @@ class MatchRegistration(Base):
 
     post = relationship("MatchPost", back_populates="registrations")
     user = relationship("User", back_populates="match_registrations")
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    parent_id = Column(BigInteger, ForeignKey("comments.id"), nullable=True)
+    content = Column(String(512), nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    post = relationship("MatchPost", back_populates="comments")
+    user = relationship("User", back_populates="comments")
+    replies = relationship("Comment", back_populates="parent")
+    parent = relationship("Comment", back_populates="replies", remote_side=[id])
 
 
 class TournamentStatus(str, enum.Enum):
@@ -359,11 +395,17 @@ class RefundRecord(Base):
     amount = Column(DECIMAL(10, 2), nullable=False)
     reason = Column(String(256))
     status = Column(String(32), default="pending")
+    retry_count = Column(Integer, default=0)
+    scheduled_at = Column(DateTime, nullable=True)
+    fail_reason = Column(String(512))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime)
 
-    __table_args__ = (Index("idx_refund_order", "order_id"),)
+    __table_args__ = (
+        Index("idx_refund_order", "order_id"),
+        Index("idx_refund_status_scheduled", "status", "scheduled_at"),
+    )
 
     order = relationship("BookingOrder", back_populates="refund_records")
 

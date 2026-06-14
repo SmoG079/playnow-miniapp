@@ -56,6 +56,11 @@
       </view>
     </picker>
 
+    <view class="form-row form-row-between">
+      <text class="form-label">报名需要审核</text>
+      <switch checked="{{approvalRequired}}" bindchange="onApprovalChange" />
+    </view>
+
     <text class="form-label">详情说明</text>
     <textarea class="form-textarea" placeholder="详细介绍活动规则、注意事项、联系方式等..." value="{{description}}" bindinput="onField" data-field="description" />
 

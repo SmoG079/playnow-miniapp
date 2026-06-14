@@ -14,6 +14,11 @@
     >{{item}}</view>
   </scroll-view>
 
+  <view class="sort-bar">
+    <view class="sort-item {{sortBy === 'default' ? 'active' : ''}}" data-value="default" bindtap="onSortToggle">默认</view>
+    <view class="sort-item {{sortBy === 'distance' ? 'active' : ''}}" data-value="distance" bindtap="onSortToggle">距离最近</view>
+  </view>
+
   <block wx:for="{{clubs}}" wx:key="id">
     <view class="club-card card" data-id="{{item.id}}" bindtap="onClubDetail">
       <image class="club-cover" src="{{item.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
@@ -22,6 +27,7 @@
         <text class="text-sm text-secondary">{{item.address || '暂无地址'}}</text>
         <view class="club-tags">
           <text class="tag tag-primary" wx:for="{{item.sport_types}}" wx:for-item="sport" wx:key="*this">{{sport}}</text>
+          <text class="tag tag-distance" wx:if="{{item.distance !== null && item.distance !== undefined}}">{{item.distance}}km</text>
         </view>
       </view>
       <text class="club-arrow">›</text>

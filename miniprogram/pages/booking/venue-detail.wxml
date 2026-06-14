@@ -87,6 +87,7 @@
           data-row-index="{{rowIndex}}"
           data-col-index="{{colIndex}}"
           bindtap="onSlotTap"
+          bindlongpress="onSlotLongPress"
         >
           <block wx:if="{{item.status === 'available' || item.status === 'locked' || item.status === 'booked'}}">
             <text class="cell-price" wx:if="{{item.status === 'available' && !item.isSelected}}">¥{{item.price}}</text>

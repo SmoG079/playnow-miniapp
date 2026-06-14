@@ -99,7 +99,7 @@ async def _generate_daily_slots_impl():
                             VenueTimeSlot.start_time == slot_start.time(),
                         )
                     )
-                    if not existing.scalar_one_or_none():
+                    if not existing.scalars().first():
                         slot = VenueTimeSlot(
                             venue_id=venue.id,
                             date=current_date,
@@ -251,15 +251,28 @@ async def _retry_failed_refunds_impl():
                 )
                 order = order_result.scalar_one_or_none()
                 tx_id = order.wx_transaction_id if order else None
-                wxpay.refund(
+                resp = wxpay.refund(
                     out_refund_no=rec.out_refund_no,
                     transaction_id=tx_id,
                     out_trade_no=order.order_no if order and not tx_id else None,
                     amount={"refund": _to_cents(rec.amount), "total": _to_cents(order.amount) if order else _to_cents(rec.amount), "currency": "CNY"},
                     reason=rec.reason or "退款重试",
                 )
-                rec.status = "processing"
-                rec.retry_count += 1
+                # Handle the response state properly; only set to processing if WeChat says PROCESSING
+                refund_state = (resp.get("status") or "").upper() if resp else ""
+                if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
+                    rec.status = refund_state.lower()
+                    rec.wx_refund_id = resp.get("refund_id", rec.wx_refund_id)
+                    rec.completed_at = now
+                    await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
+                elif refund_state == "PROCESSING":
+                    rec.status = "processing"
+                    rec.retry_count += 1
+                else:
+                    # Unknown state; treat as failed to avoid spinning
+                    rec.status = "failed"
+                    rec.fail_reason = f"Unexpected refund status from resubmit: {refund_state}"
+                    await _update_order_after_refund(session, rec.order_id, "failed")
                 await session.commit()
                 processed += 1
             except Exception as exc:

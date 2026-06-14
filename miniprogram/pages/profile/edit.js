@@ -18,9 +18,14 @@ Page({
     }
     this.setData({
       nickname: userInfo.nickname || '',
+      avatarUrl: userInfo.avatar_url || '',
       ntrpLevel: ntrp ? String(ntrp) : '',
       ntrpIndex,
     });
+  },
+
+  onChooseAvatar(e) {
+    this.setData({ avatarUrl: e.detail.avatarUrl });
   },
 
   onNicknameInput(e) {
@@ -40,6 +45,7 @@ Page({
     try {
       const updateData = {};
       if (this.data.nickname) updateData.nickname = this.data.nickname;
+      if (this.data.avatarUrl) updateData.avatar_url = this.data.avatarUrl;
       if (this.data.ntrpLevel) updateData.ntrp_level = parseFloat(this.data.ntrpLevel);
 
       await app.request({

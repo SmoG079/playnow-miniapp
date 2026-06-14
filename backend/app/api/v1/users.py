@@ -46,6 +46,8 @@ async def update_me(
         current_user.nickname = req.nickname
     if req.avatar_url is not None:
         current_user.avatar_url = req.avatar_url
+    if req.phone is not None:
+        current_user.phone = req.phone
     if req.ntrp_level is not None:
         current_user.ntrp_level = req.ntrp_level
     await db.commit()

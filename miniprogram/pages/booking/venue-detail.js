@@ -13,6 +13,7 @@ Page({
     selectedDuration: '',
     loading: false,
     currentImage: 0,
+    isClubAdmin: false,
   },
 
   onLoad(options) {
@@ -52,9 +53,9 @@ Page({
   async loadClub() {
     try {
       const club = await app.request({ url: `/clubs/${this.data.clubId}` });
-      // Ensure images is an array
       if (!club.images) club.images = club.cover_image ? [club.cover_image] : [];
-      this.setData({ club });
+      const isClubAdmin = app.managesClub(club.id);
+      this.setData({ club, isClubAdmin });
       this.loadSlots(this.data.selectedDate);
     } catch (e) {
       console.error('Load club failed', e);
@@ -132,6 +133,41 @@ Page({
     }
   },
 
+  onSlotLongPress(e) {
+    if (!this.data.isClubAdmin) return;
+    const { rowIndex, colIndex } = e.currentTarget.dataset;
+    const cell = this.data.rows[rowIndex].cells[colIndex];
+    if (!['available', 'maintenance'].includes(cell.status)) {
+      return wx.showToast({ title: '该状态不可切换', icon: 'none' });
+    }
+    const nextStatus = cell.status === 'available' ? 'maintenance' : 'available';
+    const actionText = nextStatus === 'maintenance' ? '设为维护' : '恢复可订';
+    wx.showModal({
+      title: actionText,
+      content: `${cell.start_time} - ${cell.end_time}`,
+      success: (res) => {
+        if (res.confirm) {
+          this.updateSlotStatus(cell.slot_id, cell.venue_id, nextStatus);
+        }
+      },
+    });
+  },
+
+  async updateSlotStatus(slotId, venueId, status) {
+    try {
+      await app.request({
+        url: `/venues/${venueId}/slots/${slotId}/status`,
+        method: 'PATCH',
+        data: { status },
+      });
+      wx.showToast({ title: '状态已更新', icon: 'success' });
+      this.loadSlots(this.data.selectedDate);
+    } catch (e) {
+      const msg = (e.data && e.data.detail) || '更新失败';
+      wx.showToast({ title: msg, icon: 'none' });
+    }
+  },
+
   _calcDuration(start, end) {
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
@@ -161,8 +197,9 @@ Page({
     }
 
     const slot = slots[0];
+    const venue = this.data.venues.find(v => v.id === slot.venue_id) || {};
     wx.navigateTo({
-      url: `/pages/booking/confirm?slot_id=${slot.slot_id}&venue_id=${slot.venue_id}&price=${slot.price}&date=${slot.date}&start=${slot.start_time}&end=${slot.end_time}`,
+      url: `/pages/booking/confirm?slot_id=${slot.slot_id}&venue_id=${slot.venue_id}&price=${slot.price}&date=${slot.date}&start=${slot.start_time}&end=${slot.end_time}&club_name=${encodeURIComponent((this.data.club || {}).name || '')}&venue_name=${encodeURIComponent(venue.name || '')}`,
     });
   },
 

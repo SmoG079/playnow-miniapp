@@ -462,7 +462,6 @@ Page({
   },
 
   onActionTap(e) {
-    e.stopPropagation();
     const id = e.currentTarget.dataset.id;
     wx.navigateTo({ url: `/pages/common/post-detail?id=${id}` });
   },
