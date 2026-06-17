@@ -14,13 +14,26 @@ Page({
     images: [],
     documents: [],
     loading: false,
+    submitDisabled: true,
   },
 
-  onNameInput(e) { this.setData({ name: e.detail.value }); },
+  onLoad() {
+    this._updateSubmitDisabled();
+  },
+
+  _updateSubmitDisabled() {
+    const { name, address, latitude, phone } = this.data;
+    const disabled = !name || !address || !latitude || !phone;
+    if (this.data.submitDisabled !== disabled) {
+      this.setData({ submitDisabled: disabled });
+    }
+  },
+
+  onNameInput(e) { this.setData({ name: e.detail.value }, () => this._updateSubmitDisabled()); },
   onDescInput(e) { this.setData({ description: e.detail.value }); },
   onRulesInput(e) { this.setData({ rules: e.detail.value }); },
-  onPhoneInput(e) { this.setData({ phone: e.detail.value }); },
-  onAddressInput(e) { this.setData({ address: e.detail.value }); },
+  onPhoneInput(e) { this.setData({ phone: e.detail.value }, () => this._updateSubmitDisabled()); },
+  onAddressInput(e) { this.setData({ address: e.detail.value }, () => this._updateSubmitDisabled()); },
 
   // 选择地址（地图API）
   chooseLocation() {
@@ -31,7 +44,7 @@ Page({
           address: res.address || res.name || '',
           latitude: res.latitude,
           longitude: res.longitude,
-        });
+        }, () => this._updateSubmitDisabled());
       },
       fail: (err) => {
         if (err.errMsg && err.errMsg.includes('auth deny')) {

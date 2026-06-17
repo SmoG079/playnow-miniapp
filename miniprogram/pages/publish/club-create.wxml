@@ -48,6 +48,6 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name || !address || !latitude || !phone}}">创建俱乐部</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{submitDisabled}}">创建俱乐部</button>
   </view>
 </view>
