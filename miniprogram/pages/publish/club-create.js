@@ -178,6 +178,10 @@ Page({
 
   async onSubmit() {
     if (!this.data.name) return wx.showToast({ title: '请输入名称', icon: 'none' });
+    if (!this.data.phone) return wx.showToast({ title: '请输入联系电话', icon: 'none' });
+    if (!/^1\d{10}$/.test(this.data.phone) && !/^\d{7,12}$/.test(this.data.phone)) {
+      return wx.showToast({ title: '联系电话格式不正确', icon: 'none' });
+    }
     if (!this.data.latitude || !this.data.longitude) {
       return wx.showToast({ title: '请选择地址', icon: 'none' });
     }

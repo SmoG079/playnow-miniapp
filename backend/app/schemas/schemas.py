@@ -58,7 +58,7 @@ class ClubCreate(BaseModel):
     address: Optional[str] = None
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
-    contact_phone: Optional[str] = None
+    contact_phone: str = Field(..., min_length=1, max_length=20)
 
 class ClubUpdate(BaseModel):
     name: Optional[str] = None

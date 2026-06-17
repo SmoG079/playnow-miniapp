@@ -17,10 +17,10 @@
     <input class="form-input" style="margin-top:12rpx" placeholder="可手动修改或输入地址" value="{{address}}" bindinput="onAddressInput" />
     <text class="text-sm text-secondary" wx:if="{{latitude && longitude}}">已获取坐标</text>
 
-    <text class="form-label">联系电话</text>
+    <text class="form-label">联系电话 *</text>
     <input class="form-input" type="number" placeholder="联系电话" value="{{phone}}" bindinput="onPhoneInput" />
 
-    <text class="form-label">场馆图片（最多9张）</text>
+    <text class="form-label">场馆图片（最多9张，可选）</text>
     <view class="image-upload-grid">
       <view class="image-item" wx:for="{{images}}" wx:key="*this">
         <image src="{{item}}" mode="aspectFill" bindtap="previewImage" data-url="{{item}}" />
@@ -32,7 +32,7 @@
       </view>
     </view>
 
-    <text class="form-label">场地规则/PDF（最多5个，每个10MB）</text>
+    <text class="form-label">场地规则/PDF（最多5个，每个10MB，可选）</text>
     <view class="document-list">
       <view class="document-item" wx:for="{{documents}}" wx:key="name">
         <text class="doc-icon">📄</text>
@@ -48,6 +48,6 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name || !address || !latitude}}">创建俱乐部</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!name || !address || !latitude || !phone}}">创建俱乐部</button>
   </view>
 </view>
