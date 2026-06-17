@@ -71,6 +71,22 @@
 
 ---
 
+## 新发现并修复的问题（2026-06-17）
+
+| # | 问题 | 文件 | 状态 |
+|---|------|------|------|
+| B-17-1 | `get_booking` club_admin 未校验是否管理该俱乐部 | `backend/app/api/v1/bookings.py` | ✅ |
+| B-17-2 | `pay_booking` 复用 prepay_id 时跳过锁/开场时间校验 | `backend/app/api/v1/bookings.py` | ✅ |
+| B-17-3 | `pay_booking` 新支付未校验场次是否已开场 | `backend/app/api/v1/bookings.py` | ✅ |
+| B-17-4 | `get_club_venue_slots` 返回已过期场次 | `backend/app/api/v1/clubs.py` | ✅ |
+| B-17-5 | 价格未按场次时长折算 | `backend/app/api/v1/bookings.py`, `backend/app/api/v1/clubs.py` | ✅ |
+| B-17-6 | 维护中格子文字不显示 | `miniprogram/pages/booking/venue-detail.wxml` | ✅ |
+| B-17-7 | 创建订单 409 冲突时 UX 差 | `miniprogram/pages/booking/confirm.js` | ✅ |
+| B-17-8 | 我的订单缺少退款中/已退款 tab | `miniprogram/pages/profile/my-bookings.js`, `backend/app/api/v1/users.py` | ✅ |
+
+- 新增 6 个后端测试用例，37 项测试全部通过。
+- Commit: `af528f8 fix: venue booking module bugs`
+
 ## 变更日志
 
 ### 2026-06-15（第七轮复查）
