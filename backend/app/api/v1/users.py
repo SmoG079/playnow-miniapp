@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
 from app.core.database import get_db
@@ -170,17 +170,13 @@ async def my_bookings(
         BookingOrder.user_id == current_user.id
     )
 
-    if status == "cancelled":
-        cancelled_statuses = (
-            OrderStatus.cancelled,
-            OrderStatus.refunding,
-            OrderStatus.refunded,
-        )
-        query = query.where(BookingOrder.status.in_(cancelled_statuses))
-        count_query = count_query.where(BookingOrder.status.in_(cancelled_statuses))
-    elif status:
-        query = query.where(BookingOrder.status == status)
-        count_query = count_query.where(BookingOrder.status == status)
+    if status:
+        try:
+            order_status = OrderStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        query = query.where(BookingOrder.status == order_status)
+        count_query = count_query.where(BookingOrder.status == order_status)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0

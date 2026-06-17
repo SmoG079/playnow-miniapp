@@ -602,3 +602,264 @@ async def test_refund_booking_returns_429_when_rate_limited(user):
             await refund_booking(1, req, current_user=user, db=FakeSession())
 
     assert exc_info.value.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# get_booking authorization
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_booking_club_admin_other_club_forbidden(user, venue, club):
+    """A club_admin who does not manage the booking's club should be denied."""
+    from app.api.v1.bookings import get_booking
+
+    tz = ZoneInfo("Asia/Shanghai")
+    slot_date = (datetime.now(tz) + timedelta(days=1)).date()
+    slot_time = time(10, 0)
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=slot_date,
+        start_time=slot_time,
+        end_time=_make_end_time(slot_date, slot_time),
+        status=SlotStatus.locked,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=999,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+        created_at=datetime.utcnow(),
+    )
+    user.role = UserRole.club_admin
+    session = FakeSession(rows_map={
+        "booking_orders.id": (order, venue, club, slot),
+        "club_members.club_id": None,
+    })
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_booking(1, current_user=user, db=session)
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_booking_club_admin_authorized(user, venue, club):
+    """A club_admin who manages the booking's club should be allowed."""
+    from app.api.v1.bookings import get_booking
+    from app.models.models import ClubMember, ClubMemberRole
+
+    tz = ZoneInfo("Asia/Shanghai")
+    slot_date = (datetime.now(tz) + timedelta(days=1)).date()
+    slot_time = time(10, 0)
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=slot_date,
+        start_time=slot_time,
+        end_time=_make_end_time(slot_date, slot_time),
+        status=SlotStatus.locked,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=999,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+        created_at=datetime.utcnow(),
+    )
+    user.role = UserRole.club_admin
+    member = ClubMember(club_id=club.id, user_id=user.id, role=ClubMemberRole.admin)
+    session = FakeSession(rows_map={
+        "booking_orders.id": (order, venue, club, slot),
+        "club_members.club_id": member,
+    })
+
+    result = await get_booking(1, current_user=user, db=session)
+    assert result.id == order.id
+
+
+# ---------------------------------------------------------------------------
+# pay_booking slot-time and idempotency checks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pay_booking_rejects_past_slot(user, venue, club):
+    """Payment should be rejected if the slot start time has already passed."""
+    from app.api.v1.bookings import pay_booking
+
+    tz = ZoneInfo("Asia/Shanghai")
+    today = datetime.now(tz).date()
+    past_time = time(0, 0)
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=today,
+        start_time=past_time,
+        end_time=_make_end_time(today, past_time),
+        status=SlotStatus.locked,
+        locked_by=user.id,
+        locked_at=datetime.utcnow(),
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=user.id,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+    )
+    user.openid = "openid_123"
+    session = FakeSession(rows_map={
+        "booking_orders.id": (order, slot),
+        "VenueTimeSlot": slot,
+    })
+
+    with patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+        with pytest.raises(HTTPException) as exc_info:
+            await pay_booking(1, current_user=user, db=session)
+
+    assert exc_info.value.status_code == 400
+    assert "already passed" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_pay_booking_idempotency_rejects_expired_lock(user, venue, club):
+    """Reusing a fresh prepay_id should be rejected if the slot lock is gone."""
+    from app.api.v1.bookings import pay_booking
+
+    tz = ZoneInfo("Asia/Shanghai")
+    future_date = (datetime.now(tz) + timedelta(days=1)).date()
+    slot_time = time(10, 0)
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=future_date,
+        start_time=slot_time,
+        end_time=_make_end_time(future_date, slot_time),
+        status=SlotStatus.available,
+        locked_by=None,
+        locked_at=None,
+    )
+    order = BookingOrder(
+        id=1,
+        order_no="ORD001",
+        user_id=user.id,
+        venue_id=venue.id,
+        slot_id=slot.id,
+        club_id=club.id,
+        amount=Decimal("100.00"),
+        status=OrderStatus.pending,
+        prepay_id="prepay_123",
+        prepay_id_created_at=datetime.utcnow(),
+    )
+    user.openid = "openid_123"
+    session = FakeSession(rows_map={
+        "booking_orders.id": (order, slot),
+        "VenueTimeSlot": slot,
+    })
+    settings_mock = MagicMock()
+    settings_mock.PREPAY_ID_TTL_SECONDS = 3600
+    settings_mock.BOOKING_LOCK_TTL_SECONDS = 600
+
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+        with pytest.raises(HTTPException) as exc_info:
+            await pay_booking(1, current_user=user, db=session)
+
+    assert exc_info.value.status_code == 409
+    assert "expired or been taken" in exc_info.value.detail.lower()
+
+
+# ---------------------------------------------------------------------------
+# create_booking price by duration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_booking_price_for_30min_slot(user, venue, club, settings_mock):
+    """A 30-minute slot should cost half the hourly price."""
+    tz = ZoneInfo("Asia/Shanghai")
+    future_date = (datetime.now(tz) + timedelta(days=1)).date()
+    start_time = time(10, 0)
+    end_time = time(10, 30)
+    slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=future_date,
+        start_time=start_time,
+        end_time=end_time,
+        status=SlotStatus.available,
+    )
+    venue.price_per_hour = Decimal("100.00")
+    session = FakeSession(rows_map={
+        "VenueTimeSlot": slot,
+        "Venue": venue,
+        "Club": club,
+    })
+    req = BookingCreateRequest(slot_id=1)
+
+    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+         patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+        result = await create_booking(req, current_user=user, db=session)
+
+    assert result.status == "pending"
+    assert result.amount == Decimal("50.00")
+
+
+# ---------------------------------------------------------------------------
+# get_club_venue_slots filters past slots
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_club_venue_slots_hides_past_slots(club, venue):
+    """Slots whose start time has already passed should not appear in the grid."""
+    from app.api.v1.clubs import get_club_venue_slots
+    import datetime as dt
+
+    today = date(2026, 6, 17)
+    past_slot = VenueTimeSlot(
+        id=1,
+        venue_id=venue.id,
+        date=today,
+        start_time=time(13, 0),
+        end_time=time(14, 0),
+        status=SlotStatus.available,
+    )
+    future_slot = VenueTimeSlot(
+        id=2,
+        venue_id=venue.id,
+        date=today,
+        start_time=time(15, 0),
+        end_time=time(16, 0),
+        status=SlotStatus.available,
+    )
+    session = FakeSession(rows_map={
+        "Club": club,
+        "Venue": [venue],
+        "VenueTimeSlot": [past_slot, future_slot],
+    })
+    mock_now = dt.datetime(2026, 6, 17, 14, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    mock_datetime = MagicMock()
+    mock_datetime.now.return_value = mock_now
+    mock_datetime.combine = dt.datetime.combine
+
+    with patch("app.api.v1.clubs.datetime", mock_datetime):
+        result = await get_club_venue_slots(1, query_date=today, db=session)
+
+    time_labels = [row.time_label for row in result.rows]
+    assert "13:00" not in time_labels
+    assert "15:00" in time_labels

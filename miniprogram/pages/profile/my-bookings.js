@@ -8,6 +8,8 @@ const STATUS_TABS = [
   { label: '已支付', value: 'paid' },
   { label: '已完成', value: 'completed' },
   { label: '已取消', value: 'cancelled' },
+  { label: '退款中', value: 'refunding' },
+  { label: '已退款', value: 'refunded' },
 ];
 
 Page({

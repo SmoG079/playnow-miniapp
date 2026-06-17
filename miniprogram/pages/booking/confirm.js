@@ -136,7 +136,13 @@ Page({
       this._startCountdown(booking);
       return booking;
     } catch (e) {
-      wx.showToast({ title: '创建订单失败', icon: 'none' });
+      const detail = (e.data && e.data.detail) || '';
+      const is409 = e.statusCode === 409;
+      const msg = is409 ? (detail || '该时段已被他人锁定，请重新选择') : '创建订单失败';
+      wx.showToast({ title: msg, icon: 'none', duration: 2000 });
+      if (is409) {
+        setTimeout(() => wx.navigateBack(), 1500);
+      }
       throw e;
     }
   },

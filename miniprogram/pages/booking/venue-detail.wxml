@@ -89,7 +89,7 @@
           bindtap="onSlotTap"
           bindlongpress="onSlotLongPress"
         >
-          <block wx:if="{{item.status === 'available' || item.status === 'locked' || item.status === 'booked'}}">
+          <block wx:if="{{item.status === 'available' || item.status === 'locked' || item.status === 'booked' || item.status === 'maintenance'}}">
             <text class="cell-price" wx:if="{{item.status === 'available' && !item.isSelected}}">¥{{item.price}}</text>
             <text class="cell-price" wx:if="{{item.isSelected}}">¥{{item.price}}</text>
             <text class="cell-booked" wx:if="{{item.status === 'booked'}}">已预约</text>

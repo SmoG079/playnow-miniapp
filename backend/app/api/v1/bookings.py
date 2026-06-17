@@ -3,7 +3,7 @@ import uuid
 import httpx
 import time
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -114,8 +114,10 @@ async def create_booking(
         slot.locked_by = current_user.id
         slot.locked_at = _utc_now()  # UTC naive (consistent with DB convention)
 
-        # Calculate price
-        price = slot.price_override if slot.price_override is not None else venue.price_per_hour
+        # Calculate price based on slot duration
+        duration_minutes = (slot.end_time.hour * 60 + slot.end_time.minute) - (slot.start_time.hour * 60 + slot.start_time.minute)
+        base_price = slot.price_override if slot.price_override is not None else venue.price_per_hour
+        price = base_price * Decimal(duration_minutes) / Decimal("60")
 
         # Create order
         order = BookingOrder(
@@ -190,8 +192,20 @@ async def get_booking(
 
     # Check ownership or admin
     if order.user_id != current_user.id:
-        # Allow club admin to view
-        if _v(current_user.role) not in ("club_admin", "platform_admin"):
+        role = _v(current_user.role)
+        if role == "platform_admin":
+            pass  # allowed
+        elif role == "club_admin":
+            # Verify admin manages this club
+            member = await db.execute(
+                select(ClubMember).where(
+                    ClubMember.club_id == order.club_id,
+                    ClubMember.user_id == current_user.id,
+                )
+            )
+            if not member.scalar_one_or_none():
+                raise HTTPException(status_code=403, detail="Not authorized")
+        else:
             raise HTTPException(status_code=403, detail="Not authorized")
 
     return BookingDetail(
@@ -256,6 +270,12 @@ async def pay_booking(
         lock_elapsed = (_utc_now() - slot.locked_at).total_seconds()
         if lock_elapsed >= settings.BOOKING_LOCK_TTL_SECONDS:
             raise HTTPException(status_code=409, detail="Slot lock has expired")
+
+    # Reject payment if slot start time has already passed
+    tz = ZoneInfo("Asia/Shanghai")
+    slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz, microsecond=0)
+    if datetime.now(tz).replace(microsecond=0) >= slot_datetime:
+        raise HTTPException(status_code=400, detail="Slot time has already passed")
 
     # Idempotency: reuse existing prepay_id if still fresh
     now = _utc_now()

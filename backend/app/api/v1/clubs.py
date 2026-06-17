@@ -1,4 +1,6 @@
-from datetime import date, time
+from datetime import date, time, datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
@@ -291,12 +293,24 @@ async def get_club_venue_slots(
     )
     slots = slot_result.scalars().all()
 
+    # Filter out slots whose start time has already passed (Asia/Shanghai)
+    tz = ZoneInfo("Asia/Shanghai")
+    now_local = datetime.now(tz).replace(microsecond=0)
+    filtered_slots = []
+    for slot in slots:
+        slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz, microsecond=0)
+        if slot_datetime > now_local:
+            filtered_slots.append(slot)
+    slots = filtered_slots
+
     # Group slots by start_time
     from collections import defaultdict
     time_groups = defaultdict(dict)
     for slot in slots:
         time_key = slot.start_time.strftime("%H:%M")
-        price = slot.price_override if slot.price_override is not None else price_map.get(slot.venue_id, 0)
+        duration_minutes = (slot.end_time.hour * 60 + slot.end_time.minute) - (slot.start_time.hour * 60 + slot.start_time.minute)
+        base_price = slot.price_override if slot.price_override is not None else price_map.get(slot.venue_id, 0)
+        price = base_price * Decimal(duration_minutes) / Decimal("60")
         time_groups[time_key][slot.venue_id] = CourtSlotCell(
             slot_id=slot.id,
             venue_id=slot.venue_id,
