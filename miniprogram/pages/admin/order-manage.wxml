@@ -31,7 +31,7 @@
         <text
           class="btn-cancel"
           wx:if="{{item.status === 'pending' || item.status === 'paid'}}"
-          data-order="{{item}}"
+          data-id="{{item.id}}"
           bindtap="onCancel"
         >取消</text>
       </view>

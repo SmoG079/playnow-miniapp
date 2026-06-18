@@ -49,6 +49,31 @@ Page({
     wx.navigateTo({ url: `/pages/publish/slot-manage?club_id=${this.data.clubId}&venue_id=${venueId}` });
   },
 
+  onDelete(e) {
+    const venue = e.currentTarget.dataset.venue;
+    wx.showModal({
+      title: '确认删除',
+      content: `确定要删除场地"${venue.name}"吗？`,
+      confirmColor: '#f44336',
+      success: (res) => {
+        if (res.confirm) this.doDelete(venue.id);
+      },
+    });
+  },
+
+  async doDelete(venueId) {
+    try {
+      await app.request({
+        url: `/venues/${venueId}/with-club/${this.data.clubId}`,
+        method: 'DELETE',
+      });
+      wx.showToast({ title: '已删除', icon: 'success' });
+      this.loadVenues();
+    } catch (e) {
+      wx.showToast({ title: '删除失败', icon: 'none' });
+    }
+  },
+
   onPullDownRefresh() {
     this.loadVenues().then(() => wx.stopPullDownRefresh());
   },

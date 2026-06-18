@@ -7,6 +7,8 @@ const STATUS_TABS = [
   { label: '已支付', value: 'paid' },
   { label: '已完成', value: 'completed' },
   { label: '已取消', value: 'cancelled' },
+  { label: '退款中', value: 'refunding' },
+  { label: '已退款', value: 'refunded' },
 ];
 
 Page({
@@ -61,7 +63,8 @@ Page({
   },
 
   onCancel(e) {
-    const order = e.currentTarget.dataset.order;
+    const id = parseInt(e.currentTarget.dataset.id);
+    const order = this.data.orders.find((o) => o.id === id);
     if (!order || (order.status !== 'pending' && order.status !== 'paid')) {
       return wx.showToast({ title: '该订单无法取消', icon: 'none' });
     }

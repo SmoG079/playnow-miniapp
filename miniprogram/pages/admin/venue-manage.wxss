@@ -83,6 +83,11 @@
   margin-left: 16rpx;
 }
 
+.btn-outline.danger {
+  color: #f44336;
+  border-color: #f44336;
+}
+
 .empty-state,
 .loading-state {
   text-align: center;

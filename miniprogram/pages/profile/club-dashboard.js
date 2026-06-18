@@ -11,6 +11,7 @@ Page({
   },
 
   onLoad(options) {
+    if (!perm.requireClubAdmin()) return;
     const managed = perm.getManagedClubIds();
     this.setData({ managedClubs: managed });
 
@@ -21,6 +22,11 @@ Page({
     } else if (managed.length === 0) {
       wx.showToast({ title: '您还没有管理的俱乐部', icon: 'none' });
       return;
+    }
+
+    if (this.data.clubId && !perm.canManageClub(this.data.clubId)) {
+      wx.showToast({ title: '无权管理该俱乐部', icon: 'none' });
+      return wx.navigateBack();
     }
 
     if (this.data.clubId) {
@@ -68,19 +74,13 @@ Page({
 
   onVenueManage() {
     wx.navigateTo({
-      url: `/pages/publish/venue-manage?club_id=${this.data.clubId}`,
-    });
-  },
-
-  onSlotManage() {
-    wx.navigateTo({
-      url: `/pages/publish/slot-manage?club_id=${this.data.clubId}`,
+      url: `/pages/admin/venue-manage?club_id=${this.data.clubId}`,
     });
   },
 
   onOrderManage() {
     wx.navigateTo({
-      url: `/pages/publish/order-manage?club_id=${this.data.clubId}`,
+      url: `/pages/admin/order-manage?club_id=${this.data.clubId}`,
     });
   },
 

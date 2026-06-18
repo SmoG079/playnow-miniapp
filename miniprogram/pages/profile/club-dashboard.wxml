@@ -67,11 +67,7 @@
   <view class="menu-grid" wx:if="{{club}}">
     <view class="menu-item" bindtap="onVenueManage">
       <text class="menu-icon">🏟️</text>
-      <text class="menu-title">场地管理</text>
-    </view>
-    <view class="menu-item" bindtap="onSlotManage">
-      <text class="menu-icon">⏰</text>
-      <text class="menu-title">时段管理</text>
+      <text class="menu-title">场地与时段</text>
     </view>
     <view class="menu-item" bindtap="onOrderManage">
       <text class="menu-icon">📋</text>
