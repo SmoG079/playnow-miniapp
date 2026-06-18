@@ -216,7 +216,7 @@ Page({
       };
       console.log('[slot-manage] sending payload', payload);
       const res = await app.request({
-        url: `/venues/${venue.id}/slots/batch`,
+        url: `/venues/${venue.id}/slots/batch?club_id=${this.data.clubId}`,
         method: 'POST',
         data: payload,
       });
