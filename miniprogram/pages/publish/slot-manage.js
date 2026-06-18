@@ -58,6 +58,7 @@ Page({
     try {
       const res = await app.request({ url: `/clubs/${this.data.clubId}/venues` });
       const venues = res || [];
+      console.log('[slot-manage] loadVenues', venues);
       let venueIndex = 0;
       if (this.data.preselectVenueId) {
         const idx = venues.findIndex(v => v.id === this.data.preselectVenueId);
@@ -68,7 +69,7 @@ Page({
         this.loadSlots();
       }
     } catch (e) {
-      console.error(e);
+      console.error('[slot-manage] loadVenues failed', e);
       wx.showToast({ title: '加载场地失败', icon: 'none' });
     }
   },
@@ -78,9 +79,10 @@ Page({
     const venue = this.data.venues[this.data.venueIndex];
     this.setData({ slotsLoading: true });
     try {
-      const res = await app.request({
-        url: `/venues/${venue.id}/slots?date_from=${this.data.dateFrom}&date_to=${this.data.dateTo}`,
-      });
+      const url = `/venues/${venue.id}/slots?date_from=${this.data.dateFrom}&date_to=${this.data.dateTo}`;
+      console.log('[slot-manage] loadSlots url', url);
+      const res = await app.request({ url });
+      console.log('[slot-manage] loadSlots response', res);
       const slots = [];
       (res || []).forEach(group => {
         (group.slots || []).forEach(s => {
@@ -89,7 +91,7 @@ Page({
       });
       this.setData({ slots });
     } catch (e) {
-      console.error(e);
+      console.error('[slot-manage] loadSlots failed', e);
       wx.showToast({ title: '加载时段失败', icon: 'none' });
     } finally {
       this.setData({ slotsLoading: false });
@@ -158,21 +160,27 @@ Page({
 
   async onGenerate() {
     const { venues, venueIndex, dateFrom, dateTo, startTime, endTime, intervals, intervalIndex, priceRules } = this.data;
+    console.log('[slot-manage] onGenerate called', { venueIndex, dateFrom, dateTo, startTime, endTime, interval: intervals[intervalIndex], priceRules });
     if (venues.length === 0) {
+      console.warn('[slot-manage] no venues available');
       return wx.showToast({ title: '没有可用场地', icon: 'none' });
     }
     if (dateTo < dateFrom) {
+      console.warn('[slot-manage] dateTo before dateFrom');
       return wx.showToast({ title: '结束日期不能早于开始日期', icon: 'none' });
     }
     const dayDiff = (new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24);
     if (dayDiff > 31) {
+      console.warn('[slot-manage] date range too large', dayDiff);
       return wx.showToast({ title: '最多生成31天的时段', icon: 'none' });
     }
     if (endTime <= startTime) {
+      console.warn('[slot-manage] endTime not after startTime');
       return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
     }
 
     const venue = venues[venueIndex];
+    console.log('[slot-manage] selected venue', venue);
     this.setData({ generating: true, result: null });
 
     try {
@@ -186,24 +194,28 @@ Page({
           end_time: r.end_time,
           price: parseFloat(r.price),
         }));
+      const payload = {
+        date_from: dateFrom,
+        date_to: dateTo,
+        start_time: startTime,
+        end_time: endTime,
+        interval_minutes: intervals[intervalIndex],
+        price_rules: rules,
+      };
+      console.log('[slot-manage] sending payload', payload);
       const res = await app.request({
         url: `/venues/${venue.id}/slots/batch`,
         method: 'POST',
-        data: {
-          date_from: dateFrom,
-          date_to: dateTo,
-          start_time: startTime,
-          end_time: endTime,
-          interval_minutes: intervals[intervalIndex],
-          price_rules: rules,
-        },
+        data: payload,
       });
+      console.log('[slot-manage] response', res);
       this.setData({ result: res });
       wx.showToast({ title: `新增${res.created}个时段`, icon: 'success' });
       this.loadSlots();
     } catch (e) {
-      console.error(e);
-      wx.showToast({ title: '生成失败', icon: 'none' });
+      console.error('[slot-manage] generation failed', e);
+      const detail = (e.data && e.data.detail) || e.message || '生成失败';
+      wx.showToast({ title: detail, icon: 'none' });
     } finally {
       this.setData({ generating: false });
     }

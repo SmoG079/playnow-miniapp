@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, date, time
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,7 @@ from app.schemas.schemas import (
     SlotStatusUpdateRequest,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/venues", tags=["venues"])
 
 
@@ -181,16 +183,26 @@ async def generate_slots(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate time slots for a date range."""
+    logger.info(
+        "generate_slots called: venue_id=%s date_from=%s date_to=%s start_time=%s end_time=%s interval=%s price_rules=%s",
+        venue_id, req.date_from, req.date_to, req.start_time, req.end_time, req.interval_minutes, req.price_rules,
+    )
     venue_result = await db.execute(select(Venue).where(Venue.id == venue_id))
     venue = venue_result.scalar_one_or_none()
     if not venue:
+        logger.warning("generate_slots: venue %s not found", venue_id)
         raise HTTPException(status_code=404, detail="Venue not found")
 
     current_date = req.date_from
     created = 0
+    skipped = 0
     while current_date <= req.date_to:
         slot_start = datetime.combine(current_date, req.start_time)
         slot_end = datetime.combine(current_date, req.end_time)
+        logger.debug(
+            "generate_slots: processing date=%s slot_start=%s slot_end=%s",
+            current_date, slot_start, slot_end,
+        )
         while slot_start + timedelta(minutes=req.interval_minutes) <= slot_end:
             next_time = slot_start + timedelta(minutes=req.interval_minutes)
             existing = await db.execute(
@@ -213,11 +225,14 @@ async def generate_slots(
                 )
                 db.add(slot)
                 created += 1
+            else:
+                skipped += 1
             slot_start = next_time
         current_date += timedelta(days=1)
 
     await db.commit()
-    return {"created": created, "msg": f"Generated {created} slots"}
+    logger.info("generate_slots completed: venue_id=%s created=%s skipped=%s", venue_id, created, skipped)
+    return {"created": created, "skipped": skipped, "msg": f"Generated {created} slots"}
 
 
 @router.patch("/{venue_id}/slots/{slot_id}/status")
