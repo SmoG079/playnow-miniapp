@@ -48,11 +48,11 @@ async def list_posts(
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    approved_count = func.count(MatchRegistration.id).filter(
-        MatchRegistration.status == RegistrationStatus.approved
+    approved_count = func.count(
+        func.case((MatchRegistration.status == RegistrationStatus.approved, MatchRegistration.id))
     )
-    pending_count = func.count(MatchRegistration.id).filter(
-        MatchRegistration.status == RegistrationStatus.pending
+    pending_count = func.count(
+        func.case((MatchRegistration.status == RegistrationStatus.pending, MatchRegistration.id))
     )
     query = (
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
@@ -229,11 +229,11 @@ async def update_post(
 
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
-    approved_count = func.count(MatchRegistration.id).filter(
-        MatchRegistration.status == RegistrationStatus.approved
+    approved_count = func.count(
+        func.case((MatchRegistration.status == RegistrationStatus.approved, MatchRegistration.id))
     )
-    pending_count = func.count(MatchRegistration.id).filter(
-        MatchRegistration.status == RegistrationStatus.pending
+    pending_count = func.count(
+        func.case((MatchRegistration.status == RegistrationStatus.pending, MatchRegistration.id))
     )
     result = await db.execute(
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
