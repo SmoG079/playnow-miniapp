@@ -1,7 +1,18 @@
 from datetime import datetime, date, time
-from typing import Optional, Any, List
-from pydantic import BaseModel, Field
+from typing import Optional, Any, List, Annotated
+from pydantic import BaseModel, Field, BeforeValidator
 from decimal import Decimal
+
+
+def _parse_flexible_time(value: Any) -> Any:
+    """Accept 'HH:MM' or 'HH:MM:SS' strings for time fields."""
+    if isinstance(value, str):
+        if len(value) == 5:
+            return f"{value}:00"
+    return value
+
+
+FlexibleTime = Annotated[time, BeforeValidator(_parse_flexible_time)]
 
 
 # ── Auth ──
@@ -161,16 +172,16 @@ class VenueDetail(VenueBrief):
 # ── Time Slot ──
 
 class SlotPriceRule(BaseModel):
-    start_time: time
-    end_time: time
+    start_time: FlexibleTime
+    end_time: FlexibleTime
     price: Decimal = Field(gt=0)
 
 
 class SlotGenerateRequest(BaseModel):
     date_from: date
     date_to: date
-    start_time: time = time(8, 0)
-    end_time: time = time(22, 0)
+    start_time: FlexibleTime = time(8, 0)
+    end_time: FlexibleTime = time(22, 0)
     interval_minutes: int = Field(default=60, ge=30)
     price_rules: list[SlotPriceRule] = Field(default_factory=list)
 

@@ -116,6 +116,14 @@ Page({
     }
   },
 
+  _toTimeString(value) {
+    if (!value) return value;
+    if (typeof value === 'string' && value.length === 5) {
+      return `${value}:00`;
+    }
+    return value;
+  },
+
   onVenueChange(e) {
     this.setData({ venueIndex: parseInt(e.detail.value) }, () => this.loadSlots());
   },
@@ -197,10 +205,14 @@ Page({
       const payload = {
         date_from: dateFrom,
         date_to: dateTo,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: this._toTimeString(startTime),
+        end_time: this._toTimeString(endTime),
         interval_minutes: intervals[intervalIndex],
-        price_rules: rules,
+        price_rules: rules.map(r => ({
+          start_time: this._toTimeString(r.start_time),
+          end_time: this._toTimeString(r.end_time),
+          price: r.price,
+        })),
       };
       console.log('[slot-manage] sending payload', payload);
       const res = await app.request({
