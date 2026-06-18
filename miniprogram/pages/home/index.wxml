@@ -13,15 +13,11 @@
     </view>
   </view>
 
-  <!-- Sport Tabs -->
+  <!-- Sport Tabs (tennis only) -->
   <view class="sport-tabs">
     <view class="sport-tab active">
       <text class="sport-tab-icon">🎾</text>
       <text class="sport-tab-text">网球比赛</text>
-    </view>
-    <view class="sport-tab disabled">
-      <text class="sport-tab-icon">🏓</text>
-      <text class="sport-tab-text">匹克球</text>
     </view>
   </view>
 

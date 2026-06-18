@@ -4,15 +4,18 @@
     <text class="search-btn" bindtap="onSearch">搜索</text>
   </view>
 
-  <scroll-view class="filter-scroll" scroll-x>
-    <view
-      wx:for="{{['全部','羽毛球','篮球','网球','乒乓球','足球']}}"
-      wx:key="*this"
-      class="filter-item {{sportFilter === item ? 'active' : ''}}"
-      data-value="{{item === '全部' ? '' : item}}"
-      bindtap="onSportFilter"
-    >{{item}}</view>
-  </scroll-view>
+  <!-- Sport filter hidden: tennis only -->
+  <view class="sport-filter-hint" wx:if="{{false}}">
+    <scroll-view class="filter-scroll" scroll-x>
+      <view
+        wx:for="{{['全部','羽毛球','篮球','网球','乒乓球','足球']}}"
+        wx:key="*this"
+        class="filter-item {{sportFilter === item ? 'active' : ''}}"
+        data-value="{{item === '全部' ? '' : item}}"
+        bindtap="onSportFilter"
+      >{{item}}</view>
+    </scroll-view>
+  </view>
 
   <view class="sort-bar">
     <view class="sort-item {{sortBy === 'default' ? 'active' : ''}}" data-value="default" bindtap="onSortToggle">默认</view>

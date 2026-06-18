@@ -66,6 +66,7 @@ Page({
     sortBy: 'created',  // 'created' | 'distance'
     hasLocation: false,
     locationError: false,
+    sportType: '网球',
 
     // Filter popup
     showFilterPopup: false,
@@ -121,6 +122,7 @@ Page({
       const { sortBy, filterDate, filterLevels, filterDistance } = this.data;
 
       let postUrl = '/posts?page=1&page_size=10';
+      postUrl += `&sport=${encodeURIComponent(this.data.sportType)}`;
       if (sortBy === 'distance' && loc) {
         postUrl += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
       }

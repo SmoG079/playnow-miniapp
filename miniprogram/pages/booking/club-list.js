@@ -7,7 +7,7 @@ Page({
     page: 1,
     hasMore: true,
     keyword: '',
-    sportFilter: '',
+    sportFilter: '网球',
     latitude: null,
     longitude: null,
     sortBy: 'default', // 'default' | 'distance'
