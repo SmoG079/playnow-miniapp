@@ -136,7 +136,7 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
         date=slot.date,
         start_time=slot.start_time,
         end_time=slot.end_time,
-        price=slot.price_override if slot.price_override is not None else (slot.venue.price_per_hour if slot.venue else Decimal("0")),
+        price=slot.price_override if slot.price_override is not None else Decimal("0"),
         status=_v(slot.status),
     )
 
