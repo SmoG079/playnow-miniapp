@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     REFUND_POLL_INTERVAL_MINUTES: int = 5
     REFUND_BATCH_SIZE: int = 50
 
+    # Tencent Map (optional: used for address geocoding)
+    TENCENT_MAP_KEY: str = ""
+
     # Rate limiting (per-minute limits for sensitive booking endpoints)
     RATE_LIMIT_PAY_PER_MINUTE: int = 10
     RATE_LIMIT_BOOKING_PER_MINUTE: int = 10

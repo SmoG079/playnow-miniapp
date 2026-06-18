@@ -33,7 +33,16 @@ Page({
   onDescInput(e) { this.setData({ description: e.detail.value }); },
   onRulesInput(e) { this.setData({ rules: e.detail.value }); },
   onPhoneInput(e) { this.setData({ phone: e.detail.value }, () => this._updateSubmitDisabled()); },
-  onAddressInput(e) { this.setData({ address: e.detail.value }, () => this._updateSubmitDisabled()); },
+  onAddressInput(e) {
+    const address = e.detail.value || '';
+    this.setData({
+      address,
+      // If user clears/changes the address manually, reset map-derived coordinates
+      // so we don't submit stale lat/lng from a previous map pick.
+      latitude: address ? this.data.latitude : null,
+      longitude: address ? this.data.longitude : null,
+    }, () => this._updateSubmitDisabled());
+  },
 
   // 选择地址（地图API）
   chooseLocation() {
@@ -58,7 +67,8 @@ Page({
         } else if (err.errMsg && err.errMsg.includes('cancel')) {
           // User cancelled, do nothing
         } else {
-          wx.showToast({ title: '选择地址失败，请手动输入', icon: 'none' });
+          // Some environments do not support wx.chooseLocation; allow manual input
+          wx.showToast({ title: '地图选择不可用，请手动输入地址', icon: 'none' });
         }
       }
     });
@@ -189,14 +199,35 @@ Page({
     return docs;
   },
 
+  _geocodeAddress(address) {
+    return app.request({
+      url: '/clubs/geocode',
+      method: 'POST',
+      data: { address },
+    });
+  },
+
   async onSubmit() {
     if (!this.data.name) return wx.showToast({ title: '请输入名称', icon: 'none' });
     if (!this.data.phone) return wx.showToast({ title: '请输入联系电话', icon: 'none' });
     if (!/^1\d{10}$/.test(this.data.phone) && !/^\d{7,12}$/.test(this.data.phone)) {
       return wx.showToast({ title: '联系电话格式不正确', icon: 'none' });
     }
+    if (!this.data.address) return wx.showToast({ title: '请输入地址', icon: 'none' });
     if (!this.data.latitude || !this.data.longitude) {
-      return wx.showToast({ title: '请选择地址', icon: 'none' });
+      // Manual address without map coordinates: try backend geocoder (best effort)
+      try {
+        const geocoded = await this._geocodeAddress(this.data.address);
+        if (geocoded && geocoded.latitude != null && geocoded.longitude != null) {
+          this.setData({ latitude: geocoded.latitude, longitude: geocoded.longitude });
+        } else {
+          // No key configured or geocoder failed: allow creation without coordinates
+          this.setData({ latitude: null, longitude: null });
+        }
+      } catch (e) {
+        console.error('Geocode failed', e);
+        this.setData({ latitude: null, longitude: null });
+      }
     }
     this.setData({ loading: true });
     try {

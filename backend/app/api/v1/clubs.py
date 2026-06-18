@@ -1,10 +1,15 @@
 from datetime import date, time, datetime
 from decimal import Decimal
+from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
+import httpx
+import logging
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord
 from app.models.models import ClubMemberRole
@@ -16,7 +21,53 @@ from app.schemas.schemas import (
 )
 from app.models.models import VenueTimeSlot, SlotStatus, VenueStatus
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/clubs", tags=["clubs"])
+
+
+class GeocodeRequest(BaseModel):
+    address: str = Field(..., min_length=1, max_length=256)
+
+
+class GeocodeResponse(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address: str
+
+
+@router.post("/geocode", response_model=GeocodeResponse)
+async def geocode_address(
+    req: GeocodeRequest,
+    _: User = Depends(get_current_user),
+):
+    """Proxy Tencent Map geocoder so the key stays on the backend."""
+    settings = get_settings()
+    if not settings.TENCENT_MAP_KEY:
+        return GeocodeResponse(address=req.address)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://apis.map.qq.com/ws/geocoder/v1/",
+                params={
+                    "address": req.address,
+                    "key": settings.TENCENT_MAP_KEY,
+                },
+            )
+            data = resp.json()
+    except Exception as exc:
+        logger.warning("Tencent geocoder request failed: %s", exc)
+        return GeocodeResponse(address=req.address)
+
+    location = data.get("result", {}).get("location") if data.get("status") == 0 else None
+    if not location:
+        return GeocodeResponse(address=req.address)
+
+    return GeocodeResponse(
+        latitude=location.get("lat"),
+        longitude=location.get("lng"),
+        address=req.address,
+    )
 
 
 @router.get("", response_model=PaginatedResponse)
