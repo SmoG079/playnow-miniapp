@@ -227,7 +227,12 @@ Page({
     } catch (e) {
       console.error('[slot-manage] generation failed', e);
       const detail = (e.data && e.data.detail) || e.message || '生成失败';
-      wx.showToast({ title: detail, icon: 'none' });
+      const display = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      wx.showModal({
+        title: '生成失败',
+        content: display.length > 200 ? display.slice(0, 200) + '...' : display,
+        showCancel: false,
+      });
     } finally {
       this.setData({ generating: false });
     }
