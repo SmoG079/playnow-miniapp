@@ -22,8 +22,8 @@ Page({
   },
 
   _updateSubmitDisabled() {
-    const { name, address, latitude, phone } = this.data;
-    const disabled = !name || !address || !latitude || !phone;
+    const { name, address, phone } = this.data;
+    const disabled = !name || !address || !phone;
     if (this.data.submitDisabled !== disabled) {
       this.setData({ submitDisabled: disabled });
     }
