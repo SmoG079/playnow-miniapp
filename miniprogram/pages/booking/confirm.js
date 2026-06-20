@@ -14,6 +14,7 @@ function formatCountdown(seconds) {
 Page({
   data: {
     slotId: null,
+    slotIds: [],
     venueId: null,
     price: 0,
     date: '',
@@ -32,28 +33,36 @@ Page({
 
   onLoad(options) {
     options = options || {};
-    if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${options.slot_id}&venue_id=${options.venue_id}&price=${options.price}&date=${options.date}&start=${options.start}&end=${options.end}&venue_name=${encodeURIComponent(options.venue_name || '')}&club_name=${encodeURIComponent(options.club_name || '')}` })) {
+    const slotIds = options.slot_ids ? options.slot_ids.split(',').map(Number) : (options.slot_id ? [parseInt(options.slot_id)] : []);
+    const redirectUrl = `/pages/booking/confirm?slot_ids=${(options.slot_ids || '')}&venue_id=${options.venue_id || ''}&price=${options.price || ''}&date=${options.date || ''}&start=${options.start || ''}&end=${options.end || ''}&venue_name=${encodeURIComponent(options.venue_name || '')}&club_name=${encodeURIComponent(options.club_name || '')}`;
+    if (!app.requireLogin({ redirect: redirectUrl })) {
       return;
     }
+    const clubName = options.club_name ? decodeURIComponent(options.club_name) : '';
+    const venueName = options.venue_name ? decodeURIComponent(options.venue_name) : '';
+    const price = parseFloat(options.price) || 0;
     this.setData({
-      slotId: options.slot_id,
+      slotId: slotIds[0] || null,
+      slotIds,
       venueId: options.venue_id,
-      price: parseFloat(options.price || 0),
+      price,
+      priceText: price.toFixed(2),
       date: options.date,
       startTime: options.start,
       endTime: options.end,
-      venueName: options.venue_name || '',
-      clubName: options.club_name || '',
+      venueName,
+      clubName,
       duration: this._calcDuration(options.start, options.end),
     });
-    if (!this.data.venueName || !this.data.clubName) {
+    if (!venueName || !clubName) {
       this.loadVenueInfo();
     }
   },
 
   onShow() {
-    if (this.data.slotId) {
-      if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_id=${this.data.slotId}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${encodeURIComponent(this.data.venueName)}&club_name=${encodeURIComponent(this.data.clubName)}` })) {
+    if (this.data.slotIds.length > 0) {
+      const slotIdsStr = this.data.slotIds.join(',');
+      if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_ids=${slotIdsStr}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${encodeURIComponent(this.data.venueName)}&club_name=${encodeURIComponent(this.data.clubName)}` })) {
         return;
       }
     } else {
@@ -127,10 +136,13 @@ Page({
 
   async onCreateBooking() {
     try {
+      const payload = this.data.slotIds.length > 1
+        ? { slot_ids: this.data.slotIds }
+        : { slot_id: this.data.slotIds[0] };
       const booking = await app.request({
         url: '/bookings',
         method: 'POST',
-        data: { slot_id: parseInt(this.data.slotId) },
+        data: payload,
       });
       this.setData({ booking });
       this._startCountdown(booking);

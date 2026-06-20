@@ -15,7 +15,7 @@
     </view>
     <view class="info-row">
       <text class="info-label">时间</text>
-      <text class="info-value">{{startTime}} ~ {{endTime}}</text>
+      <text class="info-value">{{startTime}} ~ {{endTime}}（{{slotIds.length}}个时段）</text>
     </view>
     <view class="info-row">
       <text class="info-label">时长</text>
@@ -25,7 +25,7 @@
 
   <view class="price-card">
     <text class="price-label">应付金额</text>
-    <text class="price-value">¥{{price.toFixed(2)}}</text>
+    <text class="price-value">¥{{priceText}}</text>
   </view>
 
   <view class="countdown-bar" wx:if="{{countdownText}}">

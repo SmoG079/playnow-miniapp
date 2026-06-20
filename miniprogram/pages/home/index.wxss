@@ -192,6 +192,25 @@
   font-size: 24rpx;
   color: #999;
 }
+.price-tag {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+  margin-right: 16rpx;
+}
+.price-symbol {
+  font-size: 24rpx;
+  color: #ff6b6b;
+}
+.price-value {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #ff6b6b;
+}
+.price-unit {
+  font-size: 22rpx;
+  color: #999;
+}
 .action-btn {
   padding: 12rpx 32rpx;
   border-radius: 28rpx;
@@ -278,6 +297,14 @@
 }
 .filter-popup.show .filter-panel {
   transform: translateY(0);
+}
+
+.filter-panel-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(80vh - 180rpx);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Panel Header */

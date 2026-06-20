@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import re
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
 from app.api.deps import get_current_user, _v
@@ -15,6 +16,51 @@ from app.schemas.schemas import (
 )
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+
+def _parse_ntrp_level(level_str: str) -> float:
+    """Parse NTRP level string like '2.0' or '2.5' to float."""
+    try:
+        return float(level_str.strip())
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def _level_matches(selected_levels: list[str], level_required: str | None) -> bool:
+    """Check if a post's level_required matches selected NTRP levels.
+
+    level_required can be:
+    - None or empty: matches if '不限' is selected, otherwise no match
+    - Single level: '2.5'
+    - Range: '2.0-2.5'
+    """
+    if not level_required:
+        # Posts without a level requirement match only if '不限' is explicitly selected
+        return False
+
+    selected_values = sorted(_parse_ntrp_level(l) for l in selected_levels if l.strip())
+    if not selected_values:
+        return False
+
+    level_required = level_required.strip()
+    if '-' in level_required:
+        # Range format: "2.0-2.5"
+        parts = level_required.split('-', 1)
+        req_min = _parse_ntrp_level(parts[0])
+        req_max = _parse_ntrp_level(parts[1])
+        if req_min == 0.0 and req_max == 0.0:
+            return False
+        # Match if any selected level falls within the required range
+        for sel in selected_values:
+            if req_min <= sel <= req_max:
+                return True
+        return False
+    else:
+        # Single level format: "2.5"
+        req_value = _parse_ntrp_level(level_required)
+        if req_value == 0.0:
+            return False
+        return any(abs(sel - req_value) < 1e-6 for sel in selected_values)
 
 
 def _fallback_nickname(user_id: int, phone: str | None) -> str:
@@ -41,6 +87,7 @@ async def list_posts(
     club_id: int = Query(None),
     sport: str = Query(None),
     status: str = Query(None),
+    ntrp_levels: str = Query(None),
     lat: float = Query(None),
     lng: float = Query(None),
     sort_by: str = Query('created', regex='^(created|distance)$'),
@@ -48,11 +95,11 @@ async def list_posts(
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    approved_count = func.count(
-        func.case((MatchRegistration.status == RegistrationStatus.approved, MatchRegistration.id))
+    approved_count = func.sum(
+        case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
-    pending_count = func.count(
-        func.case((MatchRegistration.status == RegistrationStatus.pending, MatchRegistration.id))
+    pending_count = func.sum(
+        case((MatchRegistration.status == RegistrationStatus.pending, 1), else_=0)
     )
     query = (
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
@@ -73,6 +120,24 @@ async def list_posts(
     if status:
         query = query.where(MatchPost.status == status)
         count_query = count_query.where(MatchPost.status == status)
+
+    selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
+    if selected_levels:
+        all_posts = select(MatchPost).where(MatchPost.id > 0)
+        if club_id:
+            all_posts = all_posts.where(MatchPost.club_id == club_id)
+        if sport:
+            all_posts = all_posts.where(MatchPost.sport_type == sport)
+        if status:
+            all_posts = all_posts.where(MatchPost.status == status)
+        result_all = await db.execute(all_posts)
+        matched_ids = [p.id for p in result_all.scalars().all() if _level_matches(selected_levels, p.level_required)]
+        if matched_ids:
+            query = query.where(MatchPost.id.in_(matched_ids))
+            count_query = count_query.where(MatchPost.id.in_(matched_ids))
+        else:
+            query = query.where(False)
+            count_query = count_query.where(False)
 
     query = query.group_by(MatchPost.id)
 
@@ -111,6 +176,7 @@ async def list_posts(
             club_name=club_name, registration_count=approved_cnt or 0,
             pending_count=pending_cnt or 0,
             distance=distance,
+            price=post.price,
         ))
 
     if sort_by == 'distance':
@@ -138,11 +204,21 @@ async def create_post(
     if not member_result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
 
+    if req.preferred_end <= req.preferred_start:
+        raise HTTPException(status_code=422, detail="结束时间必须晚于开始时间")
+
+    sport_type = req.sport_type
+    if req.venue_id and not sport_type:
+        venue_result = await db.execute(select(Venue).where(Venue.id == req.venue_id))
+        venue = venue_result.scalar_one_or_none()
+        if venue:
+            sport_type = venue.sport_type
+
     post = MatchPost(
         club_id=req.club_id,
         user_id=current_user.id,
         title=req.title,
-        sport_type=req.sport_type,
+        sport_type=sport_type,
         preferred_date=req.preferred_date,
         preferred_start=req.preferred_start,
         preferred_end=req.preferred_end,
@@ -154,6 +230,7 @@ async def create_post(
         venue_id=req.venue_id,
         booking_id=req.booking_id,
         approval_required=req.approval_required,
+        price=req.price,
     )
     db.add(post)
     await db.flush()
@@ -180,6 +257,7 @@ async def create_post(
         club_name=club.name if club else None,
         registration_count=0,
         pending_count=0,
+        price=post.price,
     )
 
 
@@ -224,16 +302,17 @@ async def update_post(
         user_avatar=user.avatar_url,
         club_name=club.name if club else None,
         registration_count=0,
+        price=post.price,
     )
 
 
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
-    approved_count = func.count(
-        func.case((MatchRegistration.status == RegistrationStatus.approved, MatchRegistration.id))
+    approved_count = func.sum(
+        case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
-    pending_count = func.count(
-        func.case((MatchRegistration.status == RegistrationStatus.pending, MatchRegistration.id))
+    pending_count = func.sum(
+        case((MatchRegistration.status == RegistrationStatus.pending, 1), else_=0)
     )
     result = await db.execute(
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
@@ -278,7 +357,6 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         )
         venue = venue_result.scalar_one_or_none()
         if venue:
-            venue_address = venue.address
             cover_image = venue.cover_image
     # Fallback to club info
     if not venue_address:
@@ -319,7 +397,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
-        price=None, user_phone=user_phone, venue_address=venue_address,
+        price=post.price, user_phone=user_phone, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
         cover_image=cover_image, club_documents=club_documents,
     )

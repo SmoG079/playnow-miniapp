@@ -14,8 +14,10 @@ Page({
     preferredStart: '',
     preferredEnd: '',
     playersNeeded: '1',
-    levelIndex: -1,
-    levels: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
+    price: '',
+    levelMin: 0,
+    levelMax: 13,
+    levelOptions: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
     description: '',
     notes: '',
     documents: [],
@@ -84,8 +86,30 @@ Page({
   onTimeEnd(e) {
     this.setData({ preferredEnd: e.detail.value });
   },
-  onLevelChange(e) {
-    this.setData({ levelIndex: parseInt(e.detail.value) });
+  onLevelMinChange(e) {
+    let min = parseInt(e.detail.value);
+    let max = this.data.levelMax;
+    if (min > max) {
+      max = min;
+    }
+    this.setData({ levelMin: min, levelMax: max });
+  },
+  onLevelMaxChange(e) {
+    let max = parseInt(e.detail.value);
+    let min = this.data.levelMin;
+    if (max < min) {
+      min = max;
+    }
+    this.setData({ levelMin: min, levelMax: max });
+  },
+
+  _formatLevelRange() {
+    const { levelMin, levelMax, levelOptions } = this.data;
+    if (levelMin === 0 && levelMax === 0) return null;
+    const start = levelOptions[levelMin];
+    const end = levelOptions[levelMax];
+    if (levelMin === levelMax) return start;
+    return `${start}-${end}`;
   },
 
   onApprovalChange(e) {
@@ -125,6 +149,27 @@ Page({
     if (!this.data.title || this.data.clubIndex === -1) {
       return wx.showToast({ title: '标题和俱乐部必填', icon: 'none' });
     }
+    if (!this.data.preferredDate) {
+      return wx.showToast({ title: '请选择日期', icon: 'none' });
+    }
+    if (!this.data.preferredStart || !this.data.preferredEnd) {
+      return wx.showToast({ title: '请选择开始和结束时间', icon: 'none' });
+    }
+    if (this.data.preferredEnd <= this.data.preferredStart) {
+      return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
+    }
+    if (this.data.price === '' || this.data.price === null || this.data.price === undefined) {
+      return wx.showToast({ title: '请填写人均费用，0 表示免费', icon: 'none' });
+    }
+    const priceNum = parseFloat(this.data.price);
+    if (isNaN(priceNum) || priceNum < 0) {
+      return wx.showToast({ title: '费用不能为负数', icon: 'none' });
+    }
+    const playersNeeded = parseInt(this.data.playersNeeded) || 1;
+    if (playersNeeded < 1) {
+      return wx.showToast({ title: '人数至少为 1', icon: 'none' });
+    }
+
     this.setData({ loading: true });
     try {
       await app.request({
@@ -133,12 +178,12 @@ Page({
         data: {
           club_id: this.data.clubIds[this.data.clubIndex],
           title: this.data.title,
-          sport_type: this.data.sportType || null,
-          preferred_date: this.data.preferredDate || null,
-          preferred_start: this.data.preferredStart || null,
-          preferred_end: this.data.preferredEnd || null,
-          players_needed: parseInt(this.data.playersNeeded) || 1,
-          level_required: this.data.levelIndex > 0 ? this.data.levels[this.data.levelIndex] : null,
+          preferred_date: this.data.preferredDate,
+          preferred_start: this.data.preferredStart,
+          preferred_end: this.data.preferredEnd,
+          players_needed: playersNeeded,
+          price: priceNum,
+          level_required: this._formatLevelRange(),
           description: this.data.description || null,
           notes: this.data.notes || null,
           venue_id: this.data.venueIndex > -1 ? this.data.venueIds[this.data.venueIndex] : null,
@@ -152,6 +197,7 @@ Page({
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1500);
     } catch (e) {
       console.error(e);
+      wx.showToast({ title: e?.data?.detail || '发布失败', icon: 'none' });
     } finally {
       this.setData({ loading: false });
     }

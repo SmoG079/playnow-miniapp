@@ -84,6 +84,11 @@
             </view>
             <text class="registration-text">已报名: {{item.registration_count || 0}}/{{item.players_needed || '?'}}</text>
           </view>
+          <view class="price-tag" wx:if="{{item.price !== null && item.price !== undefined}}">
+            <text class="price-symbol">¥</text>
+            <text class="price-value">{{item.price}}</text>
+            <text class="price-unit">/人</text>
+          </view>
           <view class="action-btn {{item.is_full ? 'full' : item.is_registered ? 'registered' : ''}}" catchtap="onActionTap" data-id="{{item.id}}">
             {{item.is_full ? '已满员' : item.is_registered ? '已报名' : '去报名'}}
           </view>
@@ -106,8 +111,10 @@
         <text class="filter-panel-close" bindtap="onCloseFilterPopup">✕</text>
       </view>
 
-      <!-- Sort Section -->
-      <view class="filter-section">
+      <!-- Scrollable Filter Content -->
+      <view class="filter-panel-body">
+        <!-- Sort Section -->
+        <view class="filter-section">
         <text class="filter-section-title">排序方式</text>
         <view class="filter-options">
           <view
@@ -127,9 +134,9 @@
         <text class="filter-section-title">NTRP 等级</text>
         <view class="filter-chips">
           <view
-            wx:for="{{NTRP_LEVELS}}"
+            wx:for="{{NTRP_OPTIONS}}"
             wx:key="*this"
-            class="filter-chip {{filterLevels.indexOf(item) > -1 ? 'active' : ''}}"
+            class="filter-chip {{(item === '不限' && filterLevels.length === 0) || filterLevels.indexOf(item) > -1 ? 'active' : ''}}"
             data-value="{{item}}"
             bindtap="onFilterLevelChange"
           >
@@ -168,6 +175,7 @@
             <text>{{item.label}}</text>
           </view>
         </view>
+      </view>
       </view>
 
       <!-- Footer Buttons -->

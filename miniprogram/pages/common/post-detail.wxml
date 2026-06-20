@@ -60,10 +60,10 @@
     </view>
 
     <!-- 价格 & 报名状态 -->
-    <view class="price-section">
+    <view class="price-section" wx:if="{{post.price !== null && post.price !== undefined}}">
       <view class="price-left">
         <text class="price-symbol">¥</text>
-        <text class="price-value">{{post.price || '0.00'}}</text>
+        <text class="price-value">{{post.price}}</text>
       </view>
       <view class="price-right" bindtap="onShowRegistrations">
         <text class="registration-status {{isFull ? 'full' : ''}}">
@@ -224,7 +224,8 @@
         <text wx:elif="{{isRegistered && myRegistrationStatus === 'pending'}}">审核中</text>
         <text wx:elif="{{isRegistered}}">已报名</text>
         <text wx:elif="{{isFull}}">已满员</text>
-        <text wx:else>报名 ¥{{post.price || '0.00'}}</text>
+        <text wx:elif="{{post.price !== null && post.price !== undefined && post.price !== ''}}">报名 ¥{{post.price}}</text>
+        <text wx:else>报名</text>
       </view>
     </view>
   </view>

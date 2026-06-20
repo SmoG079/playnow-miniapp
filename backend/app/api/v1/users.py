@@ -156,13 +156,9 @@ async def my_bookings(
             BookingOrder,
             Venue.name.label("venue_name"),
             Club.name.label("club_name"),
-            VenueTimeSlot.date,
-            VenueTimeSlot.start_time,
-            VenueTimeSlot.end_time,
         )
         .join(Venue, BookingOrder.venue_id == Venue.id)
         .join(Club, BookingOrder.club_id == Club.id)
-        .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
         .where(BookingOrder.user_id == current_user.id)
     )
 
@@ -190,6 +186,14 @@ async def my_bookings(
     items = []
     for row in rows:
         order = row[0]
+        # Load full consecutive slot range for display
+        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        slots_result = await db.execute(
+            select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
+        )
+        slots = sorted(slots_result.scalars().all(), key=lambda s: s.start_time)
+        first_slot = slots[0] if slots else None
+        last_slot = slots[-1] if slots else None
         items.append(
             BookingDetail(
                 id=order.id,
@@ -197,6 +201,7 @@ async def my_bookings(
                 user_id=order.user_id,
                 venue_id=order.venue_id,
                 slot_id=order.slot_id,
+                slot_ids=order.slot_ids,
                 club_id=order.club_id,
                 amount=order.amount,
                 status=_v(order.status),
@@ -207,9 +212,9 @@ async def my_bookings(
                 created_at=order.created_at,
                 venue_name=row.venue_name,
                 club_name=row.club_name,
-                slot_date=row.date,
-                slot_start=row.start_time,
-                slot_end=row.end_time,
+                slot_date=first_slot.date if first_slot else None,
+                slot_start=first_slot.start_time if first_slot else None,
+                slot_end=last_slot.end_time if last_slot else None,
             )
         )
 

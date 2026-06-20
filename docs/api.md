@@ -689,7 +689,7 @@ POST /bookings/wx-notify
 > 🟢 公开
 
 ```
-GET /posts?club_id=1&sport=badminton&status=open&page=1&page_size=20
+GET /posts?club_id=1&sport=badminton&status=open&ntrp_levels=2.0,2.5&page=1&page_size=20
 ```
 
 **查询参数**:
@@ -699,6 +699,7 @@ GET /posts?club_id=1&sport=badminton&status=open&page=1&page_size=20
 | club_id | int | 否 | 按俱乐部筛选 |
 | sport | string | 否 | 运动类型筛选 |
 | status | string | 否 | 状态: `open`/`closed`/`full` |
+| ntrp_levels | string | 否 | NTRP 等级筛选，多个用逗号分隔，如 `2.0,2.5`；支持匹配单等级 `2.5` 或范围 `2.0-2.5` |
 | page | int | 否 | 页码 |
 | page_size | int | 否 | 每页数量 |
 
@@ -714,7 +715,8 @@ GET /posts?club_id=1&sport=badminton&status=open&page=1&page_size=20
   "preferred_start": "14:00",
   "preferred_end": "16:00",
   "players_needed": 1,
-  "level_required": "中级",
+  "price": 50.00,
+  "level_required": "2.5",
   "status": "open",
   "created_at": "2024-01-01T12:00:00",
   "user_nickname": "张三",
@@ -744,7 +746,8 @@ POST /posts
   "preferred_start": "14:00",
   "preferred_end": "16:00",
   "players_needed": 1,
-  "level_required": "中级",
+  "price": 50.00,
+  "level_required": "2.5",
   "notes": "自带球拍，场地费AA",
   "venue_id": null,
   "booking_id": null
@@ -753,9 +756,25 @@ POST /posts
 
 **两种模式**:
 - **自由约球**: `venue_id` 和 `booking_id` 为空，不关联场地预约
-- **订场约球**: 填写 `venue_id` 和 `booking_id`，关联已有预约
+- **订场约球**: 填写 `venue_id` 和 `booking_id`，关联已有预约；若未传 `sport_type`，系统会自动从关联场地的 `sport_type` 带出
 
----
+**字段说明**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| club_id | int | 是 | 俱乐部 ID |
+| title | string | 是 | 标题，1-256 字符 |
+| sport_type | string | 否 | 运动类型；未传且选择了场地时，自动继承场地运动类型 |
+| preferred_date | date | 是 | 期望日期，格式 `YYYY-MM-DD` |
+| preferred_start | time | 是 | 开始时间，格式 `HH:MM` |
+| preferred_end | time | 是 | 结束时间，必须晚于 `preferred_start` |
+| players_needed | int | 否 | 需要人数，默认 1 |
+| price | decimal | 是 | 人均费用（元），允许 `0` 表示免费 |
+| level_required | string | 否 | 等级要求 |
+| notes | string | 否 | 备注 |
+| venue_id | int | 否 | 关联场地 ID |
+| booking_id | int | 否 | 关联预约订单 ID |
+| approval_required | bool | 否 | 是否需要审核报名 |
 
 ### 6.3 约球帖详情
 
@@ -769,6 +788,7 @@ GET /posts/{post_id}
 ```json
 {
   "notes": "自带球拍，场地费AA",
+  "price": 50.00,
   "venue_id": null,
   "booking_id": null,
   "registrations": [

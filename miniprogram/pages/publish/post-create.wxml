@@ -19,10 +19,7 @@
       </view>
     </picker>
 
-    <text class="form-label">运动类型</text>
-    <input class="form-input" placeholder="如：羽毛球" value="{{sportType}}" bindinput="onField" data-field="sportType" />
-
-    <text class="form-label">日期</text>
+    <text class="form-label">日期 *</text>
     <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange">
       <view class="form-picker">
         <text class="{{preferredDate ? '' : 'text-light'}}">{{preferredDate || '选择日期'}}</text>
@@ -30,7 +27,7 @@
       </view>
     </picker>
 
-    <text class="form-label">时间</text>
+    <text class="form-label">时间 *</text>
     <view class="form-row">
       <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart">
         <view class="form-picker-half">
@@ -45,16 +42,29 @@
       </picker>
     </view>
 
-    <text class="form-label">还差几人</text>
+    <text class="form-label">还差几人 *</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
 
+    <text class="form-label">人均费用（元）*</text>
+    <input class="form-input" type="digit" placeholder="如：50，填 0 表示免费" value="{{price}}" bindinput="onPriceChange" />
+
     <text class="form-label">NTRP 等级</text>
-    <picker mode="selector" range="{{levels}}" value="{{levelIndex}}" bindchange="onLevelChange">
-      <view class="form-picker">
-        <text class="{{levelIndex > -1 ? '' : 'text-light'}}">{{levelIndex > -1 ? levels[levelIndex] : '不限'}}</text>
-        <text>›</text>
+    <view class="level-section">
+      <view class="level-display">{{levelMin === 0 && levelMax === 0 ? '不限' : (levelOptions[levelMin] === levelOptions[levelMax] ? levelOptions[levelMin] : levelOptions[levelMin] + '-' + levelOptions[levelMax])}}</view>
+      <view class="slider-row">
+        <text class="slider-label">最低</text>
+        <slider class="level-slider" min="0" max="13" step="1" value="{{levelMin}}" block-size="18" activeColor="#5CD29D" bindchange="onLevelMinChange" />
+        <text class="slider-value">{{levelOptions[levelMin]}}</text>
       </view>
-    </picker>
+      <view class="slider-row">
+        <text class="slider-label">最高</text>
+        <slider class="level-slider" min="0" max="13" step="1" value="{{levelMax}}" block-size="18" activeColor="#5CD29D" bindchange="onLevelMaxChange" />
+        <text class="slider-value">{{levelOptions[levelMax]}}</text>
+      </view>
+      <view class="level-scale">
+        <text wx:for="{{levelOptions}}" wx:key="*this" wx:if="{{index > 0}}" class="scale-item">{{item}}</text>
+      </view>
+    </view>
 
     <view class="form-row form-row-between">
       <text class="form-label">报名需要审核</text>
@@ -83,5 +93,6 @@
 
   <view class="submit-area">
     <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1}}">发布约球帖</button>
+    <text class="form-tip">* 号为必填项</text>
   </view>
 </view>

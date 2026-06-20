@@ -49,15 +49,16 @@ async def _release_expired_locks_impl():
             slot.locked_by = None
             slot.locked_at = None
 
-            # Cancel pending bookings for this slot
-            await session.execute(
-                update(BookingOrder)
-                .where(
-                    BookingOrder.slot_id == slot.id,
-                    BookingOrder.status == OrderStatus.pending,
-                )
-                .values(status=OrderStatus.cancelled, cancel_reason="Payment timeout")
+            # Cancel pending bookings associated with expired slots
+            expired_slot_ids = {slot.id for slot in expired_slots}
+            pending_bookings_result = await session.execute(
+                select(BookingOrder).where(BookingOrder.status == OrderStatus.pending)
             )
+            for booking in pending_bookings_result.scalars().all():
+                booking_slot_ids = booking.slot_ids or ([booking.slot_id] if booking.slot_id else [])
+                if any(sid in expired_slot_ids for sid in booking_slot_ids):
+                    booking.status = OrderStatus.cancelled
+                    booking.cancel_reason = "Payment timeout"
             released_count += 1
 
         await session.commit()
@@ -187,35 +188,45 @@ def _is_refund_retryable(exc: Exception) -> bool:
 
 async def _update_order_after_refund(session, order_id: int, status: str, refund_id: str = None):
     result = await session.execute(
-        select(BookingOrder, VenueTimeSlot)
-        .join(VenueTimeSlot, BookingOrder.slot_id == VenueTimeSlot.id)
-        .where(BookingOrder.id == order_id)
+        select(BookingOrder).where(BookingOrder.id == order_id)
     )
-    row = result.first()
-    if not row:
+    order = result.scalar_one_or_none()
+    if not order:
         return
-    order, slot = row
+
     if status == "success":
         order.status = OrderStatus.refunded
-        should_release = False
-        if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
-            should_release = True
-        elif _v(slot.status) == "booked":
-            other = await session.execute(
-                select(BookingOrder).where(
-                    BookingOrder.slot_id == slot.id,
-                    BookingOrder.id != order.id,
-                    BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
-                )
+        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        slots_result = await session.execute(
+            select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
+        )
+        slots = slots_result.scalars().all()
+
+        # Find other active bookings sharing any of these slots
+        other_active_result = await session.execute(
+            select(BookingOrder).where(
+                BookingOrder.id != order.id,
+                BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
             )
-            if not other.scalar_one_or_none():
+        )
+        other_active_ids = set()
+        for other in other_active_result.scalars().all():
+            other_slots = other.slot_ids or ([other.slot_id] if other.slot_id else [])
+            other_active_ids.update(other_slots)
+
+        for slot in slots:
+            should_release = False
+            if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
                 should_release = True
-        if should_release:
-            slot.status = SlotStatus.available
-            slot.locked_by = None
-            slot.locked_at = None
-            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            await release_lock(lock_key, str(order.user_id))
+            elif _v(slot.status) == "booked":
+                if slot.id not in other_active_ids:
+                    should_release = True
+            if should_release:
+                slot.status = SlotStatus.available
+                slot.locked_by = None
+                slot.locked_at = None
+                lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+                await release_lock(lock_key, str(order.user_id))
     elif status in ("closed", "abnormal", "failed"):
         order.status = OrderStatus.paid
         order.refund_status = status

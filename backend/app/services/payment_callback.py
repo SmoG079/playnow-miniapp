@@ -73,30 +73,35 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
         )
         db.add(notif)
     else:
-        # Mark slot as booked
-        slot_result = await db.execute(
-            select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+        # Mark all slots as booked
+        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        slots_result = await db.execute(
+            select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
         )
-        slot = slot_result.scalar_one_or_none()
-        if slot:
+        slots = slots_result.scalars().all()
+        anomaly = False
+        for slot in slots:
             # Verify the slot is still locked by this order's user before marking booked
             if _v(slot.status) != "locked" or slot.locked_by != order.user_id:
-                # Lock expired or was taken by another booking; log anomaly and do not change slot state
-                notif = Notification(
-                    user_id=order.user_id,
-                    type=NotificationType.booking,
-                    title="预约支付异常",
-                    content=f"订单 {order.order_no} 支付成功，但场地锁定已失效，请联系客服处理",
-                    ref_id=order.id,
-                    ref_type="booking",
-                )
-                db.add(notif)
-                return {"code": "SUCCESS"}
+                anomaly = True
+                continue
             slot.status = SlotStatus.booked
             slot.locked_by = None
             slot.locked_at = None
             lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
             await release_lock(lock_key, str(order.user_id))
+
+        if anomaly:
+            notif = Notification(
+                user_id=order.user_id,
+                type=NotificationType.booking,
+                title="预约支付异常",
+                content=f"订单 {order.order_no} 支付成功，但部分场地锁定已失效，请联系客服处理",
+                ref_id=order.id,
+                ref_type="booking",
+            )
+            db.add(notif)
+            return {"code": "SUCCESS"}
 
         # Create settlement record
         club_result = await db.execute(select(Club).where(Club.id == order.club_id))
@@ -193,25 +198,31 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
                 order.refund_time = datetime.utcnow()
                 order.refund_status = "success"
 
-                # Release slot if it is still held by this order/user
-                slot_result = await db.execute(
-                    select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+                # Release all slots if they are still held by this order/user
+                slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+                slots_result = await db.execute(
+                    select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
                 )
-                slot = slot_result.scalar_one_or_none()
-                if slot:
+                slots = slots_result.scalars().all()
+
+                # Find other active bookings that share any of these slots
+                other_active_result = await db.execute(
+                    select(BookingOrder).where(
+                        BookingOrder.id != order.id,
+                        BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
+                    )
+                )
+                other_active_ids = set()
+                for other in other_active_result.scalars().all():
+                    other_slots = other.slot_ids or ([other.slot_id] if other.slot_id else [])
+                    other_active_ids.update(other_slots)
+
+                for slot in slots:
                     should_release = False
                     if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
                         should_release = True
                     elif _v(slot.status) == "booked":
-                        # Verify no other active booking has taken this slot
-                        other = await db.execute(
-                            select(BookingOrder).where(
-                                BookingOrder.slot_id == slot.id,
-                                BookingOrder.id != order.id,
-                                BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
-                            )
-                        )
-                        if not other.scalar_one_or_none():
+                        if slot.id not in other_active_ids:
                             should_release = True
                     if should_release:
                         slot.status = SlotStatus.available
@@ -246,15 +257,17 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
                 # Refund closed: order remains valid, revert to paid. Do not reclaim Redis lock.
                 if _v(order.status) == "refunding":
                     order.status = OrderStatus.paid
-                    slot_result = await db.execute(
-                        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+                    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+                    slots_result = await db.execute(
+                        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
                     )
-                    slot = slot_result.scalar_one_or_none()
-                    if slot and _v(slot.status) == "available":
-                        # Reclaim slot as booked without lock; if someone else booked it, leave as-is
-                        slot.status = SlotStatus.booked
-                        slot.locked_by = None
-                        slot.locked_at = None
+                    slots = slots_result.scalars().all()
+                    for slot in slots:
+                        if slot and _v(slot.status) == "available":
+                            # Reclaim slot as booked without lock; if someone else booked it, leave as-is
+                            slot.status = SlotStatus.booked
+                            slot.locked_by = None
+                            slot.locked_at = None
 
     elif refund_status == "ABNORMAL":
         if refund_record:
@@ -320,16 +333,18 @@ async def _handle_payment_closed(data: dict, db: AsyncSession):
 
     order.status = OrderStatus.cancelled
 
-    slot_result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+    slots_result = await db.execute(
+        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
     )
-    slot = slot_result.scalar_one_or_none()
-    if slot:
-        slot.status = SlotStatus.available
-        slot.locked_by = None
-        slot.locked_at = None
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key, str(order.user_id))
+    slots = slots_result.scalars().all()
+    for slot in slots:
+        if slot:
+            slot.status = SlotStatus.available
+            slot.locked_by = None
+            slot.locked_at = None
+            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+            await release_lock(lock_key, str(order.user_id))
 
     return {"code": "SUCCESS"}
 

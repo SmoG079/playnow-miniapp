@@ -107,7 +107,7 @@ async def list_clubs(
                 lat, lng,
                 float(c.latitude), float(c.longitude),
             )
-        items.append(ClubBrief.model_validate(c, update={"distance": distance}))
+        items.append(ClubBrief.model_validate(c).model_copy(update={"distance": distance}))
 
     if has_location:
         items.sort(key=lambda x: x.distance if x.distance is not None else float("inf"))
@@ -208,6 +208,7 @@ def _club_to_detail(club: Club) -> ClubDetail:
         longitude=club.longitude,
         status=club.status.value if hasattr(club.status, 'value') else str(club.status),
         description=club.description,
+        rules=club.rules,
         images=club.images,
         documents=club.documents,
         contact_phone=club.contact_phone,
@@ -304,6 +305,7 @@ async def club_stats(
 async def get_club_venue_slots(
     club_id: int,
     query_date: date = Query(..., alias="date"),
+    venue_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Return all venues for a club and their time slots for a specific date,
@@ -315,11 +317,14 @@ async def get_club_venue_slots(
         raise HTTPException(status_code=404, detail="Club not found")
 
     # Get active venues for club
-    v_result = await db.execute(
+    v_query = (
         select(Venue)
         .where(Venue.club_id == club_id, Venue.status == VenueStatus.active)
-        .order_by(Venue.sort_order)
     )
+    if venue_id:
+        v_query = v_query.where(Venue.id == venue_id)
+    v_query = v_query.order_by(Venue.sort_order)
+    v_result = await db.execute(v_query)
     venues = v_result.scalars().all()
     if not venues:
         return VenueSlotGridResponse(

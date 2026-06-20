@@ -36,7 +36,7 @@ Component({
         { label: '创建俱乐部', icon: '\u{1F3E2}', page: '/pages/publish/club-create', show: !hasClub },
         { label: '发布比赛', icon: '\u{1F3C6}', page: '/pages/publish/tournament-create', show: isAdmin && hasClub },
         { label: '管理场地', icon: '⚙', page: '/pages/publish/venue-manage', show: isAdmin && hasClub },
-        { label: '管理订单', icon: '\u{1F4CB}', page: '/pages/publish/order-manage', show: isAdmin && hasClub },
+        { label: '管理订单', icon: '\u{1F4CB}', page: '/pages/admin/order-manage', show: isAdmin && hasClub },
       ];
 
       this.setData({
@@ -53,7 +53,13 @@ Component({
       const page = e.currentTarget.dataset.page;
       this.closeActionSheet();
       if (!page) return;
-      wx.navigateTo({ url: page });
+      // 如果目标页是 tabBar 页面，必须用 switchTab；否则用 navigateTo
+      const tabBarPages = ['/pages/home/index', '/pages/booking/club-list', '/pages/publish/post-create', '/pages/chat/index', '/pages/profile/index'];
+      if (tabBarPages.includes(page)) {
+        wx.switchTab({ url: page });
+      } else {
+        wx.navigateTo({ url: page });
+      }
     },
 
     onMaskTap() { this.closeActionSheet(); },

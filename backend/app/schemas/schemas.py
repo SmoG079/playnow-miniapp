@@ -1,6 +1,6 @@
 from datetime import datetime, date, time
 from typing import Optional, Any, List, Annotated
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer
 from decimal import Decimal
 
 
@@ -13,6 +13,10 @@ def _parse_flexible_time(value: Any) -> Any:
 
 
 FlexibleTime = Annotated[time, BeforeValidator(_parse_flexible_time)]
+DecimalAsFloat = Annotated[
+    Decimal,
+    PlainSerializer(lambda v: float(v) if v is not None else None, return_type=float, when_used="json"),
+]
 
 
 # ── Auth ──
@@ -229,7 +233,15 @@ class SlotStatusUpdateRequest(BaseModel):
 # ── Booking ──
 
 class BookingCreateRequest(BaseModel):
-    slot_id: int
+    slot_id: Optional[int] = None
+    slot_ids: Optional[list[int]] = None
+
+    def resolved_slot_ids(self) -> list[int]:
+        if self.slot_ids:
+            return self.slot_ids
+        if self.slot_id:
+            return [self.slot_id]
+        raise ValueError("slot_id or slot_ids is required")
 
 class BookingDetail(BaseModel):
     id: int
@@ -237,6 +249,7 @@ class BookingDetail(BaseModel):
     user_id: int
     venue_id: int
     slot_id: int
+    slot_ids: Optional[list[int]] = None
     club_id: int
     amount: Decimal
     status: str
@@ -298,10 +311,11 @@ class PostCreate(BaseModel):
     club_id: int
     title: str = Field(..., min_length=1, max_length=256)
     sport_type: Optional[str] = None
-    preferred_date: Optional[date] = None
-    preferred_start: Optional[time] = None
-    preferred_end: Optional[time] = None
+    preferred_date: date
+    preferred_start: time
+    preferred_end: time
     players_needed: int = Field(default=1, ge=1)
+    price: Decimal = Field(..., ge=Decimal("0.00"))
     level_required: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
@@ -317,6 +331,7 @@ class PostUpdate(BaseModel):
     preferred_start: Optional[time] = None
     preferred_end: Optional[time] = None
     players_needed: Optional[int] = Field(default=None, ge=1)
+    price: Optional[Decimal] = None
     level_required: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
@@ -335,6 +350,7 @@ class PostBrief(BaseModel):
     preferred_start: Optional[time]
     preferred_end: Optional[time]
     players_needed: int
+    price: Optional[DecimalAsFloat] = None
     level_required: Optional[str]
     status: str
     approval_required: bool = False
@@ -356,7 +372,6 @@ class PostDetail(PostBrief):
     venue_id: Optional[int]
     booking_id: Optional[int]
     registrations: list["RegistrationBrief"] = []
-    price: Optional[Decimal] = None
     user_phone: Optional[str] = None
     venue_address: Optional[str] = None
     venue_latitude: Optional[float] = None

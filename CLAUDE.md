@@ -22,7 +22,7 @@ Native WeChat Mini Program (WXML/WXSS/JS). No build step.
 
 Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + MySQL 8.0 + Redis 7 + Celery.
 
-- **Entry**: `app/main.py` registers routers under `/api/v1`. Auto-creates tables on startup via `lifespan` — not suitable for production (use Alembic instead).
+- **Entry**: `app/main.py` registers routers under `/api/v1`. Database schema is managed by Alembic migrations; run `alembic upgrade head` before starting the app.
 - **Database**: `app/core/database.py` uses `create_async_engine` with `asyncmy` driver. `get_db()` is an async generator dependency that auto-commits on success and rolls back on exception.
 - **Auth**: JWT access + refresh tokens (`app/core/security.py`). `app/api/deps.py` provides `get_current_user`, `get_club_admin`, `get_platform_admin` dependencies.
   - **Important**: `deps.py` defines `_v(field)` helper because `asyncmy` returns enum columns as strings, not enum objects. Always use `_v()` when comparing enum fields in Python code.
@@ -82,13 +82,26 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### Database
 
+Schema changes are managed with Alembic. The API container uses the async `mysql+asyncmy` driver, while Alembic uses the synchronous `mysql+pymysql` driver; `backend/alembic/env.py` handles the conversion automatically.
+
 ```bash
-# Tables auto-create on API startup (development only)
-# For production migrations, use Alembic inside the API container:
-docker-compose exec api bash
-alembic revision --autogenerate -m "description"
-alembic upgrade head
+# Fresh database: apply all migrations
+# (run after docker-compose up -d, before using the API)
+docker-compose exec api alembic upgrade head
+
+# After changing SQLAlchemy models, generate a migration
+docker-compose exec api alembic revision --autogenerate -m "description"
+
+# Review the generated file under backend/alembic/versions/, then apply it
+docker-compose exec api alembic upgrade head
+
+# Useful commands
+docker-compose exec api alembic current      # show current revision
+docker-compose exec api alembic history      # show migration history
+docker-compose exec api alembic downgrade -1 # rollback one revision
 ```
+
+For local development without Docker, ensure `DATABASE_URL` is exported and run the same `alembic` commands from the `backend/` directory.
 
 ### Mini Program
 

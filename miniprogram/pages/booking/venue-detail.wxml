@@ -1,6 +1,6 @@
 <view class="page">
   <!-- Hero Image Carousel -->
-  <view class="hero-section" wx:if="{{club}}">
+  <view class="hero-section" wx:if="{{club}}" style="padding-top: {{statusBarHeight}}px;">
     <swiper class="hero-swiper" indicator-dots="{{false}}" autoplay="{{false}}" circular bindchange="onImageChange">
       <swiper-item wx:for="{{club.images}}" wx:key="*this">
         <image class="hero-image" src="{{item || '/images/default-venue.png'}}" mode="aspectFill" />
@@ -11,7 +11,7 @@
       <view wx:for="{{club.images}}" wx:key="*this" class="dot {{currentImage === index ? 'active' : ''}}"></view>
     </view>
     <!-- Back Button -->
-    <view class="back-btn" bindtap="onNavigateBack">
+    <view class="back-btn" bindtap="onNavigateBack" style="top: {{statusBarHeight + 12}}px;">
       <text class="back-icon">‹</text>
     </view>
   </view>
@@ -63,19 +63,28 @@
     </view>
   </scroll-view>
 
+  <!-- Venue Info Bar -->
+  <view class="venue-bar" wx:if="{{displayVenues.length > 0}}">
+    <text class="venue-bar-name">{{displayVenues[0].name}}</text>
+    <view class="venue-bar-switch" wx:if="{{showVenueSwitcher}}" bindtap="onSwitchVenue">
+      <text>切换场地</text>
+      <text class="switch-arrow">›</text>
+    </view>
+  </view>
+
   <!-- Court Grid -->
-  <view class="grid-section" wx:if="{{venues.length > 0}}">
+  <view class="grid-section" wx:if="{{displayVenues.length > 0}}">
     <!-- Sticky Header: Venue Names -->
     <view class="grid-header">
       <view class="grid-header-time"></view>
-      <view wx:for="{{venues}}" wx:key="id" class="grid-header-col">
+      <view wx:for="{{displayVenues}}" wx:key="id" class="grid-header-col">
         <text class="grid-header-text">{{item.name}}</text>
       </view>
     </view>
 
     <!-- Grid Body -->
     <scroll-view class="grid-body" scroll-y enhanced>
-      <view wx:for="{{rows}}" wx:for-index="rowIndex" wx:key="time_label" class="grid-row">
+      <view wx:for="{{displayRows}}" wx:for-index="rowIndex" wx:key="time_label" class="grid-row">
         <view class="grid-time-col">
           <text class="grid-time-text">{{item.time_label}}</text>
         </view>
@@ -102,12 +111,12 @@
   </view>
 
   <!-- Empty State: no venues -->
-  <view wx:if="{{venues.length === 0 && !loading}}" class="empty-state">
+  <view wx:if="{{displayVenues.length === 0 && !loading}}" class="empty-state">
     <text>暂无可用场地</text>
   </view>
 
   <!-- Empty State: venues exist but no slots -->
-  <view wx:if="{{venues.length > 0 && rows.length === 0 && !loading}}" class="empty-state">
+  <view wx:if="{{displayVenues.length > 0 && displayRows.length === 0 && !loading}}" class="empty-state">
     <text>该日期暂无开放时段</text>
   </view>
 
@@ -119,7 +128,7 @@
   <!-- Bottom Selection Bar -->
   <view class="bottom-bar" wx:if="{{selectedSlots.length > 0}}">
     <view class="bottom-info">
-      <text class="bottom-duration">已选：{{selectedDuration}}</text>
+      <text class="bottom-duration">已选：{{selectedSlots.length}}个时段 {{selectedDuration}}</text>
       <text class="bottom-total">¥{{totalPrice}}</text>
     </view>
     <view class="bottom-actions">

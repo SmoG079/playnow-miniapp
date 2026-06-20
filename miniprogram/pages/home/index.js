@@ -7,6 +7,8 @@ const SORT_OPTIONS = [
 ];
 
 const NTRP_LEVELS = ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'];
+const NTRP_ANY = '不限';
+const NTRP_OPTIONS = [NTRP_ANY, ...NTRP_LEVELS];
 
 const DISTANCE_OPTIONS = [
   { label: '全部距离', value: 'all' },
@@ -16,6 +18,13 @@ const DISTANCE_OPTIONS = [
   { label: '10km内', value: '10' },
   { label: '20km内', value: '20' },
   { label: '50km内', value: '50' },
+];
+
+const TIME_OPTIONS = [
+  { label: '全天', value: 'all' },
+  { label: '上午', value: 'morning' },
+  { label: '下午', value: 'afternoon' },
+  { label: '晚上', value: 'evening' },
 ];
 
 function generateCalendar() {
@@ -73,6 +82,7 @@ Page({
     filterSort: 'created',
     filterDate: '',
     filterDateLabel: '',
+    filterTime: 'all',
     filterLevels: [],
     filterDistance: 'all',
     activeFilterCount: 0,
@@ -83,8 +93,9 @@ Page({
     // Constants for wxml
     SORT_OPTIONS,
     WEEKDAYS: ['日', '一', '二', '三', '四', '五', '六'],
-    NTRP_LEVELS,
+    NTRP_OPTIONS,
     DISTANCE_OPTIONS,
+    TIME_OPTIONS,
   },
 
   onLoad() {
@@ -299,6 +310,7 @@ Page({
       showFilterPopup: true,
       filterSort: this.data.sortBy || 'created',
       filterDate: this.data.filterDate || '',
+      filterTime: this.data.filterTime || 'all',
       filterLevels: this.data.filterLevels || [],
       filterDistance: this.data.filterDistance || 'all',
       calendarMonths: this.generateCalendarData(),
@@ -393,7 +405,14 @@ Page({
 
   onFilterLevelChange(e) {
     const value = e.currentTarget.dataset.value;
-    const levels = [...this.data.filterLevels];
+    let levels = [...this.data.filterLevels];
+
+    if (value === NTRP_ANY) {
+      // 不限：清空所有具体等级
+      this.setData({ filterLevels: [] });
+      return;
+    }
+
     const idx = levels.indexOf(value);
     if (idx > -1) {
       levels.splice(idx, 1);
@@ -401,6 +420,10 @@ Page({
       levels.push(value);
     }
     this.setData({ filterLevels: levels });
+  },
+
+  onFilterTimeChange(e) {
+    this.setData({ filterTime: e.currentTarget.dataset.value });
   },
 
   onFilterDistanceChange(e) {
@@ -425,10 +448,11 @@ Page({
   },
 
   computeActiveFilterCount() {
-    const { filterDate, filterLevels, filterDistance } = this.data;
+    const { filterDate, filterLevels, filterDistance, filterTime } = this.data;
     let count = 0;
     if (filterDate) count++;
     if (filterLevels && filterLevels.length > 0) count++;
+    if (filterTime && filterTime !== 'all') count++;
     if (filterDistance && filterDistance !== 'all') count++;
     return count;
   },
@@ -438,6 +462,7 @@ Page({
       filterSort: 'created',
       filterDate: '',
       filterDateLabel: '',
+      filterTime: 'all',
       filterLevels: [],
       filterDistance: 'all',
     });
@@ -445,12 +470,13 @@ Page({
 
   onConfirmFilters() {
     const activeFilterCount = this.computeActiveFilterCount();
-    const { filterSort, filterDate, filterLevels } = this.data;
+    const { filterSort, filterDate, filterLevels, filterTime } = this.data;
     this.setData({
       showFilterPopup: false,
       sortBy: filterSort,
       filterDate,
       filterDateLabel: formatDateLabel(filterDate),
+      filterTime,
       filterLevels,
       activeFilterCount,
     }, () => {

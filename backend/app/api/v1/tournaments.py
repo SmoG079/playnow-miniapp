@@ -259,6 +259,7 @@ async def register_tournament(
             user_id=order.user_id,
             venue_id=order.venue_id,
             slot_id=order.slot_id,
+            slot_ids=order.slot_ids,
             club_id=order.club_id,
             amount=order.amount,
             status=order.status.value,
