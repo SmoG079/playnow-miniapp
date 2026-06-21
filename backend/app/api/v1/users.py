@@ -5,11 +5,11 @@ from app.core.database import get_db
 from app.api.deps import get_current_user, _v
 from app.models.models import (
     User, ClubMember, Notification, BookingOrder, Venue, Club,
-    VenueTimeSlot, OrderStatus,
+    VenueTimeSlot, OrderStatus, MatchPost, MatchRegistration,
 )
 from app.schemas.schemas import (
     UserMeResponse, UserUpdate, PaginatedResponse, NotificationBrief,
-    BookingDetail,
+    BookingDetail, PostBrief,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -218,4 +218,47 @@ async def my_bookings(
             )
         )
 
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/me/posts", response_model=PaginatedResponse)
+async def my_posts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = (
+        select(MatchPost, User.nickname, User.avatar_url, Club.name,
+               func.count(MatchRegistration.id))
+        .join(User, MatchPost.user_id == User.id)
+        .join(Club, MatchPost.club_id == Club.id)
+        .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
+        .where(MatchPost.user_id == current_user.id)
+        .group_by(MatchPost.id)
+        .order_by(MatchPost.created_at.desc())
+    )
+    count_q = select(func.count(MatchPost.id)).where(MatchPost.user_id == current_user.id)
+    total_r = await db.execute(count_q)
+    total = total_r.scalar() or 0
+    offset = (page - 1) * page_size
+    result = await db.execute(query.offset(offset).limit(page_size))
+    rows = result.all()
+    items = []
+    for row in rows:
+        post, nickname, avatar, club_name, reg_count = row
+        items.append(PostBrief(
+            id=post.id, club_id=post.club_id, user_id=post.user_id,
+            title=post.title, sport_type=post.sport_type,
+            preferred_date=post.preferred_date,
+            preferred_start=post.preferred_start,
+            preferred_end=post.preferred_end,
+            players_needed=post.players_needed,
+            level_required=post.level_required,
+            status=post.status.value,
+            created_at=post.created_at,
+            user_nickname=nickname, user_avatar=avatar,
+            club_name=club_name, registration_count=reg_count or 0,
+            venue_id=post.venue_id, booking_id=post.booking_id,
+        ))
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

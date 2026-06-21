@@ -1,5 +1,5 @@
 const app = getApp();
-const wxpay = require('../../utils/wxpay');
+const auth = require('../../utils/auth');
 
 // Must stay in sync with backend BOOKING_LOCK_TTL_SECONDS
 const LOCK_TTL_SECONDS = 600;
@@ -23,6 +23,7 @@ Page({
     venueName: '',
     clubName: '',
     duration: '',
+    returnMode: '',
     booking: null,
     paying: false,
     countdownText: '',
@@ -53,6 +54,7 @@ Page({
       venueName,
       clubName,
       duration: this._calcDuration(options.start, options.end),
+      returnMode: options.return_mode || '',
     });
     if (!venueName || !clubName) {
       this.loadVenueInfo();
@@ -161,27 +163,53 @@ Page({
 
   async onPay() {
     if (this.data.paying || this.data.countdownExpired) return;
+    if (!auth.requirePhone()) return;
     this.setData({ paying: true });
 
     try {
-      // 1. Create booking (lock slot)
       let booking = this.data.booking;
       if (!booking) {
         booking = await this.onCreateBooking();
       }
 
-      // 2. Initiate WeChat payment
-      await wxpay.payBooking(booking.id);
-
-      // 3. Redirect to success page
-      wx.redirectTo({
-        url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
-      });
-    } catch (e) {
-      const isCancel = e && e.message === '用户取消支付';
-      if (!isCancel) {
-        wx.showToast({ title: '支付失败，请重试', icon: 'none' });
+      // Placeholder: mark as paid directly (skip WeChat Pay)
+      const payRes = await app.request({ url: `/bookings/${booking.id}/pay`, method: 'POST' });
+      if (payRes.already_paid) {
+        wx.showToast({ title: '已经支付过了', icon: 'none' });
       }
+
+      wx.showToast({ title: '支付成功', icon: 'success', duration: 500 });
+
+      const that = this;
+      setTimeout(function() {
+        if (that.data.returnMode === 'post' || that.data.returnMode === 'tournament') {
+          const targetPage = that.data.returnMode === 'tournament' ? 'tournament-create' : 'post-create';
+          const tabPages = ['post-create', 'tournament-create'];
+          // Store booking info in globalData for the target page to read
+          const app = getApp();
+          app.globalData._bookingReturn = {
+            booking_id: booking.id,
+            venue_id: that.data.venueId,
+            venue_name: that.data.venueName,
+            slot_date: that.data.date,
+            slot_start: that.data.startTime,
+            slot_end: that.data.endTime,
+          };
+          if (tabPages.includes(targetPage)) {
+            wx.switchTab({ url: `/pages/publish/${targetPage}` });
+          } else {
+            wx.redirectTo({
+              url: `/pages/publish/${targetPage}?booking_id=${booking.id}&venue_id=${that.data.venueId}&venue_name=${encodeURIComponent(that.data.venueName)}&slot_date=${that.data.date}&slot_start=${that.data.startTime}&slot_end=${that.data.endTime}`,
+            });
+          }
+        } else {
+          wx.redirectTo({
+            url: `/pages/booking/success?booking_id=${booking.id}&order_no=${booking.order_no}`,
+          });
+        }
+      }, 500);
+    } catch (e) {
+      wx.showToast({ title: '支付失败，请重试', icon: 'none' });
     } finally {
       this.setData({ paying: false });
     }

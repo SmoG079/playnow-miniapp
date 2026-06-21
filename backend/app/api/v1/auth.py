@@ -44,7 +44,25 @@ async def _get_wx_access_token():
 
 @router.post("/login", response_model=TokenResponse)
 async def wx_login(req: WxLoginRequest, db: AsyncSession = Depends(get_db)):
-    """WeChat code-for-token exchange, then issue JWT."""
+    """WeChat code-for-token exchange, then issue JWT.
+
+    Supports dev mode: code starting with 'dev_' bypasses WeChat API.
+    """
+    # ── Dev mode bypass ──
+    if req.code and req.code.startswith("dev_"):
+        dev_openid = f"dev_{req.code[4:]}"[:64]
+        result = await db.execute(select(User).where(User.openid == dev_openid))
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(openid=dev_openid, nickname=req.code[4:][:32])
+            db.add(user)
+            await db.flush()
+        await db.commit()
+        access_token = create_access_token(user.id)
+        refresh_token = create_refresh_token(user.id)
+        return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+    # ── Production: WeChat code exchange ──
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://api.weixin.qq.com/sns/jscode2session",
@@ -97,6 +115,12 @@ async def get_phone(
     db: AsyncSession = Depends(get_db),
 ):
     """Get phone number via WeChat server-side API using mini-program access token."""
+    # Dev mode: accept mock phone
+    if req.code and req.code.startswith("dev_"):
+        current_user.phone = "13800138000"
+        await db.commit()
+        return {"msg": "ok", "phone": current_user.phone}
+
     token = await _get_wx_access_token()
     async with httpx.AsyncClient() as client:
         resp = await client.post(

@@ -3,6 +3,7 @@ const app = getApp();
 Page({
   data: {
     title: '',
+    matchMode: 'free',  // free | venue
     clubIndex: -1,
     clubIds: [],
     clubNames: [],
@@ -10,6 +11,10 @@ Page({
     venueIds: [],
     venueNames: [],
     sportType: '',
+    linkedVenueId: null,
+    linkedBookingId: null,
+    linkedVenueName: '',
+    linkedSlot: '',
     preferredDate: '',
     preferredStart: '',
     preferredEnd: '',
@@ -20,6 +25,7 @@ Page({
     levelOptions: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
     description: '',
     notes: '',
+    images: [],
     documents: [],
     approvalRequired: false,
     loading: false,
@@ -27,6 +33,20 @@ Page({
 
   onShow() {
     this.loadClubs();
+    // Check globalData for booking return (from confirm page via switchTab)
+    const info = app.globalData._bookingReturn;
+    if (info) {
+      app.globalData._bookingReturn = null;
+      this.setData({
+        linkedBookingId: info.booking_id,
+        linkedVenueId: info.venue_id,
+        linkedVenueName: info.venue_name,
+        linkedSlot: `${info.slot_date} ${info.slot_start}-${info.slot_end}`,
+        preferredDate: info.slot_date || '',
+        preferredStart: info.slot_start || '',
+        preferredEnd: info.slot_end || '',
+      });
+    }
   },
 
   async loadClubs() {
@@ -54,28 +74,36 @@ Page({
   onField(e) {
     this.setData({ [e.currentTarget.dataset.field]: e.detail.value });
   },
+  onPriceChange(e) { this.setData({ price: e.detail.value }); },
   onClubChange(e) {
     const clubIndex = parseInt(e.detail.value);
-    this.setData({ clubIndex, venueIndex: -1, venueIds: [], venueNames: [] });
-    this.loadVenues(clubIndex);
-  },
-  async loadVenues(clubIndex) {
-    if (clubIndex < 0) return;
-    const clubId = this.data.clubIds[clubIndex];
-    try {
-      const res = await app.request({ url: `/clubs/${clubId}` });
-      const venues = res.venues || [];
-      this.setData({
-        venueIds: venues.map(v => v.id),
-        venueNames: venues.map(v => v.name),
-      });
-    } catch (e) {
-      console.error(e);
-    }
+    this.setData({ clubIndex });
   },
 
-  onVenueChange(e) {
-    this.setData({ venueIndex: parseInt(e.detail.value) });
+  onModeSwitch(e) {
+    const mode = e.currentTarget.dataset.mode;
+    this.setData({ matchMode: mode });
+    if (mode === 'free') this.onClearBooking();
+  },
+
+  // 定场约球：跳转到场地预约页面
+  onGoBookVenue() {
+    if (this.data.clubIndex < 0) {
+      wx.showToast({ title: '请先选择俱乐部', icon: 'none' });
+      return;
+    }
+    const clubId = this.data.clubIds[this.data.clubIndex];
+    wx.navigateTo({
+      url: `/pages/booking/venue-detail?id=${clubId}&return_mode=post`,
+    });
+  },
+
+  onClearBooking() {
+    this.setData({
+      linkedVenueId: null, linkedBookingId: null,
+      linkedVenueName: '', linkedSlot: '',
+      preferredDate: '', preferredStart: '', preferredEnd: '',
+    });
   },
   onDateChange(e) {
     this.setData({ preferredDate: e.detail.value });
@@ -145,9 +173,40 @@ Page({
     this.setData({ documents: docs });
   },
 
+  // Image upload
+  chooseImage() {
+    const remain = 6 - this.data.images.length;
+    if (remain <= 0) return;
+    wx.chooseImage({ count: remain, sizeType: ['compressed'], success: (res) => {
+      this.setData({ images: [...this.data.images, ...res.tempFilePaths] });
+    }});
+  },
+  removeImage(e) {
+    const idx = e.currentTarget.dataset.idx;
+    const imgs = this.data.images.filter((_, i) => i !== idx);
+    this.setData({ images: imgs });
+  },
+  previewImage(e) {
+    wx.previewImage({ current: e.currentTarget.dataset.url, urls: this.data.images });
+  },
+  async uploadImages() {
+    const urls = [];
+    for (const path of this.data.images) {
+      if (path.startsWith('http')) { urls.push(path); continue; }
+      try {
+        const res = await app.uploadFile(path);
+        urls.push(res.url);
+      } catch (e) { console.error('Upload failed', e); }
+    }
+    return urls;
+  },
+
   async onSubmit() {
-    if (!this.data.title || this.data.clubIndex === -1) {
-      return wx.showToast({ title: '标题和俱乐部必填', icon: 'none' });
+    if (!this.data.title) {
+      return wx.showToast({ title: '请输入标题', icon: 'none' });
+    }
+    if (this.data.matchMode === 'venue' && this.data.clubIndex === -1) {
+      return wx.showToast({ title: '定场约球请选择俱乐部', icon: 'none' });
     }
     if (!this.data.preferredDate) {
       return wx.showToast({ title: '请选择日期', icon: 'none' });
@@ -172,11 +231,12 @@ Page({
 
     this.setData({ loading: true });
     try {
+      const images = await this.uploadImages();
       await app.request({
         url: '/posts',
         method: 'POST',
         data: {
-          club_id: this.data.clubIds[this.data.clubIndex],
+          club_id: this.data.matchMode === 'venue' ? this.data.clubIds[this.data.clubIndex] : null,
           title: this.data.title,
           preferred_date: this.data.preferredDate,
           preferred_start: this.data.preferredStart,
@@ -186,9 +246,10 @@ Page({
           level_required: this._formatLevelRange(),
           description: this.data.description || null,
           notes: this.data.notes || null,
-          venue_id: this.data.venueIndex > -1 ? this.data.venueIds[this.data.venueIndex] : null,
-          booking_id: null,
+          venue_id: this.data.linkedVenueId || null,
+          booking_id: this.data.linkedBookingId || null,
           documents: this.data.documents.length > 0 ? this.data.documents : null,
+          images: images.length > 0 ? images : null,
           approval_required: this.data.approvalRequired,
         },
       });

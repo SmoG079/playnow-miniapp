@@ -1,88 +1,62 @@
-<view class="page">
-  <!-- Venue List -->
-  <view class="venue-list" wx:if="{{venues.length > 0}}">
-    <view class="venue-card" wx:for="{{venues}}" wx:key="id">
-      <view class="venue-main">
-        <view class="venue-header">
-          <text class="venue-name">{{item.name}}</text>
-          <text class="venue-status {{item.status}}">
-            {{item.status === 'active' ? '正常' : item.status === 'maintenance' ? '维护中' : '已关闭'}}
-          </text>
-        </view>
-        <view class="venue-tags">
-          <text class="tag sport">{{item.sport_type}}</text>
-          <text class="tag price">¥{{item.price_per_hour}}/小时</text>
-          <text class="tag capacity">限{{item.max_capacity}}人</text>
-        </view>
-      </view>
-      <view class="venue-actions">
-        <text class="action-link" bindtap="onSlotManage" data-id="{{item.id}}">时段</text>
-        <text class="action-link" bindtap="onShowModal" data-mode="edit" data-venue="{{item}}">编辑</text>
-        <text class="action-link danger" bindtap="onDelete" data-venue="{{item}}">删除</text>
-      </view>
-    </view>
+<view class="page" style="padding-top:{{statusBarH + 44}}px">
+  <!-- Floating Header -->
+  <view class="float-header" style="padding-top:{{statusBarH}}px">
+    <view class="back-btn" bindtap="onBack">‹ 返回</view>
+    <text class="header-title">{{isEdit ? '编辑场地' : '添加场地'}}</text>
+    <view style="width:80rpx"></view>
   </view>
 
-  <!-- Empty State -->
-  <view class="empty-state" wx:if="{{venues.length === 0 && !loading}}">
-    <text>暂无场地</text>
-  </view>
+  <!-- Form -->
+  <view class="card">
+    <text class="flabel">场地名称 *</text>
+    <input class="finput" value="{{form.name}}" data-field="name" bindinput="onField" placeholder="如：1号网球场" />
 
-  <!-- Loading -->
-  <view class="loading-state" wx:if="{{loading}}">
-    <text>加载中...</text>
-  </view>
+    <text class="flabel">每小时价格（元）*</text>
+    <input class="finput" type="digit" value="{{form.price_per_hour}}" data-field="price_per_hour" bindinput="onField" placeholder="80" />
 
-  <!-- Add Button -->
-  <view class="fab-btn" bindtap="onShowModal" data-mode="create">
-    <text class="fab-icon">+</text>
-  </view>
-
-  <!-- Create/Edit Modal -->
-  <view class="modal-mask" wx:if="{{showModal}}" bindtap="onCloseModal">
-    <view class="modal-content" catchtap="onPanelTap">
-      <view class="modal-header">
-        <text class="modal-title">{{modalMode === 'create' ? '添加场地' : '编辑场地'}}</text>
-        <text class="modal-close" bindtap="onCloseModal">✕</text>
+    <!-- Price Rules -->
+    <view class="rules-section">
+      <view class="rules-hd">
+        <text class="flabel" style="margin-bottom:0">特殊价格规则</text>
+        <text class="add-link" bindtap="onAddRule">+ 添加规则</text>
       </view>
 
-      <view class="form-group">
-        <text class="form-label">场地名称 *</text>
-        <input class="form-input" placeholder="请输入场地名称" value="{{form.name}}"
-          data-field="name" bindinput="onInputChange" />
-      </view>
+      <view wx:for="{{form.price_rules}}" wx:key="idx" class="rule-card" wx:for-index="idx">
+        <text class="rule-remove" bindtap="onRemoveRule" data-idx="{{idx}}">✕</text>
 
-      <view class="form-group">
-        <text class="form-label">运动类型</text>
-        <view class="form-picker" style="color:#999">网球</view>
-      </view>
-
-      <view class="form-group">
-        <text class="form-label">每小时价格 *</text>
-        <input class="form-input" type="digit" placeholder="0.00" value="{{form.price_per_hour}}"
-          data-field="price_per_hour" bindinput="onInputChange" />
-      </view>
-
-      <view class="form-group">
-        <text class="form-label">容纳人数</text>
-        <input class="form-input" type="number" placeholder="4" value="{{form.max_capacity}}"
-          data-field="max_capacity" bindinput="onInputChange" />
-      </view>
-
-      <view class="form-group">
-        <text class="form-label">排序</text>
-        <input class="form-input" type="number" placeholder="0" value="{{form.sort_order}}"
-          data-field="sort_order" bindinput="onInputChange" />
-      </view>
-
-      <view class="form-group" wx:if="{{modalMode === 'edit'}}">
-        <text class="form-label">状态</text>
-        <picker bindchange="onInputChange" data-field="status" value="{{form.status === 'active' ? 0 : form.status === 'maintenance' ? 1 : 2}}" range="{{['正常','维护中','已关闭']}}">
-          <view class="form-picker">{{form.status === 'active' ? '正常' : form.status === 'maintenance' ? '维护中' : '已关闭'}}</view>
+        <picker bindchange="onRuleTypeChange" data-idx="{{idx}}" value="{{item.type === 'daily_time' ? 1 : 0}}" range="{{['日期范围','每天时段']}}">
+          <view class="finput rule-pick">{{item.type === 'daily_time' ? '每天时段' : '日期范围'}}</view>
         </picker>
-      </view>
 
-      <button class="btn-submit" bindtap="onSubmit">保存</button>
+        <block wx:if="{{item.type !== 'daily_time'}}">
+          <picker mode="date" value="{{item.start_date}}" data-idx="{{idx}}" data-field="start_date" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.start_date || '开始日期'}}</view>
+          </picker>
+          <picker mode="date" value="{{item.end_date}}" data-idx="{{idx}}" data-field="end_date" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.end_date || '结束日期'}}</view>
+          </picker>
+          <picker mode="time" value="{{item.start_time}}" data-idx="{{idx}}" data-field="start_time" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.start_time || '开始时间（可选）'}}</view>
+          </picker>
+          <picker mode="time" value="{{item.end_time}}" data-idx="{{idx}}" data-field="end_time" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.end_time || '结束时间（可选）'}}</view>
+          </picker>
+        </block>
+        <block wx:else>
+          <picker mode="time" value="{{item.start_time}}" data-idx="{{idx}}" data-field="start_time" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.start_time || '开始时间'}}</view>
+          </picker>
+          <picker mode="time" value="{{item.end_time}}" data-idx="{{idx}}" data-field="end_time" bindchange="onRuleField">
+            <view class="finput rule-pick">{{item.end_time || '结束时间'}}</view>
+          </picker>
+        </block>
+
+        <input class="finput" type="digit" value="{{item.price}}" data-idx="{{idx}}" data-field="price" bindinput="onRuleField" placeholder="特殊价格（元/小时）" />
+      </view>
     </view>
+  </view>
+
+  <view class="submit-area">
+    <button class="btn-save" bindtap="onSubmit">保存</button>
   </view>
 </view>

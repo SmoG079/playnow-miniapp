@@ -1,7 +1,7 @@
 import re
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, delete
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
 from app.api.deps import get_current_user, _v
@@ -177,6 +177,9 @@ async def list_posts(
             pending_count=pending_cnt or 0,
             distance=distance,
             price=post.price,
+            venue_id=post.venue_id,
+            booking_id=post.booking_id,
+            images=post.images,
         ))
 
     if sort_by == 'distance':
@@ -192,19 +195,20 @@ async def create_post(
     db: AsyncSession = Depends(get_db),
 ):
     # 权限校验：只有俱乐部管理员或平台管理员才能发布
-    if _v(current_user.role) not in ("club_admin", "platform_admin"):
-        raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
-
-    member_result = await db.execute(
-        select(ClubMember).where(
-            ClubMember.user_id == current_user.id,
-            ClubMember.club_id == req.club_id,
+    # 定场约球 requires club admin; 自由约球 allows any user
+    if req.club_id:
+        if _v(current_user.role) not in ("club_admin", "platform_admin"):
+            raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
+        member_result = await db.execute(
+            select(ClubMember).where(
+                ClubMember.user_id == current_user.id,
+                ClubMember.club_id == req.club_id,
+            )
         )
-    )
-    if not member_result.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
+        if not member_result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
 
-    if req.preferred_end <= req.preferred_start:
+    if req.preferred_start and req.preferred_end and req.preferred_end <= req.preferred_start:
         raise HTTPException(status_code=422, detail="结束时间必须晚于开始时间")
 
     sport_type = req.sport_type
@@ -229,6 +233,7 @@ async def create_post(
         documents=req.documents,
         venue_id=req.venue_id,
         booking_id=req.booking_id,
+        images=req.images,
         approval_required=req.approval_required,
         price=req.price,
     )
@@ -238,8 +243,10 @@ async def create_post(
 
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
-    club_result = await db.execute(select(Club).where(Club.id == req.club_id))
-    club = club_result.scalar_one_or_none()
+    club = None
+    if req.club_id:
+        club_result = await db.execute(select(Club).where(Club.id == req.club_id))
+        club = club_result.scalar_one_or_none()
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
@@ -303,6 +310,7 @@ async def update_post(
         club_name=club.name if club else None,
         registration_count=0,
         price=post.price,
+        images=post.images,
     )
 
 
@@ -665,6 +673,25 @@ async def create_comment(
             db.add(reply_notif)
 
     return _comment_to_brief(comment, current_user.nickname, current_user.avatar_url)
+
+
+@router.delete("/{post_id}")
+async def delete_post(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
+    post = result.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
+        raise HTTPException(status_code=403, detail="Only post owner can delete")
+    # Delete related data
+    await db.execute(delete(MatchRegistration).where(MatchRegistration.post_id == post_id))
+    await db.execute(delete(Comment).where(Comment.post_id == post_id))
+    await db.delete(post)
+    return {"msg": "ok"}
 
 
 @router.delete("/{post_id}/comments/{comment_id}")

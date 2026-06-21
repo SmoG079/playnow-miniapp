@@ -4,6 +4,7 @@ const perm = require('../../utils/permission');
 Page({
   data: {
     managedClubs: [],
+    clubNames: [],
     clubIndex: 0,
     form: {
       title: '',
@@ -16,16 +17,73 @@ Page({
       prize: '',
     },
     loading: false,
+    images: [],
+    linkedVenueId: null,
+    linkedBookingId: null,
+    linkedVenueName: '',
+    linkedSlot: '',
   },
 
-  onLoad() {
+  onGoBookVenue() {
+    const clubId = this.data.managedClubs[this.data.clubIndex];
+    if (!clubId) return wx.showToast({ title: '请先选择俱乐部', icon: 'none' });
+    wx.navigateTo({ url: `/pages/booking/venue-detail?id=${clubId}&return_mode=tournament` });
+  },
+  onClearBooking() {
+    this.setData({ linkedVenueId: null, linkedBookingId: null, linkedVenueName: '', linkedSlot: '' });
+  },
+
+  chooseImage() {
+    const remain = 6 - this.data.images.length;
+    if (remain <= 0) return;
+    wx.chooseImage({ count: remain, sizeType: ['compressed'], success: (res) => {
+      this.setData({ images: [...this.data.images, ...res.tempFilePaths] });
+    }});
+  },
+  removeImage(e) {
+    const idx = e.currentTarget.dataset.idx;
+    this.setData({ images: this.data.images.filter((_, i) => i !== idx) });
+  },
+  previewImage(e) {
+    wx.previewImage({ current: e.currentTarget.dataset.url, urls: this.data.images });
+  },
+  async uploadImages() {
+    const urls = [];
+    for (const path of this.data.images) {
+      if (path.startsWith('http')) { urls.push(path); continue; }
+      try { const r = await app.uploadFile(path); urls.push(r.url); } catch (e) {}
+    }
+    return urls;
+  },
+
+  onShow() {
+    const info = app.globalData._bookingReturn;
+    if (info) {
+      app.globalData._bookingReturn = null;
+      this.setData({
+        linkedBookingId: info.booking_id,
+        linkedVenueId: info.venue_id,
+        linkedVenueName: info.venue_name,
+        linkedSlot: `${info.slot_date} ${info.slot_start}-${info.slot_end}`,
+      });
+    }
+  },
+
+  async onLoad() {
     if (!perm.requireClubAdmin()) return;
-    const managed = perm.getManagedClubIds();
-    if (managed.length === 0) {
+    const managedIds = perm.getManagedClubIds();
+    if (managedIds.length === 0) {
       wx.showToast({ title: '您没有管理的俱乐部', icon: 'none' });
       return wx.navigateBack();
     }
-    this.setData({ managedClubs: managed });
+    try {
+      const res = await app.request({ url: '/clubs?page=1&page_size=50' });
+      const clubs = (res.items || []).filter(c => managedIds.includes(c.id));
+      this.setData({
+        managedClubs: clubs.map(c => c.id),
+        clubNames: clubs.map(c => c.name),
+      });
+    } catch (e) { console.error(e); }
     this.setDefaultTimes();
   },
 
@@ -87,6 +145,7 @@ Page({
       start_time: start.toISOString(),
       end_time: end.toISOString(),
       entry_fee: entryFee,
+      venue_id: this.data.linkedVenueId || null,
       max_participants: maxParticipants,
       description: form.description,
       prize: form.prize,
@@ -94,6 +153,8 @@ Page({
 
     this.setData({ loading: true });
     try {
+      const images = await this.uploadImages();
+      if (images.length > 0) payload.cover_image = images[0];
       const res = await app.request({
         url: '/tournaments',
         method: 'POST',

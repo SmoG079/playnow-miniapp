@@ -37,6 +37,10 @@ celery_app.conf.update(
             "task": "app.tasks.tasks.poll_processing_refunds",
             "schedule": crontab(minute="*/5"),
         },
+        "cleanup-old-slots": {
+            "task": "app.tasks.tasks.cleanup_old_slots",
+            "schedule": crontab(hour=4, minute=0),  # 04:00 daily
+        },
     },
 )
 

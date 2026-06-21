@@ -11,14 +11,44 @@ Page({
     latitude: null,
     longitude: null,
     phone: '',
+    opening_time: '08:00',
+    closing_time: '22:00',
     images: [],
     documents: [],
     loading: false,
     submitDisabled: true,
   },
 
-  onLoad() {
-    this._updateSubmitDisabled();
+  onLoad(options) {
+    const isEdit = options.mode === 'edit' && options.club_id;
+    this.setData({ isEdit, clubId: options.club_id ? parseInt(options.club_id) : null });
+    wx.setNavigationBarTitle({ title: isEdit ? '编辑俱乐部' : '创建俱乐部' });
+    if (isEdit) {
+      this.loadClubData();
+    } else {
+      this._updateSubmitDisabled();
+    }
+  },
+
+  async loadClubData() {
+    try {
+      const club = await app.request({ url: `/clubs/${this.data.clubId}` });
+      this.setData({
+        name: club.name || '',
+        description: club.description || '',
+        rules: club.rules || '',
+        address: club.address || '',
+        latitude: club.latitude || null,
+        longitude: club.longitude || null,
+        phone: club.contact_phone || '',
+        opening_time: club.opening_time || '08:00',
+        closing_time: club.closing_time || '22:00',
+        images: club.images || [],
+        documents: club.documents || [],
+      }, () => this._updateSubmitDisabled());
+    } catch (e) {
+      console.error('Load club failed', e);
+    }
   },
 
   _updateSubmitDisabled() {
@@ -33,6 +63,8 @@ Page({
   onDescInput(e) { this.setData({ description: e.detail.value }); },
   onRulesInput(e) { this.setData({ rules: e.detail.value }); },
   onPhoneInput(e) { this.setData({ phone: e.detail.value }, () => this._updateSubmitDisabled()); },
+  onOpenTimeChange(e) { this.setData({ opening_time: e.detail.value }); },
+  onCloseTimeChange(e) { this.setData({ closing_time: e.detail.value }); },
   onAddressInput(e) {
     const address = e.detail.value || '';
     this.setData({
@@ -238,8 +270,8 @@ Page({
       ]);
 
       await app.request({
-        url: '/clubs',
-        method: 'POST',
+        url: this.data.isEdit ? `/clubs/${this.data.clubId}` : '/clubs',
+        method: this.data.isEdit ? 'PUT' : 'POST',
         data: {
           name: this.data.name,
           sport_types: this.data.sportTypes,
@@ -249,11 +281,13 @@ Page({
           latitude: this.data.latitude,
           longitude: this.data.longitude,
           contact_phone: this.data.phone,
+          opening_time: this.data.opening_time,
+          closing_time: this.data.closing_time,
           images,
           documents,
         },
       });
-      wx.showToast({ title: '创建成功', icon: 'success' });
+      wx.showToast({ title: this.data.isEdit ? '保存成功' : '创建成功', icon: 'success' });
       await app.fetchUserInfo();
       setTimeout(() => wx.switchTab({ url: '/pages/booking/club-list' }), 1500);
     } catch (e) {

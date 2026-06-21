@@ -15,7 +15,7 @@
         </view>
       </view>
       <view class="cover-content">
-        <view class="sport-badge" wx:if="{{tournament.sport_type}}">{{tournament.sport_type}}</view>
+        <view class="sport-badge">网球</view>
         <text class="tournament-title">{{tournament.title}}</text>
         <text class="tournament-club">🏠 {{tournament.club_name}}</text>
       </view>

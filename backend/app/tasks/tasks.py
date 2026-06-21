@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone, date, time, timedelta
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from app.core.config import get_settings
 from app.core.database import async_session_factory
 from app.core.redis import release_lock
@@ -116,6 +116,35 @@ async def _generate_daily_slots_impl():
 
         await session.commit()
         return created_total
+
+
+async def _cleanup_old_slots_impl():
+    """Delete available slots older than 30 days (not referenced by bookings)."""
+    async with async_session_factory() as session:
+        cutoff = date.today() - timedelta(days=30)
+        result = await session.execute(
+            select(VenueTimeSlot.id).where(
+                VenueTimeSlot.status == SlotStatus.available,
+                VenueTimeSlot.date < cutoff,
+            )
+        )
+        ids = [r[0] for r in result.all()]
+        if not ids:
+            return 0
+        # Delete in batches of 1000
+        count = 0
+        for i in range(0, len(ids), 1000):
+            batch = ids[i:i+1000]
+            await session.execute(delete(VenueTimeSlot).where(VenueTimeSlot.id.in_(batch)))
+            count += len(batch)
+        await session.commit()
+        return count
+
+
+@celery_app.task(name="app.tasks.tasks.cleanup_old_slots")
+def cleanup_old_slots():
+    count = async_to_sync(_cleanup_old_slots_impl)()
+    return f"Cleaned up {count} old slots"
 
 
 @celery_app.task(name="app.tasks.tasks.generate_daily_slots")

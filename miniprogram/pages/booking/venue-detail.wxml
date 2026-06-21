@@ -1,142 +1,67 @@
-<view class="page">
-  <!-- Hero Image Carousel -->
-  <view class="hero-section" wx:if="{{club}}" style="padding-top: {{statusBarHeight}}px;">
-    <swiper class="hero-swiper" indicator-dots="{{false}}" autoplay="{{false}}" circular bindchange="onImageChange">
-      <swiper-item wx:for="{{club.images}}" wx:key="*this">
-        <image class="hero-image" src="{{item || '/images/default-venue.png'}}" mode="aspectFill" />
+<view class="page" style="padding-top:{{statusBarH + 44}}px">
+  <!-- Floating Header -->
+  <view class="float-header" style="padding-top:{{statusBarH}}px">
+    <view class="back-btn" bindtap="onBack">‹ 返回</view>
+    <text class="header-title">选择时段</text>
+    <view style="width:80rpx"></view>
+  </view>
+
+  <!-- Club Info Card -->
+  <view class="club-card" wx:if="{{club}}">
+    <!-- Image Carousel -->
+    <swiper class="club-swiper" indicator-dots="{{club.images.length > 1}}" autoplay circular>
+      <swiper-item wx:for="{{club.images.length ? club.images : [club.cover_image || '/images/default-venue.png']}}" wx:key="*this">
+        <image class="swiper-img" src="{{item}}" mode="aspectFill" />
       </swiper-item>
     </swiper>
-    <!-- Custom Dots -->
-    <view class="hero-dots" wx:if="{{club.images.length > 1}}">
-      <view wx:for="{{club.images}}" wx:key="*this" class="dot {{currentImage === index ? 'active' : ''}}"></view>
-    </view>
-    <!-- Back Button -->
-    <view class="back-btn" bindtap="onNavigateBack" style="top: {{statusBarHeight + 12}}px;">
-      <text class="back-icon">‹</text>
-    </view>
-  </view>
-
-  <!-- Venue Info -->
-  <view class="info-section" wx:if="{{club}}">
-    <view class="info-left">
-      <view class="info-name-row">
-        <text class="info-loc-icon">📍</text>
-        <text class="info-name">{{club.name}}</text>
+    <view class="club-body">
+      <text class="club-name">{{club.name}}</text>
+      <text class="club-meta" wx:if="{{club.address}}">📍 {{club.address}}</text>
+      <text class="club-meta">🕐 {{club.opening_time || '08:00'}} - {{club.closing_time || '22:00'}}</text>
+      <text class="club-meta" wx:if="{{club.contact_phone}}">📞 {{club.contact_phone}}</text>
+      <view class="club-desc" wx:if="{{club.description}}" bindtap="onToggleDesc">
+        <text class="desc-label">📖 俱乐部介绍 {{showDesc ? '▲' : '▼'}}</text>
+        <text class="desc-text" wx:if="{{showDesc}}">{{club.description}}</text>
       </view>
-      <text class="info-address">{{club.address || '暂无地址'}}</text>
-    </view>
-    <view class="info-divider"></view>
-    <view class="info-phone" bindtap="onPhoneTap" wx:if="{{club.contact_phone}}">
-      <text class="phone-icon">📞</text>
-    </view>
-  </view>
-
-  <!-- Legend -->
-  <view class="legend-section">
-    <view class="legend-item">
-      <view class="legend-box selected"></view>
-      <text class="legend-text">已选中</text>
-    </view>
-    <view class="legend-item">
-      <view class="legend-box unavailable"></view>
-      <text class="legend-text">不可订</text>
-    </view>
-    <view class="legend-item">
-      <view class="legend-box available"></view>
-      <text class="legend-text">可订</text>
-    </view>
-  </view>
-
-  <!-- Date Selector -->
-  <scroll-view class="date-scroll" scroll-x enhanced show-scrollbar="{{false}}">
-    <view class="date-list">
-      <view
-        wx:for="{{dateOptions}}"
-        wx:key="value"
-        class="date-item {{selectedDate === item.value ? 'active' : ''}}"
-        data-date="{{item.value}}"
-        bindtap="onDateChange"
-      >
-        <text class="date-weekday">{{item.weekday}}</text>
-        <text class="date-label">{{item.label}}</text>
+      <view class="club-desc" wx:if="{{club.rules}}" bindtap="onToggleRules">
+        <text class="desc-label">📋 场地规则 {{showRules ? '▲' : '▼'}}</text>
+        <text class="desc-text" wx:if="{{showRules}}">{{club.rules}}</text>
       </view>
     </view>
+  </view>
+
+  <!-- Date Tabs -->
+  <scroll-view class="date-scroll" scroll-x>
+    <view wx:for="{{dateOptions}}" wx:key="value"
+      class="date-tab {{selectedDate === item.value ? 'active' : ''}}"
+      data-date="{{item.value}}" bindtap="onDateChange">{{item.label}}</view>
   </scroll-view>
 
-  <!-- Venue Info Bar -->
-  <view class="venue-bar" wx:if="{{displayVenues.length > 0}}">
-    <text class="venue-bar-name">{{displayVenues[0].name}}</text>
-    <view class="venue-bar-switch" wx:if="{{showVenueSwitcher}}" bindtap="onSwitchVenue">
-      <text>切换场地</text>
-      <text class="switch-arrow">›</text>
-    </view>
-  </view>
-
-  <!-- Court Grid -->
-  <view class="grid-section" wx:if="{{displayVenues.length > 0}}">
-    <!-- Sticky Header: Venue Names -->
+  <!-- Slot Grid: columns = venues, rows = time -->
+  <view class="grid-table">
     <view class="grid-header">
-      <view class="grid-header-time"></view>
-      <view wx:for="{{displayVenues}}" wx:key="id" class="grid-header-col">
-        <text class="grid-header-text">{{item.name}}</text>
+      <view class="venue-col-hd" wx:for="{{venues}}" wx:key="id">{{item.name}}</view>
+    </view>
+    <view wx:for="{{grid}}" wx:for-item="row" wx:key="time_label" class="grid-row">
+      <view wx:for="{{row.cells}}" wx:for-item="cell" wx:for-index="ci" wx:key="venue_id"
+        class="grid-cell {{cell.status}} {{cell._sel ? 'selected' : ''}}"
+        data-row-idx="{{index}}" data-col-idx="{{ci}}" bindtap="onSlotTap">
+        <text class="cell-time">{{row.time_label}}</text>
+        <text class="cell-price" wx:if="{{cell.status === 'available' || cell._sel}}">¥{{cell.price}}</text>
+        <text wx:if="{{cell.status === 'booked'}}" class="cell-tag">已约</text>
+        <text wx:elif="{{cell.status === 'locked'}}" class="cell-tag">锁定</text>
+        <text wx:elif="{{cell._sel}}" class="cell-tick">✓</text>
       </view>
     </view>
-
-    <!-- Grid Body -->
-    <scroll-view class="grid-body" scroll-y enhanced>
-      <view wx:for="{{displayRows}}" wx:for-index="rowIndex" wx:key="time_label" class="grid-row">
-        <view class="grid-time-col">
-          <text class="grid-time-text">{{item.time_label}}</text>
-        </view>
-        <view
-          wx:for="{{item.cells}}"
-          wx:for-index="colIndex"
-          wx:key="slot_id"
-          class="grid-cell {{item.status}} {{item.isSelected ? 'selected' : ''}}"
-          data-row-index="{{rowIndex}}"
-          data-col-index="{{colIndex}}"
-          bindtap="onSlotTap"
-          bindlongpress="onSlotLongPress"
-        >
-          <block wx:if="{{item.status === 'available' || item.status === 'locked' || item.status === 'booked' || item.status === 'maintenance'}}">
-            <text class="cell-price" wx:if="{{item.status === 'available' && !item.isSelected}}">¥{{item.price}}</text>
-            <text class="cell-price" wx:if="{{item.isSelected}}">¥{{item.price}}</text>
-            <text class="cell-booked" wx:if="{{item.status === 'booked'}}">已预约</text>
-            <text class="cell-locked" wx:if="{{item.status === 'locked'}}">锁定中</text>
-            <text class="cell-maintenance" wx:if="{{item.status === 'maintenance'}}">维护中</text>
-          </block>
-        </view>
-      </view>
-    </scroll-view>
+    <view wx:if="{{grid.length === 0 && !loading}}" class="empty-state"><text>暂无可用时段</text></view>
   </view>
 
-  <!-- Empty State: no venues -->
-  <view wx:if="{{displayVenues.length === 0 && !loading}}" class="empty-state">
-    <text>暂无可用场地</text>
-  </view>
-
-  <!-- Empty State: venues exist but no slots -->
-  <view wx:if="{{displayVenues.length > 0 && displayRows.length === 0 && !loading}}" class="empty-state">
-    <text>该日期暂无开放时段</text>
-  </view>
-
-  <!-- Loading -->
-  <view wx:if="{{loading}}" class="loading-state">
-    <text>加载中...</text>
-  </view>
-
-  <!-- Bottom Selection Bar -->
-  <view class="bottom-bar" wx:if="{{selectedSlots.length > 0}}">
-    <view class="bottom-info">
-      <text class="bottom-duration">已选：{{selectedSlots.length}}个时段 {{selectedDuration}}</text>
-      <text class="bottom-total">¥{{totalPrice}}</text>
+  <!-- Bottom Bar -->
+  <view class="bottom-bar" wx:if="{{totalPrice > 0}}">
+    <view class="price-info">
+      <text class="price-label">{{selectedInfo.date}} · {{selectedInfo.start}}-{{selectedInfo.end}}</text>
+      <text class="price-value">¥{{totalPrice}}</text>
     </view>
-    <view class="bottom-actions">
-      <button class="btn-cancel" bindtap="onCancel">取消</button>
-      <button class="btn-book" bindtap="onBook">立即预订</button>
-    </view>
+    <button class="btn-book" bindtap="onBook">立即预约</button>
   </view>
-
-  <!-- Spacer when bottom bar is visible -->
-  <view wx:if="{{selectedSlots.length > 0}}" class="bottom-spacer"></view>
 </view>

@@ -19,3 +19,6 @@
 .menu-icon { font-size: 36rpx; width: 48rpx; text-align: center; }
 .menu-title { flex: 1; font-size: 28rpx; }
 .menu-arrow { font-size: 30rpx; color: #ccc; }
+
+.logout-area { padding: 40rpx 30rpx; }
+.logout-btn { width: 100%; height: 80rpx; line-height: 80rpx; background: #fff; color: #f44336; font-size: 30rpx; border: 1rpx solid #f44336; border-radius: 40rpx; }

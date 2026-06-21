@@ -1,46 +1,34 @@
 <view class="page">
   <view class="card">
     <text class="form-label">标题 *</text>
-    <input class="form-input" placeholder="如：周末羽毛球3缺1" value="{{title}}" bindinput="onField" data-field="title" />
+    <input class="form-input" placeholder="如：周末网球3缺1" value="{{title}}" bindinput="onField" data-field="title" />
 
-    <text class="form-label">俱乐部 *</text>
-    <picker mode="selector" range="{{clubNames}}" value="{{clubIndex}}" bindchange="onClubChange">
-      <view class="form-picker">
-        <text class="{{clubIndex > -1 ? '' : 'text-light'}}">{{clubIndex > -1 ? clubNames[clubIndex] : '选择俱乐部'}}</text>
-        <text>›</text>
-      </view>
-    </picker>
-
-    <text class="form-label">场地</text>
-    <picker mode="selector" range="{{venueNames}}" value="{{venueIndex}}" bindchange="onVenueChange" disabled="{{venueNames.length === 0}}">
-      <view class="form-picker">
-        <text class="{{venueIndex > -1 ? '' : 'text-light'}}">{{venueIndex > -1 ? venueNames[venueIndex] : (venueNames.length === 0 ? '请先选择俱乐部' : '选择场地')}}</text>
-        <text>›</text>
-      </view>
-    </picker>
-
-    <text class="form-label">日期 *</text>
-    <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange">
-      <view class="form-picker">
-        <text class="{{preferredDate ? '' : 'text-light'}}">{{preferredDate || '选择日期'}}</text>
-        <text>›</text>
-      </view>
-    </picker>
-
-    <text class="form-label">时间 *</text>
-    <view class="form-row">
-      <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart">
-        <view class="form-picker-half">
-          <text class="{{preferredStart ? '' : 'text-light'}}">{{preferredStart || '开始'}}</text>
-        </view>
-      </picker>
-      <text class="form-divider">至</text>
-      <picker mode="time" value="{{preferredEnd}}" bindchange="onTimeEnd">
-        <view class="form-picker-half">
-          <text class="{{preferredEnd ? '' : 'text-light'}}">{{preferredEnd || '结束'}}</text>
-        </view>
-      </picker>
+    <!-- Mode Toggle -->
+    <text class="form-label">约球模式</text>
+    <view class="mode-toggle">
+      <view class="mode-btn {{matchMode === 'free' ? 'active' : ''}}" data-mode="free" bindtap="onModeSwitch">🏸 自由约球</view>
+      <view class="mode-btn {{matchMode === 'venue' ? 'active' : ''}}" data-mode="venue" bindtap="onModeSwitch">🏟️ 定场约球</view>
     </view>
+
+    <!-- 定场约球：俱乐部 + 场地预约 -->
+    <block wx:if="{{matchMode === 'venue'}}">
+      <text class="form-label">俱乐部 *</text>
+      <picker mode="selector" range="{{clubNames}}" value="{{clubIndex}}" bindchange="onClubChange">
+        <view class="form-picker">
+          <text class="{{clubIndex > -1 ? '' : 'text-light'}}">{{clubIndex > -1 ? clubNames[clubIndex] : '选择俱乐部'}}</text>
+          <text>›</text>
+        </view>
+      </picker>
+
+      <block wx:if="{{linkedBookingId}}">
+        <view class="linked-booking">
+          <text class="linked-label">🏟️ 已关联场地</text>
+          <text>{{linkedVenueName}} · {{linkedSlot}}</text>
+          <text class="linked-clear" bindtap="onClearBooking">取消关联</text>
+        </view>
+      </block>
+      <button wx:else class="btn-book-venue" bindtap="onGoBookVenue" disabled="{{clubIndex === -1}}">🏟️ 去订场并关联此约球</button>
+    </block>
 
     <text class="form-label">还差几人 *</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
@@ -76,6 +64,18 @@
 
     <text class="form-label">备注</text>
     <textarea class="form-textarea" placeholder="补充说明（会显示在标题下方标签）..." value="{{notes}}" bindinput="onField" data-field="notes" />
+
+    <text class="form-label">活动图片（最多6张，可选）</text>
+    <view class="img-grid">
+      <view class="img-item" wx:for="{{images}}" wx:key="*this">
+        <image src="{{item}}" mode="aspectFill" bindtap="previewImage" data-url="{{item}}" />
+        <view class="img-remove" data-idx="{{index}}" bindtap="removeImage">×</view>
+      </view>
+      <view class="img-add" bindtap="chooseImage" wx:if="{{images.length < 6}}">
+        <text class="add-icon">+</text>
+        <text class="add-text">添加图片</text>
+      </view>
+    </view>
 
     <text class="form-label">附件（PDF）</text>
     <view class="document-list">

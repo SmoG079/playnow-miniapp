@@ -1,250 +1,66 @@
-<!-- 首页 - 比赛信息流 -->
 <view class="page">
-  <!-- Header: Location + Search -->
-  <view class="header-bar">
-    <view class="location-selector" bindtap="onCityTap">
-      <text class="location-icon">📍</text>
-      <text class="location-text">杭州</text>
-      <text class="location-arrow">▼</text>
-    </view>
-    <view class="header-actions">
-      <text class="header-btn" bindtap="onSearch">🔍</text>
-      <text class="header-btn">•••</text>
-    </view>
+  <!-- Top Tabs -->
+  <view class="top-tabs">
+    <view class="top-tab {{activeTab === 0 ? 'active' : ''}}" data-tab="0" bindtap="onTabChange">约球广场</view>
+    <view class="top-tab {{activeTab === 1 ? 'active' : ''}}" data-tab="1" bindtap="onTabChange">比赛</view>
   </view>
 
-  <!-- Sport Tabs (tennis only) -->
-  <view class="sport-tabs">
-    <view class="sport-tab active">
-      <text class="sport-tab-icon">🎾</text>
-      <text class="sport-tab-text">网球比赛</text>
+  <!-- 约球广场 -->
+  <block wx:if="{{activeTab === 0}}">
+    <!-- Filter bar -->
+    <view class="filter-bar">
+      <view class="f-tab {{matchFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="onMatchFilter">全部</view>
+      <view class="f-tab {{matchFilter === 'free' ? 'active' : ''}}" data-filter="free" bindtap="onMatchFilter">🏸 自由</view>
+      <view class="f-tab {{matchFilter === 'venue' ? 'active' : ''}}" data-filter="venue" bindtap="onMatchFilter">🏟️ 订场</view>
+      <view class="f-spacer"></view>
+      <picker mode="date" value="{{filterDate}}" bindchange="onDateChange">
+        <view class="f-date {{filterDate ? 'active' : ''}}">{{filterDate || '📅 日期'}}</view>
+      </picker>
+      <text wx:if="{{filterDate}}" class="f-clear" bindtap="onClearDate">✕</text>
+      <text class="f-dist {{sortByDist ? 'active' : ''}}" bindtap="onToggleDist">{{sortByDist ? '📍 距离排序' : '📌 按距离'}}</text>
     </view>
-  </view>
+    <!-- NTRP row -->
+    <scroll-view class="ntrp-row" scroll-x>
+      <text wx:for="{{NTRP_OPTIONS}}" wx:key="*this"
+        class="ntrp-item {{filterNtrp === item ? 'active' : ''}}"
+        data-val="{{item === '不限' ? '' : item}}" bindtap="onNtrpChange">{{item}}</text>
+    </scroll-view>
 
-  <!-- Filter Bar -->
-  <view class="filter-bar">
-    <view class="filter-btn {{filterDate ? 'active' : ''}}" bindtap="onFilterTime">
-      <text>{{filterDateLabel || '时间'}}</text>
-      <text class="filter-arrow">▼</text>
+    <view wx:for="{{displayPosts}}" wx:key="id" class="post-card" data-id="{{item.id}}" bindtap="onPostDetail">
+      <view class="post-header">
+        <image class="avatar" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+        <view class="post-user">
+          <text class="username">{{item.user_nickname || '匿名'}}</text>
+          <text class="time">{{item.created_at}}</text>
+        </view>
+        <view class="post-mode tag {{item.venue_id ? 'tag-warning' : 'tag-primary'}}">
+          {{item.venue_id ? '定场' : '自由'}}
+        </view>
+      </view>
+      <text class="post-title">{{item.title}}</text>
+      <view class="post-meta">
+        <text wx:if="{{item.preferred_date}}">📅 {{item.preferred_date}}</text>
+        <text wx:if="{{item.level_required}}">🎯 {{item.level_required}}</text>
+        <text>👥 {{item.registration_count}}人报名</text>
+        <text wx:if="{{item.club_name}}">{{item.club_name}}</text>
+      </view>
     </view>
-    <view class="filter-btn {{activeFilterCount > 0 ? 'active' : ''}}" bindtap="onFilterMore">
-      <text>筛选</text>
-      <text wx:if="{{activeFilterCount > 0}}" class="filter-badge">{{activeFilterCount}}</text>
-      <text wx:else class="filter-arrow">▼</text>
-    </view>
-  </view>
+    <view wx:if="{{displayPosts.length === 0}}" class="empty-state"><text>暂无约球帖</text></view>
+  </block>
 
-  <!-- Match Cards Feed -->
-  <view class="card-list">
-    <block wx:for="{{posts}}" wx:key="id">
-      <view class="match-card" data-id="{{item.id}}" bindtap="onPostDetail">
-        <!-- Organizer -->
-        <view class="match-organizer">
-          <image class="organizer-logo" src="{{item.club_cover_image || '/images/default-club.png'}}" mode="aspectFill" />
-          <text class="organizer-name">{{item.club_name || '未知俱乐部'}}</text>
-        </view>
-
-        <!-- Title Row -->
-        <view class="match-title-row">
-          <text class="match-title">{{item.title}}</text>
-          <text class="verify-badge" wx:if="{{item.club_verified}}">✓</text>
-        </view>
-
-        <!-- Main Content: Image + Info -->
-        <view class="match-content">
-          <image class="match-image" src="{{item.cover_image || item.club_cover_image || '/images/default-match.png'}}" mode="aspectFill" />
-          <view class="match-info">
-            <view class="info-row">
-              <text class="info-icon">⏱</text>
-              <text class="info-text">{{item.preferred_date}} {{item.weekday}} {{item.preferred_start}}</text>
-            </view>
-            <view class="info-row">
-              <text class="info-icon">📍</text>
-              <text class="info-text ellipsis">{{item.venue_address || item.club_name}}</text>
-            </view>
-            <view class="info-row" wx:if="{{item.distance !== null && item.distance !== undefined}}">
-              <text class="info-icon">🧭</text>
-              <text class="info-text distance">{{item.distance}}km</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- Footer: Registrations + Button -->
-        <view class="match-footer">
-          <view class="registration-info">
-            <view class="avatar-stack" wx:if="{{item.registrations && item.registrations.length > 0}}">
-              <image
-                wx:for="{{item.registrations.slice(0, 4)}}"
-                wx:for-item="reg"
-                wx:key="index"
-                class="stack-avatar"
-                src="{{reg.user_avatar || '/images/default-avatar.png'}}"
-                mode="aspectFill"
-              />
-            </view>
-            <text class="registration-text">已报名: {{item.registration_count || 0}}/{{item.players_needed || '?'}}</text>
-          </view>
-          <view class="price-tag" wx:if="{{item.price !== null && item.price !== undefined}}">
-            <text class="price-symbol">¥</text>
-            <text class="price-value">{{item.price}}</text>
-            <text class="price-unit">/人</text>
-          </view>
-          <view class="action-btn {{item.is_full ? 'full' : item.is_registered ? 'registered' : ''}}" catchtap="onActionTap" data-id="{{item.id}}">
-            {{item.is_full ? '已满员' : item.is_registered ? '已报名' : '去报名'}}
-          </view>
-        </view>
-      </view>
-    </block>
-
-    <view wx:if="{{posts.length === 0 && !loading}}" class="empty-state">
-      <text>暂无比赛，快去发布吧！</text>
-    </view>
-  </view>
-
-  <!-- Filter Popup -->
-  <view class="filter-popup {{showFilterPopup ? 'show' : ''}}" bindtap="onCloseFilterPopup">
-    <view class="filter-overlay"></view>
-    <view class="filter-panel" catchtap="onPanelTap">
-      <!-- Header -->
-      <view class="filter-panel-header">
-        <text class="filter-panel-title">筛选</text>
-        <text class="filter-panel-close" bindtap="onCloseFilterPopup">✕</text>
-      </view>
-
-      <!-- Scrollable Filter Content -->
-      <view class="filter-panel-body">
-        <!-- Sort Section -->
-        <view class="filter-section">
-        <text class="filter-section-title">排序方式</text>
-        <view class="filter-options">
-          <view
-            wx:for="{{SORT_OPTIONS}}"
-            wx:key="value"
-            class="filter-option {{filterSort === item.value ? 'active' : ''}}"
-            data-value="{{item.value}}"
-            bindtap="onFilterSortChange"
-          >
-            <text>{{item.label}}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- Level Section -->
-      <view class="filter-section">
-        <text class="filter-section-title">NTRP 等级</text>
-        <view class="filter-chips">
-          <view
-            wx:for="{{NTRP_OPTIONS}}"
-            wx:key="*this"
-            class="filter-chip {{(item === '不限' && filterLevels.length === 0) || filterLevels.indexOf(item) > -1 ? 'active' : ''}}"
-            data-value="{{item}}"
-            bindtap="onFilterLevelChange"
-          >
-            <text>{{item}}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- Time Section -->
-      <view class="filter-section">
-        <text class="filter-section-title">时间范围</text>
-        <view class="filter-options">
-          <view
-            wx:for="{{TIME_OPTIONS}}"
-            wx:key="value"
-            class="filter-option {{filterTime === item.value ? 'active' : ''}}"
-            data-value="{{item.value}}"
-            bindtap="onFilterTimeChange"
-          >
-            <text>{{item.label}}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- Distance Section -->
-      <view class="filter-section">
-        <text class="filter-section-title">距离范围</text>
-        <view class="filter-options">
-          <view
-            wx:for="{{DISTANCE_OPTIONS}}"
-            wx:key="value"
-            class="filter-option {{filterDistance === item.value ? 'active' : ''}}"
-            data-value="{{item.value}}"
-            bindtap="onFilterDistanceChange"
-          >
-            <text>{{item.label}}</text>
-          </view>
-        </view>
-      </view>
-      </view>
-
-      <!-- Footer Buttons -->
-      <view class="filter-footer">
-        <view class="filter-reset-btn" bindtap="onResetFilters">
-          <text>重置</text>
-        </view>
-        <view class="filter-confirm-btn" bindtap="onConfirmFilters">
-          <text>确定</text>
+  <!-- 比赛 -->
+  <block wx:if="{{activeTab === 1}}">
+    <view wx:for="{{tournaments}}" wx:key="id" class="post-card" data-id="{{item.id}}" bindtap="onTourDetail">
+      <image class="tour-cover" src="{{item.cover_image || '/images/default-match.png'}}" mode="aspectFill" />
+      <view class="post-body">
+        <text class="post-title">{{item.title}}</text>
+        <view class="post-meta">
+          <text>{{item.club_name}}</text>
+          <text>{{item.start_time}}</text>
+          <text>👥 {{item.current_participants}}/{{item.max_participants}}人</text>
         </view>
       </view>
     </view>
-  </view>
-
-  <!-- Calendar Popup -->
-  <view class="calendar-popup {{showCalendarPopup ? 'show' : ''}}" bindtap="onCloseCalendarPopup">
-    <view class="calendar-overlay"></view>
-    <view class="calendar-panel" catchtap="onCalendarPanelTap">
-      <!-- Header -->
-      <view class="calendar-panel-header">
-        <text class="calendar-panel-title">选择日期</text>
-        <text class="calendar-panel-close" bindtap="onCloseCalendarPopup">✕</text>
-      </view>
-
-      <!-- Calendar Content -->
-      <scroll-view class="calendar-scroll" scroll-y="true">
-        <view
-          wx:for="{{calendarMonths}}"
-          wx:key="index"
-          wx:for-item="month"
-          class="calendar-month"
-        >
-          <text class="calendar-month-title">{{month.year}}年{{month.month}}月</text>
-          
-          <!-- Weekday Headers -->
-          <view class="calendar-weekdays">
-            <text
-              wx:for="{{month.WEEKDAYS}}"
-              wx:key="*this"
-              class="calendar-weekday {{index === 0 || index === 6 ? 'weekend' : ''}}"
-            >{{item}}</text>
-          </view>
-          
-          <!-- Days Grid -->
-          <view class="calendar-days">
-            <view
-              wx:for="{{month.days}}"
-              wx:key="date"
-              wx:for-item="day"
-              class="calendar-day {{day.isPadding ? 'padding' : ''}} {{day.isWeekend ? 'weekend' : ''}} {{day.isToday ? 'today' : ''}} {{day.isPast ? 'past' : ''}} {{day.isSelected ? 'selected' : ''}}"
-              data-date="{{day.fullDate}}"
-              data-ispast="{{day.isPast}}"
-              bindtap="onCalendarDaySelect"
-            >
-              <text wx:if="{{!day.isPadding}}">{{day.date}}</text>
-            </view>
-          </view>
-        </view>
-      </scroll-view>
-
-      <!-- Footer Buttons -->
-      <view class="calendar-footer">
-        <view class="calendar-reset-btn" bindtap="onCalendarReset">
-          <text>重置</text>
-        </view>
-        <view class="calendar-confirm-btn" bindtap="onCalendarConfirm">
-          <text>确定</text>
-        </view>
-      </view>
-    </view>
-  </view>
+    <view wx:if="{{tournaments.length === 0}}" class="empty-state"><text>暂无比赛</text></view>
+  </block>
 </view>

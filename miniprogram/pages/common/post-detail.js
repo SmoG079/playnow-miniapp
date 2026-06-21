@@ -1,4 +1,5 @@
 const app = getApp();
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -82,7 +83,7 @@ Page({
     }
 
     if (this.data.isRegistered) {
-      // 取消报名
+      // 取消报名（不需要手机号）
       const statusText = this.data.myRegistrationStatus === 'pending' ? '待审核' : '已通过';
       wx.showModal({
         title: '确认取消',
@@ -103,7 +104,8 @@ Page({
         },
       });
     } else {
-      // 报名
+      // 报名 — require phone
+      if (!auth.requirePhone()) return;
       wx.showModal({
         title: '确认报名',
         content: `确定报名参加「${this.data.post.title}」吗？`,
