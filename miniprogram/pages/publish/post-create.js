@@ -19,9 +19,14 @@ Page({
     selectedSlotInfo: null,
     // Common fields
     playersNeeded: '1',
-    levelIndex: -1,
-    levels: ['不限', '初级', '中级', '高级'],
+    price: '',
+    levelMin: 0,
+    levelMax: 13,
+    levelOptions: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
+    description: '',
     notes: '',
+    documents: [],
+    approvalRequired: false,
     loading: false,
   },
 
@@ -31,8 +36,19 @@ Page({
 
   async loadClubs() {
     try {
+      const managedIds = app.globalData.managedClubIds || [];
+      if (managedIds.length === 0) {
+        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
+        setTimeout(() => wx.navigateBack(), 1500);
+        return;
+      }
       const res = await app.request({ url: '/clubs?page=1&page_size=50' });
-      const clubs = res.items || [];
+      const clubs = (res.items || []).filter(c => managedIds.includes(c.id));
+      if (clubs.length === 0) {
+        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
+        setTimeout(() => wx.navigateBack(), 1500);
+        return;
+      }
       this.setData({
         clubIds: clubs.map(c => c.id),
         clubNames: clubs.map(c => c.name),
@@ -158,6 +174,27 @@ Page({
     if (!this.data.title || this.data.clubIndex === -1) {
       return wx.showToast({ title: '标题和俱乐部必填', icon: 'none' });
     }
+    if (!this.data.preferredDate) {
+      return wx.showToast({ title: '请选择日期', icon: 'none' });
+    }
+    if (!this.data.preferredStart || !this.data.preferredEnd) {
+      return wx.showToast({ title: '请选择开始和结束时间', icon: 'none' });
+    }
+    if (this.data.preferredEnd <= this.data.preferredStart) {
+      return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
+    }
+    if (this.data.price === '' || this.data.price === null || this.data.price === undefined) {
+      return wx.showToast({ title: '请填写人均费用，0 表示免费', icon: 'none' });
+    }
+    const priceNum = parseFloat(this.data.price);
+    if (isNaN(priceNum) || priceNum < 0) {
+      return wx.showToast({ title: '费用不能为负数', icon: 'none' });
+    }
+    const playersNeeded = parseInt(this.data.playersNeeded) || 1;
+    if (playersNeeded < 1) {
+      return wx.showToast({ title: '人数至少为 1', icon: 'none' });
+    }
+
     this.setData({ loading: true });
     try {
       const data = {
@@ -185,9 +222,11 @@ Page({
       }
       await app.request({ url: '/posts', method: 'POST', data });
       wx.showToast({ title: '发布成功', icon: 'success' });
+      app.globalData.needRefreshFeed = true;
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1500);
     } catch (e) {
       console.error(e);
+      wx.showToast({ title: e?.data?.detail || '发布失败', icon: 'none' });
     } finally {
       this.setData({ loading: false });
     }

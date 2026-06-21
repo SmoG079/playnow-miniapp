@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
@@ -31,6 +31,7 @@ async def get_me(
         role=current_user.role.value if hasattr(current_user.role, 'value') else current_user.role,
         created_at=current_user.created_at,
         managed_club_ids=club_ids,
+        ntrp_level=current_user.ntrp_level,
     )
 
 
@@ -44,6 +45,11 @@ async def update_me(
         current_user.nickname = req.nickname
     if req.avatar_url is not None:
         current_user.avatar_url = req.avatar_url
+    if req.phone is not None:
+        current_user.phone = req.phone
+    if req.ntrp_level is not None:
+        current_user.ntrp_level = req.ntrp_level
+    await db.commit()
     return {"msg": "ok"}
 
 

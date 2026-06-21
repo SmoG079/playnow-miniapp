@@ -1,0 +1,138 @@
+.page {
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.tab-bar {
+  background-color: #fff;
+  border-bottom: 1rpx solid #eee;
+  white-space: nowrap;
+}
+
+.tab-list {
+  display: flex;
+  padding: 0 20rpx;
+}
+
+.tab-item {
+  display: inline-flex;
+  padding: 20rpx 30rpx;
+}
+
+.tab-item.active {
+  border-bottom: 4rpx solid #07c160;
+}
+
+.tab-item.active .tab-text {
+  font-weight: 600;
+  color: #333;
+}
+
+.tab-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+.order-list {
+  padding: 20rpx;
+}
+
+.order-card {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.order-no {
+  font-size: 24rpx;
+  color: #999;
+  font-family: monospace;
+}
+
+.order-status {
+  font-size: 22rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.order-status.orange {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+.order-status.green {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.order-status.blue {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.order-status.gray {
+  background-color: #eeeeee;
+  color: #757575;
+}
+
+.order-status.red {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.order-body {
+  padding: 16rpx 0;
+  border-top: 1rpx solid #f5f5f5;
+  border-bottom: 1rpx solid #f5f5f5;
+  margin: 12rpx 0;
+}
+
+.order-info {
+  font-size: 26rpx;
+  color: #666;
+  padding: 4rpx 0;
+}
+
+.order-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16rpx;
+}
+
+.order-amount {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #ff6b6b;
+}
+
+.btn-cancel {
+  font-size: 26rpx;
+  color: #f44336;
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #f44336;
+  border-radius: 8rpx;
+}
+
+.load-more,
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 40rpx;
+  color: #999;
+  font-size: 26rpx;
+}
+
+.empty-state,
+.loading-state {
+  padding: 120rpx 40rpx;
+  font-size: 30rpx;
+}

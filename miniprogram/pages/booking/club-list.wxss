@@ -15,4 +15,10 @@
 .club-tags { display: flex; gap: 8rpx; flex-wrap: wrap; }
 .club-arrow { font-size: 36rpx; color: #ccc; }
 
+.sort-bar { display: flex; gap: 16rpx; padding: 0 20rpx 20rpx; }
+.sort-item { padding: 10rpx 28rpx; border-radius: 30rpx; background: #fff; font-size: 26rpx; color: var(--text-secondary); }
+.sort-item.active { background: var(--primary); color: #fff; }
+
+.tag-distance { background: #e6f7ff; color: var(--primary); }
+
 .empty-state { text-align: center; padding: 120rpx 0; color: var(--text-light); }

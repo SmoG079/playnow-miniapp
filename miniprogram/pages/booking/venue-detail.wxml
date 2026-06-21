@@ -1,4 +1,21 @@
 <view class="page">
+  <!-- Hero Image Carousel -->
+  <view class="hero-section" wx:if="{{club}}" style="padding-top: {{statusBarHeight}}px;">
+    <swiper class="hero-swiper" indicator-dots="{{false}}" autoplay="{{false}}" circular bindchange="onImageChange">
+      <swiper-item wx:for="{{club.images}}" wx:key="*this">
+        <image class="hero-image" src="{{item || '/images/default-venue.png'}}" mode="aspectFill" />
+      </swiper-item>
+    </swiper>
+    <!-- Custom Dots -->
+    <view class="hero-dots" wx:if="{{club.images.length > 1}}">
+      <view wx:for="{{club.images}}" wx:key="*this" class="dot {{currentImage === index ? 'active' : ''}}"></view>
+    </view>
+    <!-- Back Button -->
+    <view class="back-btn" bindtap="onNavigateBack" style="top: {{statusBarHeight + 12}}px;">
+      <text class="back-icon">‹</text>
+    </view>
+  </view>
+
   <!-- Venue Info -->
   <view class="venue-header" wx:if="{{venue}}">
     <image class="venue-cover" src="{{venue.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
@@ -58,4 +75,34 @@
     </view>
     <button class="btn-pay" bindtap="onConfirmBooking">立即预约</button>
   </view>
+
+  <!-- Empty State: no venues -->
+  <view wx:if="{{displayVenues.length === 0 && !loading}}" class="empty-state">
+    <text>暂无可用场地</text>
+  </view>
+
+  <!-- Empty State: venues exist but no slots -->
+  <view wx:if="{{displayVenues.length > 0 && displayRows.length === 0 && !loading}}" class="empty-state">
+    <text>该日期暂无开放时段</text>
+  </view>
+
+  <!-- Loading -->
+  <view wx:if="{{loading}}" class="loading-state">
+    <text>加载中...</text>
+  </view>
+
+  <!-- Bottom Selection Bar -->
+  <view class="bottom-bar" wx:if="{{selectedSlots.length > 0}}">
+    <view class="bottom-info">
+      <text class="bottom-duration">已选：{{selectedSlots.length}}个时段 {{selectedDuration}}</text>
+      <text class="bottom-total">¥{{totalPrice}}</text>
+    </view>
+    <view class="bottom-actions">
+      <button class="btn-cancel" bindtap="onCancel">取消</button>
+      <button class="btn-book" bindtap="onBook">立即预订</button>
+    </view>
+  </view>
+
+  <!-- Spacer when bottom bar is visible -->
+  <view wx:if="{{selectedSlots.length > 0}}" class="bottom-spacer"></view>
 </view>

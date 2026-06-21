@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import get_settings
-from app.core.database import engine, Base
+from app.core.database import engine
 from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments
 
 # Setup file + console logging

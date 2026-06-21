@@ -22,4 +22,10 @@
     <text>暂未找到俱乐部</text>
     <button class="btn-primary" style="margin-top:20rpx" bindtap="onCreateClub">创建俱乐部</button>
   </view>
+
+  <view class="list-footer" wx:if="{{clubs.length > 0}}">
+    <text wx:if="{{loading}}">加载中...</text>
+    <text wx:elif="{{!hasMore}}">没有更多了</text>
+    <text wx:else>上拉加载更多</text>
+  </view>
 </view>

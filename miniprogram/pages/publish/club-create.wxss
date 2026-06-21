@@ -1,12 +1,31 @@
-.page { padding: 20rpx; padding-bottom: 160rpx; }
+.page { padding: 20rpx; padding-bottom: 160rpx; overflow-x: hidden; }
 
 .form-label { display: block; font-size: 28rpx; font-weight: 500; margin: 24rpx 0 12rpx; color: var(--text); }
 .form-input { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; }
 .form-textarea { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; min-height: 160rpx; width: 100%; box-sizing: border-box; }
+.form-picker { background: #fff; border-radius: 8rpx; padding: 20rpx; font-size: 28rpx; display: flex; justify-content: space-between; align-items: center; }
+.form-picker .icon { font-size: 32rpx; }
+.text-light { color: #999; }
+.text-sm { font-size: 24rpx; }
+.text-secondary { color: #666; }
 
-.sport-check-group { display: flex; flex-wrap: wrap; gap: 16rpx; }
-.sport-check { padding: 12rpx 28rpx; border-radius: 30rpx; background: #fff; font-size: 26rpx; border: 2rpx solid #e5e5e5; }
-.sport-check.checked { background: #e8f8ee; color: var(--primary); border-color: var(--primary); }
+/* 图片上传 */
+.image-upload-grid { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.image-item { position: relative; width: 200rpx; height: 200rpx; }
+.image-item image { width: 100%; height: 100%; border-radius: 8rpx; }
+.image-remove { position: absolute; top: -10rpx; right: -10rpx; width: 40rpx; height: 40rpx; background: #ff4444; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28rpx; }
+.image-add { width: 200rpx; height: 200rpx; background: #f5f5f5; border-radius: 8rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2rpx dashed #ccc; }
+.add-icon { font-size: 48rpx; color: #999; }
+.add-text { font-size: 24rpx; color: #999; margin-top: 8rpx; }
+
+/* PDF 上传 */
+.document-list { display: flex; flex-direction: column; gap: 16rpx; }
+.document-item { display: flex; align-items: center; background: #fff; padding: 20rpx; border-radius: 8rpx; }
+.doc-icon { font-size: 36rpx; margin-right: 16rpx; }
+.doc-name { flex: 1; font-size: 28rpx; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-size { font-size: 24rpx; color: #999; margin-right: 16rpx; }
+.doc-remove { width: 40rpx; height: 40rpx; background: #ff4444; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28rpx; }
+.document-add { display: flex; align-items: center; justify-content: center; background: #f5f5f5; padding: 24rpx; border-radius: 8rpx; border: 2rpx dashed #ccc; }
 
 .submit-area { padding: 20rpx 0; }
 .submit-area .btn-primary { width: 100%; border-radius: 44rpx; padding: 24rpx; font-size: 32rpx; }

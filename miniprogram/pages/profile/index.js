@@ -45,6 +45,8 @@ Page({
     const adminMenu = [
       { icon: '🏠', title: '俱乐部管理', page: '/pages/profile/club-dashboard' },
       { icon: '🏟️', title: '场地管理', page: '/pages/publish/venue-manage' },
+      { icon: '⏰', title: '时段管理', page: '/pages/publish/slot-manage' },
+      { icon: '📋', title: '订单管理', page: '/pages/publish/order-manage' },
       { icon: '💰', title: '分账记录', page: '/pages/profile/settlement-list' },
       { icon: '📊', title: '数据统计', page: '/pages/profile/stats' },
     ];

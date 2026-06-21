@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "less": "^4.2.0",
+    "miniprogram-ci": "^1.9.8"
+  }
+}

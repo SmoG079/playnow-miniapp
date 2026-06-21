@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -19,6 +20,22 @@ celery_app.conf.update(
         "release-expired-locks": {
             "task": "app.tasks.tasks.release_expired_locks",
             "schedule": 60.0,  # every 60 seconds
+        },
+        "generate-daily-slots": {
+            "task": "app.tasks.tasks.generate_daily_slots",
+            "schedule": crontab(hour=2, minute=0),  # 02:00 daily
+        },
+        "execute-pending-settlements": {
+            "task": "app.tasks.tasks.execute_pending_settlements",
+            "schedule": crontab(hour=3, minute=0),  # 03:00 daily
+        },
+        "retry-failed-refunds": {
+            "task": "app.tasks.tasks.retry_failed_refunds",
+            "schedule": 300.0,
+        },
+        "poll-processing-refunds": {
+            "task": "app.tasks.tasks.poll_processing_refunds",
+            "schedule": crontab(minute="*/5"),
         },
     },
 )

@@ -2,19 +2,29 @@ const app = getApp();
 
 Page({
   data: {
-    venueId: null,
-    venue: null,
+    clubId: null,
+    club: null,
+    venues: [],
+    rows: [],
+    displayVenues: [],
+    displayRows: [],
     selectedDate: '',
     dateOptions: [],
-    slotGroups: [],
+    selectedSlots: [],
+    totalPrice: 0,
+    selectedDuration: '',
     loading: false,
     selectedInfo: null,
   },
 
   onLoad(options) {
-    this.setData({ venueId: options.id });
+    const sysInfo = wx.getSystemInfoSync();
+    this.setData({
+      clubId: options.id || options.club_id,
+      statusBarHeight: sysInfo.statusBarHeight || 0,
+    });
     this.initDates();
-    this.loadVenue();
+    this.loadClub();
   },
 
   initDates() {
@@ -23,10 +33,13 @@ Page({
     for (let i = 0; i < 3; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
       dates.push({
         value: this.formatDate(d),
-        label: i === 0 ? '今天' : i === 1 ? '明天' : `${d.getMonth() + 1}/${d.getDate()}`,
-        weekday: ['日', '一', '二', '三', '四', '五', '六'][d.getDay()],
+        label: i === 0 ? '今天' : i === 1 ? '明天' : `${month}月${day}日`,
+        weekday: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()],
+        shortDate: `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`,
       });
     }
     this.setData({ dateOptions: dates, selectedDate: dates[0].value });
@@ -40,20 +53,38 @@ Page({
     return `${y}-${m}-${day}`;
   },
 
-  async loadVenue() {
+  async loadClub() {
     try {
-      const res = await app.request({ url: `/venues/${this.data.venueId}` });
-      this.setData({ venue: res });
+      const club = await app.request({ url: `/clubs/${this.data.clubId}` });
+      if (!club.images || club.images.length === 0) {
+        club.images = club.cover_image ? [club.cover_image] : ['/images/default-venue.png'];
+      }
+      const isClubAdmin = app.managesClub(club.id);
+      this.setData({ club, isClubAdmin });
+      this.loadSlots(this.data.selectedDate);
     } catch (e) {
-      console.error('Load venue failed', e);
+      console.error('Load club failed', e);
     }
   },
 
   async loadSlots(date) {
     this.setData({ loading: true, selectedInfo: null });
     try {
+      const venue = this.data.venues[this.data.currentVenueIndex];
+      const venueParam = venue ? `&venue_id=${venue.id}` : '';
       const res = await app.request({
-        url: `/venues/${this.data.venueId}/slots?date_from=${date}&date_to=${date}`,
+        url: `/clubs/${this.data.clubId}/venue-slots?date=${date}${venueParam}`,
+      });
+      const venues = res.venues || [];
+      const rows = res.rows || [];
+      const currentVenueIndex = this.data.showVenueSwitcher ? this.data.currentVenueIndex : 0;
+      this.setData({
+        venues,
+        rows,
+        showVenueSwitcher: venues.length > 1,
+        currentVenueIndex: Math.min(currentVenueIndex, Math.max(0, venues.length - 1)),
+        displayVenues: [venues[0]],
+        displayRows: this._filterRows(rows, 0),
       });
       // Clear any previous selection flags
       const groups = (res || []).map(g => ({
@@ -63,14 +94,70 @@ Page({
       this.setData({ slotGroups: groups });
     } catch (e) {
       console.error('Load slots failed', e);
+      wx.showToast({ title: '加载场次失败', icon: 'none' });
     } finally {
       this.setData({ loading: false });
     }
   },
 
+  _filterRows(rows, venueIndex) {
+    return rows.map(row => ({
+      ...row,
+      cells: row.cells[venueIndex] ? [row.cells[venueIndex]] : [],
+    }));
+  },
+
+  onSwitchVenue() {
+    if (this.data.venues.length <= 1) return;
+    const names = this.data.venues.map(v => v.name);
+    wx.showActionSheet({
+      itemList: names,
+      success: (res) => {
+        const idx = res.tapIndex;
+        this.setData({
+          currentVenueIndex: idx,
+          displayVenues: [this.data.venues[idx]],
+          displayRows: this._filterRows(this.data.rows, idx),
+          selectedSlots: [],
+          totalPrice: 0,
+          selectedDuration: '',
+        });
+      },
+    });
+  },
+
+  markSelectedRows(rows, selectedSlots) {
+    const selectedIds = new Set(selectedSlots.map(s => s.slot_id));
+    return rows.map(row => ({
+      ...row,
+      cells: row.cells.map(cell => ({
+        ...cell,
+        isSelected: selectedIds.has(cell.slot_id),
+      })),
+    }));
+  },
+
+  onBook() {
+    const slots = this.data.selectedSlots;
+    if (slots.length === 0) {
+      wx.showToast({ title: '请先选择时段', icon: 'none' });
+      return;
+    }
+
+    const sorted = slots.slice().sort((a, b) => a.start_time.localeCompare(b.start_time));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const venue = this.data.displayVenues[0] || {};
+    const slotIds = sorted.map(s => s.slot_id).join(',');
+
+    wx.navigateTo({
+      url: `/pages/booking/confirm?slot_ids=${slotIds}&venue_id=${first.venue_id}&price=${this.data.totalPrice}&date=${first.date}&start=${first.start_time}&end=${last.end_time}&club_name=${encodeURIComponent((this.data.club || {}).name || '')}&venue_name=${encodeURIComponent(venue.name || '')}`,
+    });
+  },
+
   onDateChange(e) {
     const date = e.currentTarget.dataset.date;
-    this.setData({ selectedDate: date });
+    this.setData({ selectedDate: date, selectedSlots: [], totalPrice: 0, selectedDuration: '' });
     this.loadSlots(date);
   },
 

@@ -4,10 +4,13 @@ Page({
   data: {
     clubs: [],
     loading: false,
+    page: 1,
+    hasMore: true,
     keyword: '',
-    sportFilter: '',
+    sportFilter: '网球',
     latitude: null,
     longitude: null,
+    sortBy: 'default', // 'default' | 'distance'
   },
 
   onLoad() {
@@ -22,14 +25,27 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadClubs().then(() => wx.stopPullDownRefresh());
+    this.resetAndLoadClubs().then(
+      () => wx.stopPullDownRefresh(),
+      () => wx.stopPullDownRefresh()
+    );
+  },
+
+  onReachBottom() {
+    if (this.data.hasMore && !this.data.loading) {
+      this.loadClubs(true);
+    }
   },
 
   getLocation() {
     wx.getLocation({
       type: 'gcj02',
       success: (res) => {
-        this.setData({ latitude: res.latitude, longitude: res.longitude });
+        this.setData({ latitude: res.latitude, longitude: res.longitude }, () => {
+          if (this.data.sortBy === 'distance') {
+            this.loadClubs();
+          }
+        });
       },
       fail: () => {
         // Location denied, still show clubs without distance
@@ -37,21 +53,28 @@ Page({
     });
   },
 
-  async loadClubs() {
+  async loadClubs(append = false) {
     this.setData({ loading: true });
     try {
-      let url = '/clubs?page=1&page_size=20';
-      if (this.data.latitude) {
-        url += `&lat=${this.data.latitude}&lng=${this.data.longitude}`;
+      const page = append ? this.data.page + 1 : 1;
+      let url = `/clubs?page=${page}&page_size=20`;
+      if (this.data.latitude && this.data.sortBy === 'distance') {
+        url += `&lat=${this.data.latitude}&lng=${this.data.longitude}&sort_by=distance`;
       }
       if (this.data.sportFilter) {
         url += `&sport=${this.data.sportFilter}`;
       }
       if (this.data.keyword) {
-        url += `&keyword=${this.data.keyword}`;
+        url += `&keyword=${encodeURIComponent(this.data.keyword)}`;
       }
       const res = await app.request({ url });
-      this.setData({ clubs: res.items || [] });
+      const items = res.items || [];
+      const clubs = append ? this.data.clubs.concat(items) : items;
+      this.setData({
+        clubs,
+        page,
+        hasMore: items.length === 20,
+      });
     } catch (e) {
       console.error('Load clubs failed', e);
     } finally {
@@ -59,18 +82,44 @@ Page({
     }
   },
 
+  resetAndLoadClubs() {
+    this.setData({ page: 1, hasMore: true, clubs: [] }, () => {
+      this.loadClubs();
+    });
+  },
+
   onSearchInput(e) {
     this.setData({ keyword: e.detail.value });
   },
 
   onSearch() {
-    this.loadClubs();
+    this.resetAndLoadClubs();
   },
 
   onSportFilter(e) {
     const val = e.currentTarget.dataset.value;
     this.setData({ sportFilter: val });
-    this.loadClubs();
+    this.resetAndLoadClubs();
+  },
+
+  onSortToggle() {
+    if (this.data.sortBy === 'distance') {
+      this.setData({ sortBy: 'default' }, () => this.resetAndLoadClubs());
+      return;
+    }
+    if (this.data.latitude) {
+      this.setData({ sortBy: 'distance' }, () => this.resetAndLoadClubs());
+      return;
+    }
+    wx.showModal({
+      title: '需要位置权限',
+      content: '按距离排序需要获取您的位置',
+      success: (res) => {
+        if (res.confirm) {
+          this.getLocation();
+        }
+      },
+    });
   },
 
   onCreateClub() {
@@ -79,7 +128,8 @@ Page({
 
   onClubDetail(e) {
     const id = e.currentTarget.dataset.id;
-    wx.navigateTo({ url: `/pages/booking/club-detail?id=${id}` });
+    // venue-detail is the club booking page: it loads club info + venue slots
+    wx.navigateTo({ url: `/pages/booking/venue-detail?id=${id}` });
   },
 
   onShareAppMessage() {

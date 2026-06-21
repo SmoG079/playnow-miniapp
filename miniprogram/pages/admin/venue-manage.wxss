@@ -1,0 +1,97 @@
+.page {
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.action-bar {
+  padding: 20rpx;
+}
+
+.btn-primary {
+  background-color: #07c160;
+  color: #fff;
+  text-align: center;
+  border-radius: 40rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 30rpx;
+}
+
+.venue-list {
+  padding: 0 20rpx 20rpx;
+}
+
+.venue-card {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+}
+
+.venue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.venue-name {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.venue-status {
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.venue-status.active {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.venue-status.maintenance {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+.venue-status.closed {
+  background-color: #eeeeee;
+  color: #757575;
+}
+
+.venue-info {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 16rpx;
+}
+
+.venue-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-outline {
+  font-size: 26rpx;
+  color: #07c160;
+  border: 1rpx solid #07c160;
+  padding: 8rpx 24rpx;
+  border-radius: 8rpx;
+  margin-left: 16rpx;
+}
+
+.btn-outline.danger {
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 120rpx 40rpx;
+  color: #999;
+  font-size: 30rpx;
+}

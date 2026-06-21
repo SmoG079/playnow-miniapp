@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="action-bar">
+    <view class="btn-primary" bindtap="onCreate">添加场地</view>
+  </view>
+
+  <view class="venue-list" wx:if="{{venues.length > 0}}">
+    <view class="venue-card" wx:for="{{venues}}" wx:key="id">
+      <view class="venue-header">
+        <text class="venue-name">{{item.name}}</text>
+        <text class="venue-status {{item.status}}">{{item.status === 'active' ? '正常' : (item.status === 'maintenance' ? '维护中' : '已关闭')}}</text>
+      </view>
+      <view class="venue-info">
+        {{item.sport_type}} · ¥{{item.price_per_hour}}/小时 · 最多{{item.max_capacity}}人
+      </view>
+      <view class="venue-actions">
+        <text class="btn-outline" data-id="{{item.id}}" bindtap="onSlotManage">时段管理</text>
+        <text class="btn-outline" data-id="{{item.id}}" bindtap="onEdit">编辑</text>
+        <text class="btn-outline danger" data-venue="{{item}}" bindtap="onDelete">删除</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:if="{{venues.length === 0 && !loading}}">
+    <text>暂无场地</text>
+  </view>
+
+  <view class="loading-state" wx:if="{{loading && venues.length === 0}}">
+    <text>加载中...</text>
+  </view>
+</view>

@@ -1,1 +1,5 @@
-{}
+{
+  "navigationBarTitleText": "俱乐部管理",
+  "usingComponents": {},
+  "enablePullDownRefresh": true
+}

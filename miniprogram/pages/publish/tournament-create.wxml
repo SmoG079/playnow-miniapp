@@ -1,1 +1,39 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="card">
+    <text class="form-label">赛事名称 *</text>
+    <input class="form-input" placeholder="输入赛事名称" value="{{form.title}}" data-field="title" bindinput="onInputChange" />
+
+    <text class="form-label">所属俱乐部 *</text>
+    <picker bindchange="onClubChange" value="{{clubIndex}}" range="{{managedClubs}}">
+      <view class="form-picker">
+        <text>{{managedClubs[clubIndex]}}</text>
+        <text class="icon">▼</text>
+      </view>
+    </picker>
+
+    <text class="form-label">运动类型 *</text>
+    <input class="form-input" placeholder="如：网球" value="{{form.sport_type}}" data-field="sport_type" bindinput="onInputChange" />
+
+    <text class="form-label">开始时间 *</text>
+    <input class="form-input" placeholder="YYYY-MM-DD HH:MM" value="{{form.start_time}}" data-field="start_time" bindinput="onInputChange" />
+
+    <text class="form-label">结束时间 *</text>
+    <input class="form-input" placeholder="YYYY-MM-DD HH:MM" value="{{form.end_time}}" data-field="end_time" bindinput="onInputChange" />
+
+    <text class="form-label">报名费用（元）</text>
+    <input class="form-input" type="digit" placeholder="0 表示免费" value="{{form.entry_fee}}" data-field="entry_fee" bindinput="onInputChange" />
+
+    <text class="form-label">最大报名人数</text>
+    <input class="form-input" type="number" placeholder="不填表示不限" value="{{form.max_participants}}" data-field="max_participants" bindinput="onInputChange" />
+
+    <text class="form-label">赛事介绍</text>
+    <textarea class="form-textarea" placeholder="填写赛事规则、介绍..." value="{{form.description}}" data-field="description" bindinput="onInputChange" />
+
+    <text class="form-label">奖品设置</text>
+    <textarea class="form-textarea" placeholder="填写奖品信息..." value="{{form.prize}}" data-field="prize" bindinput="onInputChange" />
+  </view>
+
+  <view class="submit-area">
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{loading || !form.title || !form.start_time || !form.end_time}}">创建赛事</button>
+  </view>
+</view>

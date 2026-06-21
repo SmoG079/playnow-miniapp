@@ -1,20 +1,91 @@
+// Calendar filter TODO
 const app = getApp();
+
+const SORT_OPTIONS = [
+  { label: '最新发布', value: 'created' },
+  { label: '距离最近', value: 'distance' },
+];
+
+const NTRP_LEVELS = ['1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'];
+const NTRP_ANY = '不限';
+const NTRP_OPTIONS = [NTRP_ANY, ...NTRP_LEVELS];
+
+const DISTANCE_OPTIONS = [
+  { label: '全部距离', value: 'all' },
+  { label: '1km内', value: '1' },
+  { label: '3km内', value: '3' },
+  { label: '5km内', value: '5' },
+  { label: '10km内', value: '10' },
+  { label: '20km内', value: '20' },
+  { label: '50km内', value: '50' },
+];
+
+const TIME_OPTIONS = [
+  { label: '全天', value: 'all' },
+  { label: '上午', value: 'morning' },
+  { label: '下午', value: 'afternoon' },
+  { label: '晚上', value: 'evening' },
+];
+
+function generateCalendar() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const months = [];
+  for (let i = 0; i < 2; i++) {
+    const base = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const year = base.getFullYear();
+    const month = base.getMonth();
+    const monthStr = `${year}年${String(month + 1).padStart(2, '0')}月`;
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const weeks = [];
+    let currentWeek = new Array(firstDay).fill(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayOfWeek = date.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isPast = date.getTime() < today.getTime();
+      currentWeek.push({ day, dateStr, isWeekend, isPast });
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+    }
+    if (currentWeek.length > 0) {
+      while (currentWeek.length < 7) currentWeek.push(null);
+      weeks.push(currentWeek);
+    }
+    months.push({ title: monthStr, weeks });
+  }
+  return months;
+}
+
+function formatDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[1]}.${parts[2]}`;
+}
 
 Page({
   data: {
     posts: [],
-    tournaments: [],
     loading: false,
     sportFilter: '',
   },
 
   onLoad() {
-    this.loadFeed();
+    this.initLocation().then(() => this.loadFeed());
   },
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
+    }
+    if (app.globalData.needRefreshFeed) {
+      app.globalData.needRefreshFeed = false;
+      this.loadFeed();
     }
   },
 
@@ -22,19 +93,46 @@ Page({
     this.loadFeed().then(() => wx.stopPullDownRefresh());
   },
 
+  async initLocation() {
+    try {
+      await app.getUserLocation();
+      this.setData({ hasLocation: true, locationError: false });
+    } catch (e) {
+      console.error('Location init failed', e);
+      this.setData({ hasLocation: false, locationError: true });
+    }
+  },
+
   async loadFeed() {
     this.setData({ loading: true });
     try {
-      // Load posts + tournaments in parallel
-      const [postRes, tourRes] = await Promise.all([
-        app.request({ url: '/posts?page=1&page_size=10' }),
-        app.request({ url: '/tournaments?status=open&page=1&page_size=5' }),
-      ]);
+      const loc = app.globalData.userLocation;
+      const { sortBy, filterDate, filterLevels, filterDistance } = this.data;
 
-      this.setData({
-        posts: postRes.items || [],
-        tournaments: tourRes.items || [],
-      });
+      let postUrl = '/posts?page=1&page_size=10';
+      postUrl += `&sport=${encodeURIComponent(this.data.sportType)}`;
+      if (sortBy === 'distance' && loc) {
+        postUrl += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
+      }
+      if (filterDate) {
+        postUrl += `&date=${filterDate}`;
+      }
+      if (filterLevels && filterLevels.length > 0) {
+        postUrl += `&ntrp_levels=${filterLevels.join(',')}`;
+      }
+      if (filterDistance && filterDistance !== 'all' && loc) {
+        postUrl += `&max_distance=${filterDistance}`;
+      }
+
+      const postRes = await app.request({ url: postUrl });
+      const posts = (postRes.items || []).map(item => ({
+        ...item,
+        is_full: item.registration_count >= item.players_needed,
+        is_registered: item.is_registered || false,
+        weekday: this.getWeekday(item.preferred_date),
+      }));
+
+      this.setData({ posts });
     } catch (e) {
       console.error('Load feed failed', e);
     } finally {
@@ -47,16 +145,19 @@ Page({
     wx.navigateTo({ url: `/pages/common/post-detail?id=${id}` });
   },
 
-  onTourDetail(e) {
+  onActionTap(e) {
     const id = e.currentTarget.dataset.id;
-    wx.navigateTo({ url: `/pages/common/tournament-detail?id=${id}` });
+    wx.navigateTo({ url: `/pages/common/post-detail?id=${id}` });
   },
 
-  onShare() {
-    // Called by share button in posts/tournaments
+  onSearch() {
+    wx.navigateTo({ url: '/pages/home/search' });
   },
 
-  // Share to WeChat group/chat
+  onCityTap() {
+    wx.showToast({ title: '城市切换开发中', icon: 'none' });
+  },
+
   onShareAppMessage(res) {
     if (res.from === 'button') {
       const data = res.target.dataset;
@@ -67,12 +168,8 @@ Page({
       };
     }
     return {
-      title: '运动俱乐部 - 约球订场平台',
+      title: '运动俱乐部 - 发现你的运动圈',
       path: '/pages/home/index',
     };
-  },
-
-  onSearch() {
-    wx.navigateTo({ url: '/pages/home/search' });
   },
 });

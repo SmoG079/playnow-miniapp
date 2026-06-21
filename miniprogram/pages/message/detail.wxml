@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="loading-state" wx:if="{{loading}}">
+    <text>加载中...</text>
+  </view>
+
+  <view class="message-card" wx:if="{{!loading && message}}">
+    <view class="message-header">
+      <text class="message-icon">{{message.type === 'tournament' ? '🏆' : (message.type === 'booking' ? '📋' : (message.type === 'match' ? '🏸' : '📢'))}}</text>
+      <view class="message-meta">
+        <text class="message-title">{{message.title || '系统通知'}}</text>
+        <text class="message-time">{{formatTime(message.created_at)}}</text>
+      </view>
+    </view>
+    <view class="message-body">{{message.content}}</view>
+  </view>
+
+  <view class="empty-state" wx:if="{{!loading && !message}}">
+    <text>消息不存在</text>
+  </view>
+</view>

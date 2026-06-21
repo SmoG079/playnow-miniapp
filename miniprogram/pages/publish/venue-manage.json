@@ -1,1 +1,5 @@
-{}
+{
+  "navigationBarTitleText": "场地管理",
+  "usingComponents": {},
+  "enablePullDownRefresh": true
+}
