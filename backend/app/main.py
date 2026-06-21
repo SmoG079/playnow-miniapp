@@ -5,10 +5,14 @@ from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.database import engine
+from app.core.logger import setup_logging, RequestLogMiddleware, get_logger
 from app.api.deps import get_current_user
 from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments
 
 settings = get_settings()
+setup_logging(settings)
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -32,6 +36,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RequestLogMiddleware)
 
 # Register routers
 api_prefix = settings.API_V1_PREFIX

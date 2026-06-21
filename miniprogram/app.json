@@ -53,6 +53,7 @@
     }
   },
   "requiredPrivateInfos": ["getLocation", "chooseAddress"],
+  "lazyCodeLoading": "requiredComponents",
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

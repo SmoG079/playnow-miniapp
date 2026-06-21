@@ -25,6 +25,7 @@ Python 3.11 + FastAPI + SQLAlchemy 2.0 (async) + MySQL 8.0 + Redis 7.
 - **Entry**: `app/main.py` registers routers under `/api/v1`. DB schema managed by Alembic OR `Base.metadata.create_all` on startup.
 - **Database**: `app/core/database.py` uses `create_async_engine` with `asyncmy` driver. **Important**: `asyncmy` returns enum columns as strings and TIME columns as `timedelta` — always use `_v()` helper and convert timedelta to time.
 - **Auth**: JWT via `app/core/security.py`. Dependencies: `get_current_user`, `get_club_admin` in `deps.py`.
+- **Logging**: `app/core/logger.py` provides `get_logger(__name__)` → `debug()` / `info()` / `error()`.
 - **Redis locks**: Slot booking uses Redis SET NX EX. Key pattern: `slot:{venue_id}:{date}:{start_time}`. TTL 600s. Expired locks auto-detected on slot listing.
 - **Payment**: Placeholder — `POST /bookings/{id}/pay` directly marks order as paid. WeChat Pay V3 integration pending.
 - **Models**: 15 tables (users, clubs, club_members, venues, venue_time_slots, booking_orders, settlement_records, match_posts, match_registrations, tournaments, tournament_registrations, notifications, comments, payment_logs, refund_records).
@@ -54,6 +55,57 @@ Python 3.11 + FastAPI + SQLAlchemy 2.0 (async) + MySQL 8.0 + Redis 7.
 - `date_range`: applies specific dates, optionally gated by time window
 - `daily_time`: applies every day during time window
 - Rules stored in `venues.price_rules` JSON field
+
+## Logging
+
+Backend uses centralized logging via `app/core/logger.py`. All loggers inherit root configuration after `setup_logging()` is called in `main.py`.
+
+### Usage
+
+```python
+from app.core.logger import get_logger
+logger = get_logger(__name__)
+
+logger.debug("variable value: %s", var)    # 开发调试信息
+logger.info("order created: id=%s", oid)   # 业务流程关键节点
+logger.error("payment failed", exc_info=True)  # 异常/错误，自动记录堆栈
+```
+
+### Log level guidelines
+
+| Level | 使用场景 | 示例 |
+|-------|---------|------|
+| `debug` | 开发调试、变量值、中间状态 | `logger.debug("price_rule matched: %s", rule)` |
+| `info` | 业务关键节点、请求成功、状态变更 | `logger.info("Booking %s paid", booking_id)` |
+| `error` | 异常、失败、不可恢复的错误 | `logger.error("DB connection lost", exc_info=True)` |
+
+### File output
+
+```
+logs/
+├── debug.log    ← 仅 DEBUG，20 MB 轮转，保留 20 个
+├── info.log     ← INFO 及以上（INFO + WARNING + ERROR），每日轮转，保留 10 天
+├── error.log    ← ERROR 及以上，每日轮转，保留 10 天
+└── mysql.log    ← SQLAlchemy 引擎日志（独立级别），20 MB 轮转，保留 20 个
+```
+
+### Configuration (`.env`)
+
+```env
+LOG_LEVEL=DEBUG            # 业务日志级别
+LOG_MYSQL_LEVEL=WARNING    # SQL 日志（INFO=显示语句, WARNING=关闭）
+LOG_DIR=logs
+LOG_BACKUP_DAYS=10         # info/error 保留天数
+LOG_MAX_BYTES=20971520     # debug/mysql 单文件 20 MB
+LOG_BACKUP_COUNT=20        # debug/mysql 保留文件数
+```
+
+### Request logging middleware
+
+`RequestLogMiddleware` automatically logs every HTTP request:
+```
+2026-06-21 15:30:48  INFO     api.request - GET /api/v1/venues 200 0.0321s
+```
 
 ## Development Commands
 

@@ -1,8 +1,10 @@
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import get_settings
+from app.core.logger import setup_logging
 
 settings = get_settings()
+setup_logging(settings)
 
 celery_app = Celery(
     "club_miniapp",
@@ -11,6 +13,7 @@ celery_app = Celery(
 )
 
 celery_app.conf.update(
+    worker_hijack_root_logger=False,
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
