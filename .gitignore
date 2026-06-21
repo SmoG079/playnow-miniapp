@@ -37,5 +37,6 @@ backend/ssl/*.key
 node_modules/
 package-lock.json
 
-# Private keys
+# Private keys & scripts
 private.*.key
+scripts/upload-miniprogram.sh
