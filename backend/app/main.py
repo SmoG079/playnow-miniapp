@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
-from app.core.database import engine, Base
+from app.core.database import engine
 from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments
 
 settings = get_settings()
@@ -10,9 +10,8 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup (use alembic in production)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Database schema is managed by Alembic migrations.
+    # Run: docker-compose exec api alembic upgrade head
     yield
     await engine.dispose()
 

@@ -10,3 +10,37 @@
 
 .submit-area { margin-top: 30rpx; }
 .submit-area .btn-primary { width: 100%; border-radius: 44rpx; padding: 24rpx; font-size: 32rpx; }
+.form-tip { display: block; text-align: center; margin-top: 16rpx; font-size: 24rpx; color: #999; }
+
+.document-list { margin-top: 12rpx; }
+.doc-item {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 8rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+.doc-icon { font-size: 36rpx; margin-right: 16rpx; }
+.doc-name { flex: 1; font-size: 28rpx; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-remove { font-size: 32rpx; color: #ff5252; padding: 0 10rpx; }
+.doc-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 8rpx;
+  padding: 24rpx;
+  border: 2rpx dashed #ddd;
+}
+.doc-add-icon { font-size: 36rpx; color: #999; margin-right: 12rpx; }
+.doc-add-text { font-size: 28rpx; color: #999; }
+
+.level-section { background: #fff; border-radius: 8rpx; padding: 24rpx; }
+.level-display { font-size: 32rpx; font-weight: 600; color: #333; text-align: center; margin-bottom: 24rpx; }
+.slider-row { display: flex; align-items: center; gap: 16rpx; margin-bottom: 20rpx; }
+.slider-label { font-size: 26rpx; color: #666; width: 56rpx; }
+.level-slider { flex: 1; }
+.slider-value { font-size: 26rpx; color: #5CD29D; width: 72rpx; text-align: right; }
+.level-scale { display: flex; justify-content: space-between; padding: 0 76rpx 0 76rpx; }
+.scale-item { font-size: 20rpx; color: #999; }

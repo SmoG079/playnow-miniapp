@@ -1,1 +1,116 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="form-card">
+    <view class="form-group">
+      <text class="form-label">选择场地</text>
+      <picker bindchange="onVenueChange" value="{{venueIndex}}" range="{{venues}}" range-key="name">
+        <view class="form-picker">
+          {{venues[venueIndex].name || '请选择场地'}}
+          <text class="picker-arrow">›</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">日期范围</text>
+      <view class="date-row">
+        <picker mode="date" value="{{dateFrom}}" bindchange="onDateFromChange">
+          <view class="date-picker">{{dateFrom}}</view>
+        </picker>
+        <text class="date-sep">至</text>
+        <picker mode="date" value="{{dateTo}}" bindchange="onDateToChange">
+          <view class="date-picker">{{dateTo}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">时间段</text>
+      <view class="date-row">
+        <picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="date-picker">{{startTime}}</view>
+        </picker>
+        <text class="date-sep">至</text>
+        <picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="date-picker">{{endTime}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">时段间隔</text>
+      <picker bindchange="onIntervalChange" value="{{intervalIndex}}" range="{{intervalLabels}}">
+        <view class="form-picker">
+          {{intervalLabels[intervalIndex]}}
+          <text class="picker-arrow">›</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="form-group">
+      <view class="form-label-row">
+        <text class="form-label">分时段定价</text>
+        <text class="form-label-action" bindtap="onAddPriceRule">+ 添加规则</text>
+      </view>
+      <view wx:if="{{priceRules.length === 0}}" class="hint-text">未设置则使用场地标准价格</view>
+      <view wx:for="{{priceRules}}" wx:key="index" class="price-rule">
+        <picker mode="time" value="{{item.start_time}}" data-index="{{index}}" data-field="start_time" bindchange="onRuleFieldChange">
+          <view class="time-input">{{item.start_time}}</view>
+        </picker>
+        <text class="rule-sep">至</text>
+        <picker mode="time" value="{{item.end_time}}" data-index="{{index}}" data-field="end_time" bindchange="onRuleFieldChange">
+          <view class="time-input">{{item.end_time}}</view>
+        </picker>
+        <input class="price-input" type="digit" placeholder="价格" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="onRuleFieldChange" />
+        <text class="rule-remove" data-index="{{index}}" bindtap="onRemovePriceRule">✕</text>
+      </view>
+    </view>
+  </view>
+
+  <button class="btn-generate {{generating ? 'disabled' : ''}}" bindtap="onGenerate" disabled="{{generating}}">
+    {{generating ? '生成中...' : '生成时段'}}
+  </button>
+
+  <view class="result-card" wx:if="{{result}}">
+    <text class="result-title">生成结果</text>
+    <text class="result-text">新增 {{result.created}} 个时段</text>
+    <text class="result-hint" wx:if="{{result.created === 0}}">所有时段已存在，无需新增</text>
+  </view>
+
+  <view class="hint-card">
+    <text class="hint-title">说明</text>
+    <text class="hint-text">1. 已存在的时段会自动跳过，不会重复创建</text>
+    <text class="hint-text">2. 每次最多生成31天的时段</text>
+    <text class="hint-text">3. 价格规则按开始时间匹配，未匹配时段使用场地标准价格</text>
+  </view>
+
+  <!-- Existing Slots -->
+  <view class="slot-list-card" wx:if="{{venues.length > 0}}">
+    <text class="result-title">已生成时段</text>
+    <view wx:if="{{slotsLoading}}" class="loading-state">
+      <text>加载中...</text>
+    </view>
+    <view wx:elif="{{slots.length === 0}}" class="empty-state">
+      <text>该日期范围暂无时段</text>
+    </view>
+    <view wx:else class="slot-list">
+      <view class="slot-item" wx:for="{{slots}}" wx:key="id">
+        <view class="slot-info">
+          <text class="slot-date">{{item.date_label}}</text>
+          <text class="slot-time">{{item.start_time}} - {{item.end_time}}</text>
+          <text class="slot-price">¥{{item.price}}</text>
+        </view>
+        <view class="slot-status">
+          <text class="status-text {{item.status}}">{{item.status === 'available' ? '可订' : item.status === 'maintenance' ? '维护' : item.status === 'booked' ? '已订' : '锁定'}}</text>
+          <button
+            wx:if="{{item.status === 'available' || item.status === 'maintenance'}}"
+            class="toggle-btn {{item.status === 'maintenance' ? 'enable' : 'disable'}}"
+            size="mini"
+            data-slot-id="{{item.id}}"
+            data-status="{{item.status}}"
+            bindtap="onToggleSlotStatus"
+          >{{item.status === 'available' ? '维护' : '恢复'}}</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

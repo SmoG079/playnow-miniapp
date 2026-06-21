@@ -9,7 +9,8 @@
 .profile-avatar { width: 100rpx; height: 100rpx; border-radius: 50%; background: #eee; }
 .profile-info { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
 .profile-name { font-size: 34rpx; font-weight: 600; }
-.edit-btn { font-size: 26rpx; color: var(--primary); }
+.profile-role { display: flex; gap: 12rpx; flex-wrap: wrap; }
+.tag-ntrp { background: #e3f2fd; color: #1976d2; }
 
 .card-title { font-size: 28rpx; font-weight: 600; }
 

@@ -1,1 +1,41 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="order-card">
+    <view class="card-title">订单确认</view>
+    <view class="info-row">
+      <text class="info-label">俱乐部</text>
+      <text class="info-value">{{clubName || '-'}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">场地</text>
+      <text class="info-value">{{venueName || '-'}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">日期</text>
+      <text class="info-value">{{date}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">时间</text>
+      <text class="info-value">{{startTime}} ~ {{endTime}}（{{slotIds.length}}个时段）</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">时长</text>
+      <text class="info-value">{{duration}}</text>
+    </view>
+  </view>
+
+  <view class="price-card">
+    <text class="price-label">应付金额</text>
+    <text class="price-value">¥{{priceText}}</text>
+  </view>
+
+  <view class="countdown-bar" wx:if="{{countdownText}}">
+    <text class="countdown-text {{countdownExpired ? 'expired' : ''}}">{{countdownText}}</text>
+  </view>
+
+  <view class="bottom-bar">
+    <button class="btn-cancel" bindtap="onCancel">取消</button>
+    <button class="btn-pay {{paying || countdownExpired ? 'disabled' : ''}}" bindtap="onPay" disabled="{{paying || countdownExpired}}">
+      {{paying ? '支付中...' : (countdownExpired ? '锁定已过期' : '立即支付')}}
+    </button>
+  </view>
+</view>

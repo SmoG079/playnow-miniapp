@@ -36,21 +36,6 @@ async function login() {
 }
 
 /**
- * Get user profile from WeChat (nickname, avatar).
- * Use <button open-type="chooseAvatar"> for avatar
- * and <input type="nickname"> for nickname in UI.
- */
-function getWechatUserProfile() {
-  return new Promise((resolve, reject) => {
-    wx.getUserProfile({
-      desc: '用于完善用户资料',
-      success: (res) => resolve(res.userInfo),
-      fail: reject,
-    });
-  });
-}
-
-/**
  * Get phone number from WeChat.
  * Use <button open-type="getPhoneNumber"> in UI.
  */
@@ -75,4 +60,4 @@ function checkLogin() {
   return true;
 }
 
-module.exports = { login, getWechatUserProfile, getPhoneNumber, checkLogin };
+module.exports = { login, getPhoneNumber, checkLogin };

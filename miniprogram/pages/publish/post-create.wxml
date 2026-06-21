@@ -11,10 +11,15 @@
       </view>
     </picker>
 
-    <text class="form-label">运动类型</text>
-    <input class="form-input" placeholder="如：羽毛球" value="{{sportType}}" bindinput="onField" data-field="sportType" />
+    <text class="form-label">场地</text>
+    <picker mode="selector" range="{{venueNames}}" value="{{venueIndex}}" bindchange="onVenueChange" disabled="{{venueNames.length === 0}}">
+      <view class="form-picker">
+        <text class="{{venueIndex > -1 ? '' : 'text-light'}}">{{venueIndex > -1 ? venueNames[venueIndex] : (venueNames.length === 0 ? '请先选择俱乐部' : '选择场地')}}</text>
+        <text>›</text>
+      </view>
+    </picker>
 
-    <text class="form-label">日期</text>
+    <text class="form-label">日期 *</text>
     <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange">
       <view class="form-picker">
         <text class="{{preferredDate ? '' : 'text-light'}}">{{preferredDate || '选择日期'}}</text>
@@ -22,7 +27,7 @@
       </view>
     </picker>
 
-    <text class="form-label">时间</text>
+    <text class="form-label">时间 *</text>
     <view class="form-row">
       <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart">
         <view class="form-picker-half">
@@ -37,22 +42,57 @@
       </picker>
     </view>
 
-    <text class="form-label">还差几人</text>
+    <text class="form-label">还差几人 *</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
 
-    <text class="form-label">水平要求</text>
-    <picker mode="selector" range="{{levels}}" value="{{levelIndex}}" bindchange="onLevelChange">
-      <view class="form-picker">
-        <text class="{{levelIndex > -1 ? '' : 'text-light'}}">{{levelIndex > -1 ? levels[levelIndex] : '不限'}}</text>
-        <text>›</text>
+    <text class="form-label">人均费用（元）*</text>
+    <input class="form-input" type="digit" placeholder="如：50，填 0 表示免费" value="{{price}}" bindinput="onPriceChange" />
+
+    <text class="form-label">NTRP 等级</text>
+    <view class="level-section">
+      <view class="level-display">{{levelMin === 0 && levelMax === 0 ? '不限' : (levelOptions[levelMin] === levelOptions[levelMax] ? levelOptions[levelMin] : levelOptions[levelMin] + '-' + levelOptions[levelMax])}}</view>
+      <view class="slider-row">
+        <text class="slider-label">最低</text>
+        <slider class="level-slider" min="0" max="13" step="1" value="{{levelMin}}" block-size="18" activeColor="#5CD29D" bindchange="onLevelMinChange" />
+        <text class="slider-value">{{levelOptions[levelMin]}}</text>
       </view>
-    </picker>
+      <view class="slider-row">
+        <text class="slider-label">最高</text>
+        <slider class="level-slider" min="0" max="13" step="1" value="{{levelMax}}" block-size="18" activeColor="#5CD29D" bindchange="onLevelMaxChange" />
+        <text class="slider-value">{{levelOptions[levelMax]}}</text>
+      </view>
+      <view class="level-scale">
+        <text wx:for="{{levelOptions}}" wx:key="*this" wx:if="{{index > 0}}" class="scale-item">{{item}}</text>
+      </view>
+    </view>
+
+    <view class="form-row form-row-between">
+      <text class="form-label">报名需要审核</text>
+      <switch checked="{{approvalRequired}}" bindchange="onApprovalChange" />
+    </view>
+
+    <text class="form-label">详情说明</text>
+    <textarea class="form-textarea" placeholder="详细介绍活动规则、注意事项、联系方式等..." value="{{description}}" bindinput="onField" data-field="description" />
 
     <text class="form-label">备注</text>
-    <textarea class="form-textarea" placeholder="补充说明..." value="{{notes}}" bindinput="onField" data-field="notes" />
+    <textarea class="form-textarea" placeholder="补充说明（会显示在标题下方标签）..." value="{{notes}}" bindinput="onField" data-field="notes" />
+
+    <text class="form-label">附件（PDF）</text>
+    <view class="document-list">
+      <view class="doc-item" wx:for="{{documents}}" wx:key="url">
+        <text class="doc-icon">📄</text>
+        <text class="doc-name">{{item.name}}</text>
+        <text class="doc-remove" data-index="{{index}}" bindtap="onRemoveDocument">✕</text>
+      </view>
+      <view class="doc-add" bindtap="onAddDocument">
+        <text class="doc-add-icon">+</text>
+        <text class="doc-add-text">添加 PDF 文件</text>
+      </view>
+    </view>
   </view>
 
   <view class="submit-area">
     <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1}}">发布约球帖</button>
+    <text class="form-tip">* 号为必填项</text>
   </view>
 </view>

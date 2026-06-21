@@ -1,19 +1,30 @@
+from app.services.settlement import _to_cents
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_club_admin
+from app.core.config import get_settings
+from app.core.wechat_pay import get_wxpay, build_jsapi_params
+from app.core.rate_limit import check_rate_limit
+from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import (
     User, Club, Tournament, TournamentRegistration, TournamentStatus,
     TournamentRegStatus, Venue, VenueTimeSlot, SlotStatus,
-    Notification, NotificationType,
+    Notification, NotificationType, BookingOrder, OrderStatus,
 )
 from app.schemas.schemas import (
     TournamentCreate, TournamentUpdate, TournamentBrief, TournamentDetail,
-    TournamentRegBrief, TournamentListParams, PaginatedResponse,
+    TournamentRegBrief, TournamentListParams, PaginatedResponse, BookingDetail,
 )
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
+settings = get_settings()
+
+
+def _generate_order_no() -> str:
+    from datetime import datetime
+    import uuid
+    return datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:8].upper()
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -86,6 +97,7 @@ async def create_tournament(
         max_participants=req.max_participants,
         entry_fee=req.entry_fee,
         cover_image=req.cover_image,
+        prize=req.prize,
         status=TournamentStatus.draft,
     )
     db.add(tournament)
@@ -143,7 +155,7 @@ async def get_tournament(tournament_id: int, db: AsyncSession = Depends(get_db))
         current_participants=t.current_participants or 0,
         cover_image=t.cover_image, status=t.status.value,
         created_at=t.created_at, club_name=club_name,
-        description=t.description, lock_venue=t.lock_venue,
+        description=t.description, prize=t.prize, lock_venue=t.lock_venue,
         registrations=regs,
     )
 
@@ -193,7 +205,7 @@ async def register_tournament(
     t = result.scalar_one_or_none()
     if not t:
         raise HTTPException(status_code=404, detail="Tournament not found")
-    if t.status != TournamentStatus.open:
+    if _v(t.status) != "open":
         raise HTTPException(status_code=400, detail="Tournament is not open for registration")
     if t.max_participants and (t.current_participants or 0) >= t.max_participants:
         raise HTTPException(status_code=400, detail="Tournament is full")
@@ -210,22 +222,123 @@ async def register_tournament(
     reg = TournamentRegistration(
         tournament_id=tournament_id,
         user_id=current_user.id,
-        status=TournamentRegStatus.registered,
     )
     db.add(reg)
-    t.current_participants = (t.current_participants or 0) + 1
 
-    # If entry fee > 0, create a booking order for payment
+    order = None
     if t.entry_fee and t.entry_fee > 0:
-        # TODO: Create payment flow similar to venue booking
-        pass
+        # Create pending booking order for entry fee
+        order = BookingOrder(
+            order_no=_generate_order_no(),
+            user_id=current_user.id,
+            venue_id=t.venue_id,
+            slot_id=None,
+            club_id=t.club_id,
+            amount=t.entry_fee,
+            status=OrderStatus.pending,
+        )
+        db.add(order)
+        await db.flush()
+        await db.refresh(order)
+        reg.order_id = order.id
+        reg.status = TournamentRegStatus.registered
+    else:
+        # Free tournament: confirm immediately
+        reg.status = TournamentRegStatus.confirmed
+        t.current_participants = (t.current_participants or 0) + 1
 
-    return {"msg": "ok"}
+    await db.flush()
+    await db.refresh(reg)
+
+    return {
+        "msg": "ok",
+        "registration_id": reg.id,
+        "order": BookingDetail(
+            id=order.id,
+            order_no=order.order_no,
+            user_id=order.user_id,
+            venue_id=order.venue_id,
+            slot_id=order.slot_id,
+            slot_ids=order.slot_ids,
+            club_id=order.club_id,
+            amount=order.amount,
+            status=order.status.value,
+            payment_time=order.payment_time,
+            wx_transaction_id=order.wx_transaction_id,
+            cancel_reason=order.cancel_reason,
+            cancel_time=order.cancel_time,
+            created_at=order.created_at,
+        ) if order else None,
+    }
+
+
+@router.post("/{tournament_id}/pay")
+async def pay_tournament(
+    tournament_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    settings = get_settings()
+    await check_rate_limit(
+        f"rate:pay:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_PAY_PER_MINUTE,
+        window_seconds=60,
+    )
+    result = await db.execute(
+        select(TournamentRegistration, Tournament)
+        .join(Tournament, TournamentRegistration.tournament_id == Tournament.id)
+        .where(
+            TournamentRegistration.tournament_id == tournament_id,
+            TournamentRegistration.user_id == current_user.id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    reg, tournament = row
+
+    if _v(reg.status) == "confirmed":
+        raise HTTPException(status_code=400, detail="Already paid")
+    if not reg.order_id:
+        raise HTTPException(status_code=400, detail="No pending order")
+
+    order_result = await db.execute(
+        select(BookingOrder).where(
+            BookingOrder.id == reg.order_id,
+            BookingOrder.user_id == current_user.id,
+            BookingOrder.status == OrderStatus.pending,
+        )
+    )
+    order = order_result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Pending order not found")
+
+    if not current_user.openid:
+        raise HTTPException(status_code=400, detail="User openid not available")
+
+    wxpay = get_wxpay()
+    try:
+        result = wxpay.pay(
+            description=tournament.title,
+            out_trade_no=order.order_no,
+            amount={"total": _to_cents(order.amount)},
+            payer={"openid": current_user.openid},
+        )
+        prepay_id = result.get("prepay_id")
+        if not prepay_id:
+            raise HTTPException(status_code=500, detail="WeChat pay did not return prepay_id")
+        return build_jsapi_params(wxpay, prepay_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WeChat pay order creation failed: {str(e)}")
 
 
 async def _lock_tournament_slots(db: AsyncSession, venue_id: int, start_time, end_time):
     """Lock all venue slots within the tournament time range."""
     from datetime import datetime as dt
+    req_start = start_time.replace(tzinfo=None) if start_time.tzinfo else start_time
+    req_end = end_time.replace(tzinfo=None) if end_time.tzinfo else end_time
     result = await db.execute(
         select(VenueTimeSlot).where(
             VenueTimeSlot.venue_id == venue_id,
@@ -238,5 +351,5 @@ async def _lock_tournament_slots(db: AsyncSession, venue_id: int, start_time, en
     for slot in slots:
         slot_start = dt.combine(slot.date, slot.start_time)
         slot_end = dt.combine(slot.date, slot.end_time)
-        if slot_start < end_time and slot_end > start_time:
+        if slot_start < req_end and slot_end > req_start:
             slot.status = SlotStatus.maintenance

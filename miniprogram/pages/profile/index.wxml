@@ -17,6 +17,7 @@
           <text class="tag {{role === 'club_admin' ? 'tag-primary' : 'tag-default'}}">
             {{role === 'platform_admin' ? '平台管理员' : role === 'club_admin' ? '俱乐部管理员' : '普通用户'}}
           </text>
+          <text class="tag tag-ntrp" wx:if="{{userInfo.ntrp_level}}">NTRP {{userInfo.ntrp_level}}</text>
         </view>
       </view>
       <view class="edit-btn" bindtap="onEditProfile"><text>编辑</text></view>

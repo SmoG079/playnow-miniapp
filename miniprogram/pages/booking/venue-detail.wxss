@@ -1,1 +1,412 @@
-.page { padding: 20rpx; }
+.page {
+  background-color: #f5f5f5;
+  min-height: 100vh;
+  padding-bottom: 40rpx;
+  overflow-x: hidden;
+}
+
+/* Hero Carousel */
+.hero-section {
+  position: relative;
+  width: 100%;
+  height: 420rpx;
+}
+
+.hero-swiper {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-image {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-dots {
+  position: absolute;
+  bottom: 20rpx;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 12rpx;
+}
+
+.dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.dot.active {
+  background-color: #4CD964;
+}
+
+.back-btn {
+  position: absolute;
+  left: 24rpx;
+  width: 64rpx;
+  height: 64rpx;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  color: #fff;
+  font-size: 40rpx;
+  line-height: 64rpx;
+  margin-left: -4rpx;
+}
+
+/* Info Section */
+.info-section {
+  background-color: #fff;
+  padding: 24rpx 30rpx;
+  display: flex;
+  align-items: center;
+}
+
+.info-left {
+  flex: 1;
+}
+
+.info-name-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.info-loc-icon {
+  font-size: 32rpx;
+  margin-right: 8rpx;
+}
+
+.info-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.info-address {
+  font-size: 26rpx;
+  color: #999;
+  margin-left: 40rpx;
+}
+
+.info-divider {
+  width: 2rpx;
+  height: 60rpx;
+  background-color: #e5e5e5;
+  margin: 0 24rpx;
+}
+
+.info-phone {
+  padding: 16rpx;
+}
+
+.phone-icon {
+  font-size: 40rpx;
+}
+
+/* Legend */
+.legend-section {
+  background-color: #fff;
+  padding: 16rpx 30rpx;
+  display: flex;
+  gap: 40rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.legend-box {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 4rpx;
+}
+
+.legend-box.selected {
+  background-color: #4CD964;
+}
+
+.legend-box.unavailable {
+  background-color: #e8e8e8;
+}
+
+.legend-box.available {
+  background-color: #fff;
+  border: 2rpx solid #ddd;
+}
+
+.legend-text {
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* Date Selector */
+.date-scroll {
+  background-color: #fff;
+  margin-top: 16rpx;
+  padding: 16rpx 0;
+  white-space: nowrap;
+}
+
+.date-list {
+  display: flex;
+  padding: 0 20rpx;
+}
+
+.date-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 24rpx;
+  margin-right: 12rpx;
+  border-radius: 12rpx;
+  min-width: 120rpx;
+}
+
+.date-item.active {
+  background-color: #4CD964;
+}
+
+.date-item.active .date-weekday,
+.date-item.active .date-label {
+  color: #fff;
+}
+
+.date-weekday {
+  font-size: 24rpx;
+  color: #666;
+  margin-bottom: 4rpx;
+}
+
+.date-label {
+  font-size: 26rpx;
+  color: #333;
+}
+
+/* Venue Info Bar */
+.venue-bar {
+  background-color: #fff;
+  margin-top: 16rpx;
+  padding: 24rpx 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.venue-bar-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.venue-bar-switch {
+  font-size: 26rpx;
+  color: #4CD964;
+  display: flex;
+  align-items: center;
+}
+
+.switch-arrow {
+  margin-left: 8rpx;
+  font-size: 28rpx;
+}
+
+/* Grid Section */
+.grid-section {
+  background-color: #fff;
+  margin-top: 16rpx;
+}
+
+.grid-header {
+  display: flex;
+  border-bottom: 1rpx solid #f0f0f0;
+  position: sticky;
+  top: 0;
+  background-color: #fff;
+  z-index: 10;
+}
+
+.grid-header-time {
+  width: 100rpx;
+  min-width: 100rpx;
+  flex-shrink: 0;
+}
+
+.grid-header-col {
+  flex: 1;
+  min-width: 140rpx;
+  padding: 20rpx 8rpx;
+  text-align: center;
+  border-left: 1rpx solid #f0f0f0;
+}
+
+.grid-header-text {
+  font-size: 24rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.grid-body {
+  max-height: 800rpx;
+}
+
+.grid-row {
+  display: flex;
+  border-bottom: 1rpx solid #f0f0f0;
+  min-height: 100rpx;
+  align-items: stretch;
+}
+
+.grid-time-col {
+  width: 100rpx;
+  min-width: 100rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12rpx;
+  background-color: #fafafa;
+}
+
+.grid-time-text {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.grid-cell {
+  flex: 1;
+  min-width: 140rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 1rpx solid #f0f0f0;
+  min-height: 100rpx;
+  padding: 8rpx;
+}
+
+.grid-cell.available {
+  background-color: #fff;
+}
+
+.grid-cell.selected {
+  background-color: #4CD964;
+}
+
+.grid-cell.selected .cell-price {
+  color: #fff;
+}
+
+.grid-cell.booked,
+.grid-cell.locked,
+.grid-cell.maintenance {
+  background-color: #f5f5f5;
+}
+
+.cell-price {
+  font-size: 24rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.cell-booked {
+  font-size: 22rpx;
+  color: #bbb;
+}
+
+.cell-locked {
+  font-size: 22rpx;
+  color: #ff9500;
+}
+
+.cell-maintenance {
+  font-size: 22rpx;
+  color: #ff3b30;
+}
+
+/* Empty / Loading */
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 80rpx;
+  color: #999;
+  font-size: 28rpx;
+}
+
+/* Bottom Bar */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border-top: 1rpx solid #e5e5e5;
+  padding: 20rpx 30rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 100;
+}
+
+.bottom-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-duration {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.bottom-total {
+  font-size: 36rpx;
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.bottom-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.btn-cancel {
+  width: 160rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 28rpx;
+  color: #666;
+  background-color: #f5f5f5;
+  border-radius: 36rpx;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.btn-book {
+  width: 220rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 28rpx;
+  color: #fff;
+  background-color: #4CD964;
+  border-radius: 36rpx;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bottom-spacer {
+  height: 140rpx;
+}
