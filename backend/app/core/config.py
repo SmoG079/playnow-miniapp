@@ -9,10 +9,10 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # Database
-    DATABASE_URL: str = "mysql+asyncmy://club_user:club_pass@mysql:3306/club_db"
+    DATABASE_URL: str = "mysql+asyncmy://club_user:club_pass@101.34.213.125:3306/club_db"
 
     # Redis
-    REDIS_URL: str = "redis://redis:6379/0"
+    REDIS_URL: str = "redis://:redis_pass@101.34.213.125:6379/0"
 
     # JWT
     JWT_SECRET_KEY: str = "generate-a-random-secret-key-here"
@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_BOOKING_PER_MINUTE: int = 10
     RATE_LIMIT_CANCEL_PER_MINUTE: int = 10
     RATE_LIMIT_REFUND_PER_MINUTE: int = 5
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
 
 @lru_cache()

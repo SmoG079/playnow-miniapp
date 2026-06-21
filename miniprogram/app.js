@@ -5,7 +5,7 @@ App({
     refreshToken: null,
     role: 'user',           // 'user' | 'club_admin' | 'platform_admin'
     managedClubIds: [],      // clubs this user manages
-    baseURL: 'http://localhost/api/v1',
+    baseURL: 'http://127.0.0.1:8000/api/v1',
   },
 
   onLaunch() {
