@@ -1,7 +1,13 @@
 """
 Centralized logging configuration.
 
-Usage in business code:
+日志文件:
+  logs/debug.log   — DEBUG 及以上，按大小轮转（20 MB × 20 个文件）
+  logs/info.log    — INFO  及以上，按日轮转（保留 10 天）
+  logs/error.log   — ERROR 及以上，按日轮转（保留 10 天）
+  logs/mysql.log   — SQLAlchemy 引擎，按大小轮转（20 MB × 20 个文件）
+
+Usage:
     from app.core.logger import get_logger
     logger = get_logger(__name__)
     logger.debug("...")
@@ -13,8 +19,7 @@ import logging
 import os
 import sys
 import time
-from logging.handlers import RotatingFileHandler
-from typing import Optional
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,103 +28,145 @@ from starlette.types import ASGIApp
 # ── ANSI color codes ──────────────────────────────────────────────
 _RESET = "\033[0m"
 _COLORS = {
-    "DEBUG": "\033[36m",     # cyan
-    "INFO": "\033[32m",      # green
-    "WARNING": "\033[33m",   # yellow
-    "ERROR": "\033[31m",     # red
+    "DEBUG": "\033[36m",       # cyan
+    "INFO": "\033[32m",        # green
+    "WARNING": "\033[33m",     # yellow
+    "ERROR": "\033[31m",       # red
     "CRITICAL": "\033[41m\033[37m",  # red bg, white fg
 }
 
+_CONSOLE_FMT = "%(asctime)s  %(levelname_color)s  %(name)s - %(message)s"
+_FILE_FMT = "%(asctime)s  %(levelname)-8s  %(name)s - %(message)s"
+_DATE_FMT = "%Y-%m-%d %H:%M:%S"
+
 
 class ColoredFormatter(logging.Formatter):
-    """Formatter that injects ANSI color codes for console output."""
+    """Inject ANSI color into levelname for console output."""
 
     def __init__(self):
-        super().__init__(
-            fmt="%(asctime)s  %(levelname_color)s  %(name)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        super().__init__(fmt=_CONSOLE_FMT, datefmt=_DATE_FMT)
 
     def format(self, record: logging.LogRecord) -> str:
-        levelname = record.levelname
-        color = _COLORS.get(levelname, "")
-        record.levelname_color = f"{color}{levelname}{_RESET}" if color else levelname
+        color = _COLORS.get(record.levelname, "")
+        record.levelname_color = f"{color}{record.levelname}{_RESET}" if color else record.levelname
         return super().format(record)
 
 
-class PlainFormatter(logging.Formatter):
-    """Formatter for file output (no color codes)."""
-
-    def __init__(self):
-        super().__init__(
-            fmt="%(asctime)s  %(levelname)-8s  %(name)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
+# ── Core API ──────────────────────────────────────────────────────
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a logger with the given name.
-
-    Convenience wrapper around logging.getLogger.  All loggers inherit
-    the root configuration applied by setup_logging().
-    """
+    """Return a logger for the calling module."""
     return logging.getLogger(name)
 
 
 def setup_logging(settings) -> None:
-    """Configure the root logger and quiet noisy third-party loggers.
+    """Initialise root logger with console + level-based file handlers.
 
-    Must be called once at startup, before any requests are served.
-    Works for both the FastAPI process and the Celery worker.
+    Call once at process startup (FastAPI lifespan / Celery worker init).
     """
 
     root = logging.getLogger()
     root.setLevel(_to_level(settings.LOG_LEVEL))
+    _clear_handlers(root)
 
-    # Remove any pre-existing handlers (idempotent)
-    for h in list(root.handlers):
-        root.removeHandler(h)
+    # ── Console (colored, all levels) ──
+    root.addHandler(_console_handler(settings))
 
-    # ── Console handler (colored) ──
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(_to_level(settings.LOG_LEVEL))
-    console.setFormatter(ColoredFormatter())
-    root.addHandler(console)
-
-    # ── File handler (rotating, plain text) ──
+    # ── File handlers ──
     log_dir = settings.LOG_DIR
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
-        file_path = os.path.join(log_dir, settings.LOG_FILE)
-        fh = RotatingFileHandler(
-            file_path,
-            maxBytes=settings.LOG_MAX_BYTES,
-            backupCount=settings.LOG_BACKUP_COUNT,
-            encoding="utf-8",
-        )
-        fh.setLevel(_to_level(settings.LOG_LEVEL))
-        fh.setFormatter(PlainFormatter())
-        root.addHandler(fh)
 
-    # ── Uvicorn loggers: inherit our root config ──
+        # debug  — size-based rotation (20 MB × 20)
+        root.addHandler(_rotating_handler(
+            "debug.log", log_dir, settings.LOG_MAX_BYTES,
+            settings.LOG_BACKUP_COUNT, logging.DEBUG,
+        ))
+
+        # info   — daily rotation (10 days)
+        root.addHandler(_timed_handler(
+            "info.log", log_dir, settings.LOG_BACKUP_DAYS, logging.INFO,
+        ))
+
+        # error  — daily rotation (10 days)
+        root.addHandler(_timed_handler(
+            "error.log", log_dir, settings.LOG_BACKUP_DAYS, logging.ERROR,
+        ))
+
+    # ── Uvicorn: inherit root config ──
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        uv = logging.getLogger(name)
-        uv.handlers.clear()
-        uv.propagate = True
+        _reparent(name)
 
-    # ── SQLAlchemy engine: independent level ──
+    # ── SQLAlchemy: mysql.log (size-based, independent level) ──
+    _configure_sqlalchemy(settings, log_dir)
+
+    # ── Quiet noisy libs ──
+    _quiet("sqlalchemy.pool.QueuePool", logging.WARNING)
+    _quiet("sqlalchemy.dialects", logging.WARNING)
+    _quiet("httpx", logging.WARNING)
+    _quiet("httpcore", logging.WARNING)
+
+
+# ── Handlers ──────────────────────────────────────────────────────
+
+def _console_handler(settings) -> logging.Handler:
+    h = logging.StreamHandler(sys.stdout)
+    h.setLevel(_to_level(settings.LOG_LEVEL))
+    h.setFormatter(ColoredFormatter())
+    return h
+
+
+def _timed_handler(filename: str, log_dir: str, backup_days: int,
+                   level: int) -> logging.Handler:
+    """TimedRotatingFileHandler — rotate at midnight, keep N days."""
+    h = TimedRotatingFileHandler(
+        os.path.join(log_dir, filename),
+        when="midnight",
+        interval=1,
+        backupCount=backup_days,
+        encoding="utf-8",
+    )
+    h.setLevel(level)
+    h.setFormatter(logging.Formatter(fmt=_FILE_FMT, datefmt=_DATE_FMT))
+    return h
+
+
+def _rotating_handler(filename: str, log_dir: str, max_bytes: int,
+                      backup_count: int, level: int) -> logging.Handler:
+    """RotatingFileHandler — roll over by size, keep N files."""
+    h = RotatingFileHandler(
+        os.path.join(log_dir, filename),
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    h.setLevel(level)
+    h.setFormatter(logging.Formatter(fmt=_FILE_FMT, datefmt=_DATE_FMT))
+    return h
+
+
+# ── SQLAlchemy ────────────────────────────────────────────────────
+
+def _configure_sqlalchemy(settings, log_dir: str) -> None:
     sa = logging.getLogger("sqlalchemy.engine")
-    sa.handlers.clear()
-    sa.propagate = True
+    _clear_handlers(sa)
     sa.setLevel(_to_level(settings.LOG_MYSQL_LEVEL))
+    sa.propagate = False  # MySQL logs stay in mysql.log only
 
-    # ── Quiet noisy connection-pool logs ──
-    logging.getLogger("sqlalchemy.pool.QueuePool").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        h = _rotating_handler(
+            "mysql.log", log_dir, settings.LOG_MAX_BYTES,
+            settings.LOG_BACKUP_COUNT, _to_level(settings.LOG_MYSQL_LEVEL),
+        )
+        sa.addHandler(h)
 
-    # ── Quiet httpcore / httpx ──
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # Console mirror for MySQL when level is permissive enough
+    if _to_level(settings.LOG_MYSQL_LEVEL) <= logging.WARNING:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(_to_level(settings.LOG_MYSQL_LEVEL))
+        ch.setFormatter(ColoredFormatter())
+        sa.addHandler(ch)
 
 
 # ── Request logging middleware ────────────────────────────────────
@@ -153,7 +200,22 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ── Helpers ────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────
 
 def _to_level(name: str) -> int:
     return getattr(logging, name.upper(), logging.DEBUG)
+
+
+def _clear_handlers(logger: logging.Logger) -> None:
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+
+
+def _reparent(logger_name: str) -> None:
+    lg = logging.getLogger(logger_name)
+    _clear_handlers(lg)
+    lg.propagate = True
+
+
+def _quiet(logger_name: str, level: int) -> None:
+    logging.getLogger(logger_name).setLevel(level)

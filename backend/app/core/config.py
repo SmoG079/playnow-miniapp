@@ -62,9 +62,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
     LOG_MYSQL_LEVEL: str = "WARNING"   # INFO=显示SQL语句, WARNING=关闭
     LOG_DIR: str = "logs"
-    LOG_FILE: str = "app.log"
-    LOG_MAX_BYTES: int = 10_485_760    # 10 MB
-    LOG_BACKUP_COUNT: int = 5
+    LOG_BACKUP_DAYS: int = 10           # info/error 日志保留天数
+    LOG_MAX_BYTES: int = 20_971_520     # 20 MB — debug/mysql 大小轮转阈值
+    LOG_BACKUP_COUNT: int = 20          # debug/mysql 保留文件数
 
     # Rate limiting (per-minute limits for sensitive booking endpoints)
     RATE_LIMIT_PAY_PER_MINUTE: int = 10
