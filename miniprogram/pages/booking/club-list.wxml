@@ -4,15 +4,7 @@
     <text class="search-btn" bindtap="onSearch">搜索</text>
   </view>
 
-  <scroll-view class="filter-scroll" scroll-x>
-    <view
-      wx:for="{{['全部','羽毛球','篮球','网球','乒乓球','足球']}}"
-      wx:key="*this"
-      class="filter-item {{sportFilter === item ? 'active' : ''}}"
-      data-value="{{item === '全部' ? '' : item}}"
-      bindtap="onSportFilter"
-    >{{item}}</view>
-  </scroll-view>
+  <view class="section-title">网球俱乐部</view>
 
   <block wx:for="{{clubs}}" wx:key="id">
     <view class="club-card card" data-id="{{item.id}}" bindtap="onClubDetail">
@@ -20,9 +12,7 @@
       <view class="club-info">
         <text class="club-name">{{item.name}}</text>
         <text class="text-sm text-secondary">{{item.address || '暂无地址'}}</text>
-        <view class="club-tags">
-          <text class="tag tag-primary" wx:for="{{item.sport_types}}" wx:for-item="sport" wx:key="*this">{{sport}}</text>
-        </view>
+        <text class="tag tag-primary">网球</text>
       </view>
       <text class="club-arrow">›</text>
     </view>

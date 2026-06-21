@@ -1,1 +1,62 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Venue List -->
+  <block wx:for="{{venues}}" wx:key="id">
+    <view class="card venue-card">
+      <view class="venue-info">
+        <text class="venue-name">{{item.name}}</text>
+        <text class="text-sm text-secondary">¥{{item.price_per_hour}}/小时 · 营业 {{item.open_time || '08:00'}}-{{item.close_time || '22:00'}}</text>
+        <view class="venue-status {{item.status}}">{{item.status === 'active' ? '营业中' : item.status === 'maintenance' ? '维护中' : '已关闭'}}</view>
+      </view>
+      <view class="venue-actions">
+        <text class="action-link" bindtap="onShowForm" data-venue="{{item}}">编辑</text>
+        <text class="action-link text-danger" bindtap="onDeleteVenue">删除</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{venues.length === 0 && !loading}}" class="empty-state">
+    <text>暂无场地，点击下方按钮添加</text>
+  </view>
+
+  <!-- Add Button -->
+  <view class="add-btn-wrap">
+    <button class="btn-primary" bindtap="onShowForm">+ 添加场地</button>
+  </view>
+
+  <!-- Form Modal -->
+  <view class="modal-mask" wx:if="{{showForm}}" bindtap="onHideForm"></view>
+  <view class="modal-form" wx:if="{{showForm}}">
+    <view class="form-header flex-between">
+      <text>{{formTitle}}</text>
+      <text class="text-primary" bindtap="onSaveVenue">保存</text>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">场地名称</text>
+      <input class="form-input" placeholder="如：1号网球场" value="{{formData.name}}" data-field="name" bindinput="onFieldInput" />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">每小时价格 (元)</text>
+      <input class="form-input" type="digit" placeholder="如：80" value="{{formData.price_per_hour}}" data-field="price_per_hour" bindinput="onFieldInput" />
+    </view>
+
+    <view class="form-row">
+      <view class="form-group flex-1">
+        <text class="form-label">营业开始</text>
+        <picker mode="time" value="{{formData.open_time}}" data-field="open_time" bindchange="onTimeChange">
+          <text class="form-input picker-val">{{formData.open_time || '08:00'}}</text>
+        </picker>
+      </view>
+      <text class="time-sep">至</text>
+      <view class="form-group flex-1">
+        <text class="form-label">营业结束</text>
+        <picker mode="time" value="{{formData.close_time}}" data-field="close_time" bindchange="onTimeChange">
+          <text class="form-input picker-val">{{formData.close_time || '22:00'}}</text>
+        </picker>
+      </view>
+    </view>
+
+    <text class="form-hint">创建后自动按 30 分钟间隔生成未来 3 天全部可预约时段</text>
+  </view>
+</view>

@@ -31,8 +31,8 @@ async def create_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lock a slot and create a pending booking order."""
-    # Get slot
+    """Lock one or two consecutive slots and create a pending booking order."""
+    # Get primary slot
     result = await db.execute(
         select(VenueTimeSlot).where(VenueTimeSlot.id == req.slot_id)
     )
@@ -41,6 +41,20 @@ async def create_booking(
         raise HTTPException(status_code=404, detail="Slot not found")
     if slot.status != SlotStatus.available:
         raise HTTPException(status_code=409, detail="Slot is not available")
+
+    # Get second slot if provided
+    slot2 = None
+    if req.slot2_id:
+        result2 = await db.execute(
+            select(VenueTimeSlot).where(VenueTimeSlot.id == req.slot2_id)
+        )
+        slot2 = result2.scalar_one_or_none()
+        if not slot2:
+            raise HTTPException(status_code=404, detail="Second slot not found")
+        if slot2.status != SlotStatus.available:
+            raise HTTPException(status_code=409, detail="Second slot is not available")
+        if slot2.venue_id != slot.venue_id:
+            raise HTTPException(status_code=400, detail="Slots must belong to same venue")
 
     # Get venue + club
     venue_result = await db.execute(select(Venue).where(Venue.id == slot.venue_id))
@@ -51,20 +65,41 @@ async def create_booking(
     club_result = await db.execute(select(Club).where(Club.id == venue.club_id))
     club = club_result.scalar_one_or_none()
 
-    # Try Redis lock
+    # Try Redis lock on primary slot
     lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
     acquired = await acquire_lock(lock_key, str(current_user.id), settings.BOOKING_LOCK_TTL_SECONDS)
     if not acquired:
         raise HTTPException(status_code=409, detail="Slot is being booked by another user")
 
+    # Lock second slot too
+    lock2_key = None
+    if slot2:
+        lock2_key = f"slot:{slot2.venue_id}:{slot2.date}:{slot2.start_time}"
+        acquired2 = await acquire_lock(lock2_key, str(current_user.id), settings.BOOKING_LOCK_TTL_SECONDS)
+        if not acquired2:
+            await release_lock(lock_key)
+            raise HTTPException(status_code=409, detail="Second slot is being booked")
+
     try:
-        # Mark slot locked
+        # Mark slot(s) locked
         slot.status = SlotStatus.locked
         slot.locked_by = current_user.id
         slot.locked_at = datetime.utcnow()
 
-        # Calculate price
-        price = slot.price_override if slot.price_override else venue.price_per_hour
+        if slot2:
+            slot2.status = SlotStatus.locked
+            slot2.locked_by = current_user.id
+            slot2.locked_at = datetime.utcnow()
+
+        # Calculate price: sum of both slots
+        p1 = slot.price_override if slot.price_override else venue.price_per_hour
+        price = p1
+        if slot2:
+            p2 = slot2.price_override if slot2.price_override else venue.price_per_hour
+            price = p1 + p2
+
+        # Use latest end_time for display
+        effective_end = slot2.end_time if slot2 else slot.end_time
 
         # Create order
         order = BookingOrder(
@@ -98,10 +133,12 @@ async def create_booking(
             club_name=club.name if club else None,
             slot_date=slot.date,
             slot_start=slot.start_time,
-            slot_end=slot.end_time,
+            slot_end=effective_end,
         )
     except Exception:
         await release_lock(lock_key)
+        if lock2_key:
+            await release_lock(lock2_key)
         raise
 
 
@@ -151,6 +188,84 @@ async def get_booking(
     )
 
 
+@router.post("/{booking_id}/pay")
+async def pay_booking(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Initiate WeChat JSAPI payment for a pending booking."""
+    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your booking")
+    if order.status != OrderStatus.pending:
+        raise HTTPException(status_code=400, detail="Order is not in pending status")
+
+    # TODO: WeChat Pay V3 JSAPI integration placeholder
+    # Currently marks order as paid directly for dev/testing
+    order.status = OrderStatus.paid
+    order.payment_time = datetime.utcnow()
+    order.wx_transaction_id = f"dev_{order.order_no}"
+
+    # Mark slot(s) as booked
+    slot_result = await db.execute(
+        select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
+    )
+    slot = slot_result.scalar_one_or_none()
+    if slot:
+        slot.status = SlotStatus.booked
+        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+        await release_lock(lock_key)
+
+    # Release sibling locked slot
+    sibling_result = await db.execute(
+        select(VenueTimeSlot).where(
+            VenueTimeSlot.venue_id == slot.venue_id,
+            VenueTimeSlot.date == slot.date,
+            VenueTimeSlot.locked_by == current_user.id,
+            VenueTimeSlot.status == SlotStatus.locked,
+        )
+    )
+    for sib in sibling_result.scalars().all():
+        sib.status = SlotStatus.booked
+        sib.locked_by = None
+        sib.locked_at = None
+        sib_key = f"slot:{sib.venue_id}:{sib.date}:{sib.start_time}"
+        await release_lock(sib_key)
+
+    # Create settlement record
+    club_result = await db.execute(select(Club).where(Club.id == order.club_id))
+    club = club_result.scalar_one_or_none()
+    split_ratio = club.split_ratio if club else Decimal("0.100")
+    platform_amount = order.amount * split_ratio
+    club_amount = order.amount - platform_amount
+    settlement = SettlementRecord(
+        order_id=order.id,
+        total_amount=order.amount,
+        platform_amount=platform_amount,
+        club_amount=club_amount,
+        split_ratio=split_ratio,
+        status="pending",
+    )
+    db.add(settlement)
+
+    # Create notification
+    notif = Notification(
+        user_id=order.user_id,
+        type=NotificationType.booking,
+        title="预约成功",
+        content=f"您的场地预约已支付成功，订单号 {order.order_no}",
+        ref_id=order.id,
+        ref_type="booking",
+    )
+    db.add(notif)
+
+    return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount)}
+
+
 @router.post("/wx-notify")
 async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     """WeChat payment callback. Verify signature and update order status."""
@@ -179,7 +294,7 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     order.payment_time = datetime.utcnow()
     order.wx_transaction_id = transaction_id
 
-    # Mark slot as booked
+    # Mark primary slot as booked
     slot_result = await db.execute(
         select(VenueTimeSlot).where(VenueTimeSlot.id == order.slot_id)
     )
@@ -188,6 +303,22 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         slot.status = SlotStatus.booked
         lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
         await release_lock(lock_key)
+
+    # Also release any other locked slot by same user on same venue/date
+    sibling_result = await db.execute(
+        select(VenueTimeSlot).where(
+            VenueTimeSlot.venue_id == slot.venue_id,
+            VenueTimeSlot.date == slot.date,
+            VenueTimeSlot.locked_by == order.user_id,
+            VenueTimeSlot.status == SlotStatus.locked,
+        )
+    )
+    for sib in sibling_result.scalars().all():
+        sib.status = SlotStatus.booked
+        sib.locked_by = None
+        sib.locked_at = None
+        sib_key = f"slot:{sib.venue_id}:{sib.date}:{sib.start_time}"
+        await release_lock(sib_key)
 
     # Create settlement record
     club_result = await db.execute(select(Club).where(Club.id == order.club_id))
@@ -260,12 +391,28 @@ async def cancel_booking(
     order.cancel_time = now
     order.refund_amount = refund_amount
 
-    # Release slot
+    # Release primary slot
     slot.status = SlotStatus.available
     slot.locked_by = None
     slot.locked_at = None
     lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
     await release_lock(lock_key)
+
+    # Also release any sibling locked slot
+    sibling_result = await db.execute(
+        select(VenueTimeSlot).where(
+            VenueTimeSlot.venue_id == slot.venue_id,
+            VenueTimeSlot.date == slot.date,
+            VenueTimeSlot.locked_by == order.user_id,
+            VenueTimeSlot.status == SlotStatus.locked,
+        )
+    )
+    for sib in sibling_result.scalars().all():
+        sib.status = SlotStatus.available
+        sib.locked_by = None
+        sib.locked_at = None
+        sib_key = f"slot:{sib.venue_id}:{sib.date}:{sib.start_time}"
+        await release_lock(sib_key)
 
     # TODO: Trigger WeChat refund API if paid
 

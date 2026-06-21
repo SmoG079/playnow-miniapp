@@ -1,48 +1,45 @@
-<!-- 场地详情 & 时间表 -->
 <view class="page">
   <!-- Venue Info -->
   <view class="venue-header" wx:if="{{venue}}">
     <image class="venue-cover" src="{{venue.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
     <view class="venue-info">
       <text class="venue-name">{{venue.name}}</text>
-      <text class="text-secondary">{{venue.sport_type}} · 最多{{venue.max_capacity}}人</text>
-      <text class="text-primary text-lg">¥{{venue.price_per_hour}}/小时</text>
+      <text class="text-secondary">网球 · ¥{{venue.price_per_hour}}/小时</text>
+      <text class="text-secondary">营业时间 {{venue.open_time || '08:00'}} - {{venue.close_time || '22:00'}}</text>
     </view>
   </view>
 
   <!-- Date Selector -->
   <scroll-view class="date-scroll" scroll-x>
     <view
-      wx:for="{{dateOptions}}"
-      wx:key="value"
+      wx:for="{{dateOptions}}" wx:key="value"
       class="date-item {{selectedDate === item.value ? 'active' : ''}}"
-      data-date="{{item.value}}"
-      bindtap="onDateChange"
+      data-date="{{item.value}}" bindtap="onDateChange"
     >
       <text class="date-weekday">{{item.weekday}}</text>
       <text class="date-label">{{item.label}}</text>
     </view>
   </scroll-view>
 
-  <!-- Time Slots -->
+  <!-- Time Slots (30-min grid) -->
   <view class="slot-section">
     <block wx:for="{{slotGroups}}" wx:key="date">
       <view class="slot-date-group">
         <text class="slot-date-title">{{item.date}}</text>
+        <text class="text-sm text-secondary">点击连续两格选 1 小时</text>
         <view class="slot-grid">
           <view
-            wx:for="{{item.slots}}"
-            wx:for-item="slot"
-            wx:key="id"
-            class="slot-item {{slot.status}}"
-            data-slot="{{slot}}"
-            bindtap="onSlotTap"
+            wx:for="{{item.slots}}" wx:for-item="slot" wx:key="id"
+            class="slot-item {{slot.status}} {{slot._sel ? 'selected' : ''}}"
+            data-slot="{{slot}}" bindtap="onSlotTap"
           >
-            <text class="slot-time">{{slot.start_time}} - {{slot.end_time}}</text>
+            <view class="slot-left">
+              <text class="slot-time">{{slot.start_time}} - {{slot.end_time}}</text>
+            </view>
             <text class="slot-price">¥{{slot.price}}</text>
-            <text class="slot-status" wx:if="{{slot.status === 'booked'}}">已预约</text>
-            <text class="slot-status" wx:if="{{slot.status === 'locked'}}">锁定中</text>
-            <text class="slot-book" wx:if="{{slot.status === 'available'}}">可预约</text>
+            <text class="slot-tag" wx:if="{{slot.status === 'booked'}}">已约</text>
+            <text class="slot-tag" wx:elif="{{slot.status === 'locked'}}">锁定</text>
+            <text class="slot-tick" wx:elif="{{slot._sel}}">✓ 已选</text>
           </view>
         </view>
       </view>
@@ -53,8 +50,12 @@
     </view>
   </view>
 
-  <!-- Management Button (club admin only) -->
-  <view class="admin-entry" wx:if="{{isAdmin}}">
-    <button class="btn-outline" bindtap="onManageSlots">管理时间段</button>
+  <!-- Selected Info + Confirm Button -->
+  <view class="bottom-bar" wx:if="{{selectedInfo}}">
+    <view class="selected-info">
+      <text class="selected-label">{{selectedInfo.date}} · {{selectedInfo.startTime}}-{{selectedInfo.endTime}}（1小时）</text>
+      <text class="selected-price">¥{{selectedInfo.price}}</text>
+    </view>
+    <button class="btn-pay" bindtap="onConfirmBooking">立即预约</button>
   </view>
 </view>

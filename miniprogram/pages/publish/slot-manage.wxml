@@ -1,1 +1,71 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Venue Info -->
+  <view class="card venue-header" wx:if="{{venue}}">
+    <text class="venue-name">{{venue.name}}</text>
+    <text class="text-sm text-secondary">网球 · ¥{{venue.price_per_hour}}/小时</text>
+  </view>
+
+  <!-- Generate Form -->
+  <view class="card form-card">
+    <text class="form-title">生成时间段</text>
+    <view class="form-row">
+      <text class="form-label">开始日期</text>
+      <picker mode="date" value="{{dateFrom}}" bindchange="onDateFromChange">
+        <text class="picker-val {{dateFrom ? '' : 'placeholder'}}">{{dateFrom || '请选择'}}</text>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label">结束日期</text>
+      <picker mode="date" value="{{dateTo}}" bindchange="onDateToChange">
+        <text class="picker-val {{dateTo ? '' : 'placeholder'}}">{{dateTo || '请选择'}}</text>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label">开始时间</text>
+      <picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+        <text class="picker-val">{{startTime}}</text>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label">结束时间</text>
+      <picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+        <text class="picker-val">{{endTime}}</text>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label">间隔</text>
+      <view class="interval-options">
+        <text
+          wx:for="{{intervalOptions}}" wx:key="value"
+          class="interval-item {{interval === item.value ? 'active' : ''}}"
+          data-value="{{item.value}}" bindtap="onIntervalChange"
+        >{{item.label}}</text>
+      </view>
+    </view>
+    <button class="btn-primary" bindtap="onGenerate">生成时间段</button>
+  </view>
+
+  <!-- Existing Slots -->
+  <view class="slots-section">
+    <text class="section-title">已有时间段</text>
+    <block wx:for="{{slotGroups}}" wx:key="date">
+      <view class="date-group">
+        <text class="date-title">{{item.date}}</text>
+        <view class="slot-grid">
+          <view
+            wx:for="{{item.slots}}" wx:for-item="slot" wx:key="id"
+            class="slot-item {{slot.status}}"
+            data-slot="{{slot}}" bindtap="onToggleSlot"
+          >
+            <text class="slot-time">{{slot.start_time}}-{{slot.end_time}}</text>
+            <text class="slot-price">¥{{slot.price}}</text>
+            <text class="slot-status-tag">{{statusLabel(slot.status)}}</text>
+          </view>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{slotGroups.length === 0 && !loading}}" class="empty-state">
+      <text>暂无时间段，请先生成</text>
+    </view>
+  </view>
+</view>

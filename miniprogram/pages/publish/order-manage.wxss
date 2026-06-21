@@ -1,1 +1,24 @@
-.page { padding: 20rpx; }
+.page { padding: 0 24rpx; }
+.filter-scroll { white-space: nowrap; padding: 20rpx 0; }
+.filter-item {
+  display: inline-block; padding: 12rpx 28rpx; margin-right: 16rpx;
+  border-radius: 30rpx; font-size: 26rpx; color: var(--text-secondary);
+  background: var(--bg-white); border: 1rpx solid var(--border);
+}
+.filter-item.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.order-card { margin: 0 0 20rpx 0; }
+.order-header { margin-bottom: 16rpx; }
+.order-venue { font-size: 30rpx; font-weight: 600; }
+.order-status { font-size: 24rpx; padding: 4rpx 12rpx; border-radius: 6rpx; }
+.order-status.pending { background: #fff8e0; color: #d4a000; }
+.order-status.paid { background: #e8f8ee; color: var(--primary); }
+.order-status.completed { background: #e8f0fe; color: #4a90d9; }
+.order-status.cancelled { background: #f0f0f0; color: var(--text-secondary); }
+
+.order-body { border-top: 1rpx solid var(--border); padding-top: 12rpx; }
+.info-row { display: flex; justify-content: space-between; padding: 8rpx 0; }
+.info-label { font-size: 26rpx; color: var(--text-secondary); }
+.info-value { font-size: 26rpx; color: var(--text); }
+
+.empty-state { text-align: center; padding: 100rpx 0; color: var(--text-secondary); }

@@ -1,1 +1,45 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Booking Info Card -->
+  <view class="card booking-card">
+    <view class="card-header">
+      <text class="card-title">订单确认</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">场地</text>
+      <text class="info-value">{{venueName || '加载中...'}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">日期</text>
+      <text class="info-value">{{date}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">时间</text>
+      <text class="info-value">{{startTime}} - {{endTime}}</text>
+    </view>
+    <view class="info-divider"></view>
+    <view class="info-row price-row">
+      <text class="info-label">金额</text>
+      <text class="info-value text-primary text-lg">¥{{price}}/小时</text>
+    </view>
+    <view class="info-row total-row">
+      <text class="info-label">合计</text>
+      <text class="info-value text-primary text-xl">¥{{price}}</text>
+    </view>
+  </view>
+
+  <!-- Rules -->
+  <view class="card rules-card">
+    <text class="rules-title">预约须知</text>
+    <text class="rules-item">· 下单后场地保留 10 分钟，超时自动释放</text>
+    <text class="rules-item">· 开场前 2 小时可免费取消，2 小时内退款 50%</text>
+    <text class="rules-item">· 开场后不可取消</text>
+  </view>
+
+  <!-- Actions -->
+  <view class="bottom-actions">
+    <button class="btn-pay" bindtap="onPay" loading="{{paying}}" disabled="{{paying}}">
+      {{paying ? '支付中...' : '立即支付 ¥' + price}}
+    </button>
+    <text class="cancel-link" bindtap="onCancel">返回重新选择</text>
+  </view>
+</view>

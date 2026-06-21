@@ -28,6 +28,7 @@ backend/ssl/*.key
 
 # Claude
 .claude/
+.mcp.json
 
 # Temp files
 需求.txt

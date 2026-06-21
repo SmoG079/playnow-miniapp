@@ -1,1 +1,35 @@
-.page { padding: 20rpx; }
+.page { padding: 24rpx; padding-bottom: 60rpx; }
+
+.venue-header { margin: 0 0 24rpx 0; }
+.venue-name { font-size: 32rpx; font-weight: 600; display: block; margin-bottom: 6rpx; }
+
+.form-card { margin: 0 0 24rpx 0; }
+.form-title { font-size: 30rpx; font-weight: 600; display: block; margin-bottom: 20rpx; }
+.form-row { display: flex; justify-content: space-between; align-items: center; padding: 14rpx 0; border-bottom: 1rpx solid var(--border); }
+.form-label { font-size: 28rpx; color: var(--text-secondary); }
+.picker-val { font-size: 28rpx; color: var(--text); }
+.picker-val.placeholder { color: var(--text-light); }
+
+.interval-options { display: flex; gap: 12rpx; }
+.interval-item { padding: 8rpx 24rpx; border-radius: 20rpx; font-size: 26rpx; color: var(--text-secondary); background: var(--bg); border: 1rpx solid var(--border); }
+.interval-item.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.form-card .btn-primary { margin-top: 24rpx; }
+
+.slots-section { margin-top: 10rpx; }
+.section-title { font-size: 30rpx; font-weight: 600; display: block; margin-bottom: 16rpx; }
+.date-group { margin-bottom: 20rpx; }
+.date-title { font-size: 26rpx; color: var(--text-secondary); display: block; margin-bottom: 12rpx; }
+.slot-grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
+
+.slot-item { padding: 12rpx 16rpx; border-radius: 10rpx; width: calc(33.33% - 8rpx); box-sizing: border-box; text-align: center; background: var(--bg-white); border: 1rpx solid var(--border); }
+.slot-item .slot-time { font-size: 24rpx; color: var(--text); display: block; }
+.slot-item .slot-price { font-size: 22rpx; color: var(--text-secondary); display: block; margin: 4rpx 0; }
+.slot-item .slot-status-tag { font-size: 20rpx; padding: 2rpx 8rpx; border-radius: 4rpx; }
+.slot-item.available { border-color: var(--primary); }
+.slot-item.available .slot-status-tag { background: #e8f8ee; color: var(--primary); }
+.slot-item.booked { background: #f0f0f0; }
+.slot-item.booked .slot-status-tag { color: var(--text-secondary); }
+.slot-item.locked .slot-status-tag { color: #d4a000; }
+
+.empty-state { text-align: center; padding: 80rpx 0; color: var(--text-secondary); }

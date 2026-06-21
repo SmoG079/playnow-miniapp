@@ -1,1 +1,40 @@
-.page { padding: 20rpx; }
+.page { padding: 24rpx; }
+.post-card { margin: 0 0 20rpx 0; }
+
+.post-author { margin-bottom: 20rpx; }
+.author-avatar { width: 72rpx; height: 72rpx; border-radius: 50%; margin-right: 16rpx; }
+.author-name { font-size: 28rpx; font-weight: 600; display: block; }
+
+.post-title { font-size: 34rpx; font-weight: 700; color: var(--text); display: block; margin-bottom: 16rpx; line-height: 1.4; }
+
+.post-meta { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 16rpx; }
+.meta-item { font-size: 24rpx; color: var(--text-secondary); background: var(--bg); padding: 6rpx 14rpx; border-radius: 6rpx; }
+
+.post-notes { font-size: 28rpx; color: var(--text); line-height: 1.6; margin-bottom: 20rpx; display: block; }
+
+.post-footer { border-top: 1rpx solid var(--border); padding-top: 16rpx; }
+.btn-sm { font-size: 26rpx; padding: 12rpx 32rpx; line-height: 1.2; }
+
+.reg-card { margin: 0 0 20rpx 0; }
+.reg-title { font-size: 28rpx; font-weight: 600; display: block; margin-bottom: 16rpx; }
+
+.reg-item { padding: 16rpx 0; border-bottom: 1rpx solid var(--border); }
+.reg-item:last-child { border-bottom: none; }
+.reg-avatar { width: 56rpx; height: 56rpx; border-radius: 50%; margin-right: 12rpx; }
+.reg-name { font-size: 28rpx; display: block; }
+.reg-status { font-size: 22rpx; padding: 4rpx 12rpx; border-radius: 6rpx; margin-right: 12rpx; }
+.reg-status.pending { background: #fff8e0; color: #d4a000; }
+.reg-status.approved { background: #e8f8ee; color: var(--primary); }
+.reg-status.rejected { background: #fde8e8; color: var(--danger); }
+
+.btn-review { font-size: 22rpx; color: var(--primary); background: transparent; border: 1rpx solid var(--primary); border-radius: 6rpx; padding: 4rpx 16rpx; line-height: 1.4; }
+
+/* Modal */
+.modal-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 100; }
+.modal-form { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-white); border-radius: 24rpx 24rpx 0 0; padding: 32rpx 24rpx; padding-bottom: calc(32rpx + env(safe-area-inset-bottom)); z-index: 101; }
+.form-header { font-size: 32rpx; font-weight: 600; margin-bottom: 24rpx; }
+.form-group { margin-bottom: 24rpx; }
+.form-label { font-size: 26rpx; color: var(--text-secondary); display: block; margin-bottom: 12rpx; }
+.form-textarea { width: 100%; min-height: 120rpx; border: 1rpx solid var(--border); border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; box-sizing: border-box; }
+
+.empty-state { text-align: center; padding: 100rpx 0; color: var(--text-secondary); }

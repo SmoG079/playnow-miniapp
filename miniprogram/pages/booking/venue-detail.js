@@ -8,6 +8,7 @@ Page({
     dateOptions: [],
     slotGroups: [],
     loading: false,
+    selectedInfo: null,
   },
 
   onLoad(options) {
@@ -19,7 +20,7 @@ Page({
   initDates() {
     const dates = [];
     const today = new Date();
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 3; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
       dates.push({
@@ -28,10 +29,7 @@ Page({
         weekday: ['日', '一', '二', '三', '四', '五', '六'][d.getDay()],
       });
     }
-    this.setData({
-      dateOptions: dates,
-      selectedDate: dates[0].value,
-    });
+    this.setData({ dateOptions: dates, selectedDate: dates[0].value });
     this.loadSlots(dates[0].value);
   },
 
@@ -52,12 +50,17 @@ Page({
   },
 
   async loadSlots(date) {
-    this.setData({ loading: true });
+    this.setData({ loading: true, selectedInfo: null });
     try {
       const res = await app.request({
         url: `/venues/${this.data.venueId}/slots?date_from=${date}&date_to=${date}`,
       });
-      this.setData({ slotGroups: res || [] });
+      // Clear any previous selection flags
+      const groups = (res || []).map(g => ({
+        ...g,
+        slots: g.slots.map(s => ({ ...s, _sel: false })),
+      }));
+      this.setData({ slotGroups: groups });
     } catch (e) {
       console.error('Load slots failed', e);
     } finally {
@@ -73,18 +76,57 @@ Page({
 
   onSlotTap(e) {
     const slot = e.currentTarget.dataset.slot;
+    const allSlots = this._flatSlots();
     if (slot.status !== 'available') return;
 
-    // Navigate to confirm page
-    wx.navigateTo({
-      url: `/pages/booking/confirm?slot_id=${slot.id}&venue_id=${this.data.venueId}&price=${slot.price}&date=${this.data.selectedDate}&start=${slot.start_time}&end=${slot.end_time}`,
+    const idx = allSlots.findIndex(s => s.id === slot.id);
+    if (idx === -1 || idx >= allSlots.length - 1) return;
+
+    const nextSlot = allSlots[idx + 1];
+    if (nextSlot.status !== 'available') {
+      wx.showToast({ title: '需连续 1 小时，相邻时段不可用', icon: 'none' });
+      return;
+    }
+
+    // Clear previous selection, set new pair
+    const groups = this.data.slotGroups.map(g => ({
+      ...g,
+      slots: g.slots.map(s => ({
+        ...s,
+        _sel: s.id === slot.id || s.id === nextSlot.id,
+      })),
+    }));
+
+    const price = parseFloat(slot.price) + parseFloat(nextSlot.price);
+    this.setData({
+      slotGroups: groups,
+      selectedInfo: {
+        slot1Id: slot.id,
+        slot2Id: nextSlot.id,
+        date: this.data.selectedDate,
+        startTime: slot.start_time,
+        endTime: nextSlot.end_time,
+        price: price.toFixed(2),
+      },
     });
   },
 
-  onShareAppMessage() {
-    return {
-      title: `${this.data.venue?.name || '场地'} - 来订场吧`,
-      path: `/pages/booking/venue-detail?id=${this.data.venueId}`,
-    };
+  _flatSlots() {
+    const all = [];
+    for (const g of this.data.slotGroups) {
+      for (const s of g.slots) all.push(s);
+    }
+    return all;
+  },
+
+  onConfirmBooking() {
+    const info = this.data.selectedInfo;
+    if (!info) {
+      wx.showToast({ title: '请先选择时段（1小时起订）', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/pages/booking/confirm?slot_id=${info.slot1Id}&slot2_id=${info.slot2Id}&venue_id=${this.data.venueId}&price=${info.price}&date=${info.date}&start=${info.startTime}&end=${info.endTime}`,
+    });
   },
 });

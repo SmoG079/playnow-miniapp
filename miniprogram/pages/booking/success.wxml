@@ -1,1 +1,13 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <view class="success-card">
+    <text class="success-icon">✓</text>
+    <text class="success-title">预约成功</text>
+    <text class="success-desc">您的场地已预约成功</text>
+    <text class="order-no" wx:if="{{orderNo}}">订单号：{{orderNo}}</text>
+  </view>
+
+  <view class="actions">
+    <button class="btn-primary" bindtap="onViewBooking">查看我的预约</button>
+    <text class="home-link" bindtap="onBackHome">返回首页</text>
+  </view>
+</view>

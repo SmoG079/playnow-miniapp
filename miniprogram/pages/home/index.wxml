@@ -6,17 +6,6 @@
     <text class="search-placeholder">搜索俱乐部、比赛、约球...</text>
   </view>
 
-  <!-- Sport Filter -->
-  <scroll-view class="filter-scroll" scroll-x>
-    <view
-      wx:for="{{sportFilters}}"
-      wx:key="*this"
-      class="filter-item {{activeSport === item ? 'active' : ''}}"
-      data-sport="{{item}}"
-      bindtap="onSportFilter"
-    >{{item}}</view>
-  </scroll-view>
-
   <!-- Tournament Banner -->
   <view class="section" wx:if="{{tournaments.length > 0}}">
     <view class="section-header">
@@ -60,7 +49,7 @@
             <text class="post-username">{{item.user_nickname || '匿名用户'}}</text>
             <text class="text-sm text-secondary">{{item.created_at}}</text>
           </view>
-          <view class="tag tag-primary">{{item.sport_type || '运动'}}</view>
+          <view class="tag {{item.venue_id ? 'tag-warning' : 'tag-primary'}}">{{item.venue_id ? '🏟️ 订场约球' : '🏸 自由约球'}}</view>
         </view>
 
         <view class="post-body">

@@ -1,1 +1,65 @@
-.page { padding: 20rpx; }
+.page { padding-bottom: 160rpx; }
+
+.venue-header { margin: 0 20rpx 20rpx; }
+.venue-cover { width: 100%; height: 320rpx; border-radius: var(--radius) var(--radius) 0 0; display: block; }
+.venue-info { background: var(--bg-white); padding: 20rpx 24rpx; border-radius: 0 0 var(--radius) var(--radius); }
+.venue-name { font-size: 34rpx; font-weight: 700; display: block; margin-bottom: 6rpx; }
+
+.date-scroll { white-space: nowrap; padding: 16rpx 20rpx; }
+.date-item {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 110rpx; height: 100rpx; margin-right: 12rpx; border-radius: 16rpx;
+  background: var(--bg-white); border: 2rpx solid var(--border);
+}
+.date-item.active { background: var(--primary); border-color: var(--primary); }
+.date-item.active text { color: #fff; }
+.date-weekday { font-size: 24rpx; color: var(--text-secondary); }
+.date-label { font-size: 26rpx; font-weight: 500; }
+
+.slot-section { padding: 0 20rpx; }
+.slot-date-group { margin-bottom: 24rpx; }
+.slot-date-title { font-size: 30rpx; font-weight: 600; display: block; margin-bottom: 8rpx; }
+
+.slot-grid { display: flex; flex-direction: column; gap: 8rpx; }
+
+.slot-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14rpx 20rpx; border-radius: 10rpx;
+  background: var(--bg-white); border: 2rpx solid var(--border);
+  transition: all 0.15s;
+}
+.slot-item.available { border-color: #c8e6c9; background: #f1f8e9; }
+/* Selected = yellow highlight */
+.slot-item.selected { border-color: #f0a020; background: #fff3cd; box-shadow: 0 0 0 3rpx #f0a020; transform: scale(1.02); z-index: 2; }
+.slot-item.selected .slot-time { color: #8b6914; font-weight: 700; }
+.slot-item.selected .slot-price { color: #8b6914; }
+.slot-item.selected .slot-tick { color: #f0a020; font-size: 28rpx; }
+/* Booked = solid gray, Locked = light gray */
+.slot-item.booked { background: #e0e0e0; border-color: #ccc; opacity: 0.6; }
+.slot-item.locked { background: #f0f0f0; border-color: #ddd; opacity: 0.7; }
+.slot-left { display: flex; align-items: center; gap: 12rpx; }
+.slot-time { font-size: 28rpx; font-weight: 500; color: var(--text); }
+.slot-end-time { font-size: 22rpx; color: var(--text-secondary); }
+.slot-price { font-size: 24rpx; color: var(--text-secondary); min-width: 80rpx; text-align: right; }
+.slot-item .slot-tag { font-size: 20rpx; padding: 4rpx 12rpx; border-radius: 6rpx; }
+.slot-item.booked .slot-tag { background: #eee; color: #999; }
+.slot-item.locked .slot-tag { background: #fff3cd; color: #d4a000; }
+.slot-item .slot-tick { color: var(--primary); font-size: 22rpx; font-weight: 700; }
+
+.empty-state { text-align: center; padding: 100rpx 0; color: var(--text-secondary); }
+
+/* Bottom Confirm Bar */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 20rpx 24rpx; padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  background: var(--bg-white); box-shadow: 0 -2rpx 12rpx rgba(0,0,0,0.08);
+  display: flex; align-items: center; gap: 20rpx;
+}
+.selected-info { flex: 1; }
+.selected-label { font-size: 26rpx; color: var(--text); display: block; }
+.selected-price { font-size: 36rpx; font-weight: 700; color: var(--danger); }
+.btn-pay {
+  height: 80rpx; padding: 0 40rpx; font-size: 30rpx; font-weight: 600;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff; border-radius: 40rpx; border: none; line-height: 80rpx;
+}

@@ -3,17 +3,6 @@
     <text class="form-label">俱乐部名称 *</text>
     <input class="form-input" placeholder="输入俱乐部名称" value="{{name}}" bindinput="onNameInput" />
 
-    <text class="form-label">运动类型</text>
-    <view class="sport-check-group">
-      <view
-        wx:for="{{['羽毛球','篮球','网球','乒乓球','足球']}}"
-        wx:key="*this"
-        class="sport-check {{sportTypes.indexOf(item) > -1 ? 'checked' : ''}}"
-        data-sport="{{item}}"
-        bindtap="onSportToggle"
-      >{{item}}</view>
-    </view>
-
     <text class="form-label">俱乐部介绍</text>
     <textarea class="form-textarea" placeholder="介绍一下俱乐部..." value="{{description}}" bindinput="onDescInput" />
 

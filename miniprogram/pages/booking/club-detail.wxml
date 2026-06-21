@@ -1,1 +1,55 @@
-<view class="page"><text>Page</text></view>
+<view class="page" wx:if="{{club}}">
+  <!-- Club Header -->
+  <view class="club-header">
+    <image class="club-cover" src="{{club.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+    <view class="club-header-info">
+      <text class="club-name">{{club.name}}</text>
+      <text class="text-sm text-secondary">{{club.address || '暂无地址'}}</text>
+      <text class="tag tag-primary">网球</text>
+    </view>
+  </view>
+
+  <!-- Description -->
+  <view class="card club-desc" wx:if="{{club.description}}">
+    <text class="desc-text">{{club.description}}</text>
+    <text class="text-sm text-secondary mt-20" wx:if="{{club.contact_phone}}">联系电话：{{club.contact_phone}}</text>
+  </view>
+
+  <!-- Venue List -->
+  <view class="venues-section">
+    <view class="section-header flex-between">
+      <text class="section-title">场地列表</text>
+      <text wx:if="{{isAdmin}}" class="text-primary text-sm" bindtap="onManageVenues">管理场地</text>
+    </view>
+
+    <block wx:for="{{venues}}" wx:key="id">
+      <view class="card venue-card" data-id="{{item.id}}" bindtap="onVenueTap">
+        <image class="venue-cover" src="{{item.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+        <view class="venue-info">
+          <text class="venue-name">{{item.name}}</text>
+          <text class="text-sm text-secondary">网球 · ¥{{item.price_per_hour}}/小时</text>
+          <view class="flex-between" style="margin-top:8rpx">
+            <text class="text-primary text-lg">¥{{item.price_per_hour}}/小时</text>
+            <text class="venue-status {{item.status}}">
+              {{item.status === 'active' ? '可预约' : item.status === 'maintenance' ? '维护中' : '已关闭'}}
+            </text>
+          </view>
+          <text wx:if="{{isAdmin}}" class="text-sm text-primary" style="margin-top:12rpx;display:block" catchtap="onManageSlots" data-id="{{item.id}}">管理时间段 ›</text>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{venues.length === 0}}" class="empty-state">
+      <text>暂无场地</text>
+    </view>
+  </view>
+
+  <!-- Admin actions -->
+  <view class="admin-section" wx:if="{{isAdmin}}">
+    <button class="btn-outline" bindtap="onManageOrders">查看订单</button>
+  </view>
+</view>
+
+<view wx:else class="empty-state">
+  <text>加载中...</text>
+</view>

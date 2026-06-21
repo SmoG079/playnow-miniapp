@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, time
 from sqlalchemy import (
     Column, BigInteger, String, Text, Integer, DateTime, Date, Time,
     Enum, Boolean, DECIMAL, UniqueConstraint, Index, ForeignKey, JSON,
@@ -96,9 +96,11 @@ class Venue(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
     name = Column(String(64), nullable=False)
-    sport_type = Column(String(32), nullable=False)
+    sport_type = Column(String(32), nullable=False, default="tennis")
     price_per_hour = Column(DECIMAL(10, 2), nullable=False)
     max_capacity = Column(Integer, default=4)
+    open_time = Column(Time, default=time(8, 0))
+    close_time = Column(Time, default=time(22, 0))
     cover_image = Column(String(512))
     status = Column(Enum(VenueStatus), default=VenueStatus.active)
     sort_order = Column(Integer, default=0)

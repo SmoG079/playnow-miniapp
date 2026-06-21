@@ -1,1 +1,46 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Status Filter -->
+  <scroll-view class="filter-scroll" scroll-x>
+    <view
+      wx:for="{{statusFilters}}" wx:key="value"
+      class="filter-item {{activeStatus === item.value ? 'active' : ''}}"
+      data-value="{{item.value}}" bindtap="onStatusFilter"
+    >{{item.label}}</view>
+  </scroll-view>
+
+  <!-- Order List -->
+  <block wx:for="{{orders}}" wx:key="id">
+    <view class="card order-card" data-order="{{item}}" bindtap="onOrderDetail">
+      <view class="order-header flex-between">
+        <text class="order-venue">{{item.venue_name}}</text>
+        <text class="order-status {{item.status}}">{{statusLabel[item.status] || item.status}}</text>
+      </view>
+      <view class="order-body">
+        <view class="info-row">
+          <text class="info-label">订单号</text>
+          <text class="info-value">{{item.order_no}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">日期</text>
+          <text class="info-value">{{item.slot_date}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">时间</text>
+          <text class="info-value">{{item.slot_start}} - {{item.slot_end}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">金额</text>
+          <text class="info-value text-primary">¥{{item.amount}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">用户ID</text>
+          <text class="info-value">{{item.user_id}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{orders.length === 0 && !loading}}" class="empty-state">
+    <text>暂无订单</text>
+  </view>
+</view>

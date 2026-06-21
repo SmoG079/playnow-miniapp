@@ -67,6 +67,7 @@ async def list_posts(
             created_at=post.created_at,
             user_nickname=nickname, user_avatar=avatar,
             club_name=club_name, registration_count=reg_count or 0,
+            venue_id=post.venue_id, booking_id=post.booking_id,
         ))
 
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
@@ -114,6 +115,7 @@ async def create_post(
         user_nickname=user.nickname, user_avatar=user.avatar_url,
         club_name=club.name if club else None,
         registration_count=0,
+        venue_id=post.venue_id, booking_id=post.booking_id,
     )
 
 

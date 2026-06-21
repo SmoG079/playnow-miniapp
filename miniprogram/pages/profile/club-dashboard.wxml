@@ -1,1 +1,59 @@
-<view class="page"><text>Page</text></view>
+<view class="page" wx:if="{{club}}">
+  <!-- Club Header -->
+  <view class="card club-header">
+    <image class="club-cover" src="{{club.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+    <text class="club-name">{{club.name}}</text>
+    <text class="text-sm text-secondary">{{club.address || '暂无地址'}}</text>
+    <text class="edit-link" bindtap="onEditClub">编辑信息 ›</text>
+  </view>
+
+  <!-- Stats -->
+  <view class="stats-grid" wx:if="{{stats}}">
+    <view class="stat-item">
+      <text class="stat-val">{{stats.total_venues}}</text>
+      <text class="stat-label">场地数</text>
+    </view>
+    <view class="stat-item">
+      <text class="stat-val">{{stats.today_orders}}</text>
+      <text class="stat-label">今日订单</text>
+    </view>
+    <view class="stat-item">
+      <text class="stat-val">¥{{stats.today_revenue}}</text>
+      <text class="stat-label">今日收入</text>
+    </view>
+    <view class="stat-item">
+      <text class="stat-val">{{stats.total_orders}}</text>
+      <text class="stat-label">总订单</text>
+    </view>
+  </view>
+
+  <!-- Venue List -->
+  <view class="section">
+    <view class="section-header flex-between">
+      <text class="section-title">场地管理</text>
+      <text class="text-primary text-sm" bindtap="onManageVenues">+ 添加</text>
+    </view>
+    <block wx:for="{{venues}}" wx:key="id">
+      <view class="card venue-row flex-between">
+        <view>
+          <text class="venue-name">{{item.name}}</text>
+          <text class="text-sm text-secondary">¥{{item.price_per_hour}}/h · {{item.open_time || '08:00'}}-{{item.close_time || '22:00'}}</text>
+        </view>
+        <view class="venue-actions">
+          <text class="text-sm text-primary" data-id="{{item.id}}" bindtap="onManageSlots">时段</text>
+          <text class="text-sm" style="margin-left:16rpx;color:var(--text-secondary)">{{item.status === 'active' ? '营业中' : '维护中'}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <!-- Quick Actions -->
+  <view class="section">
+    <text class="section-title">快捷操作</text>
+    <view class="card action-list">
+      <view class="action-item" bindtap="onManageOrders">📋 订单管理 ›</view>
+      <view class="action-item" bindtap="onManageVenues">🏟️ 场地管理 ›</view>
+    </view>
+  </view>
+</view>
+<view wx:else class="empty-state"><text>加载中...</text></view>

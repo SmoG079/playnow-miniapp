@@ -1,1 +1,45 @@
-<view class="page"><text>Page</text></view>
+<view class="page">
+  <!-- Status Filter -->
+  <scroll-view class="filter-scroll" scroll-x>
+    <view
+      wx:for="{{statusFilters}}" wx:key="value"
+      class="filter-item {{activeStatus === item.value ? 'active' : ''}}"
+      data-value="{{item.value}}" bindtap="onStatusFilter"
+    >{{item.label}}</view>
+  </scroll-view>
+
+  <!-- Booking List -->
+  <block wx:for="{{bookings}}" wx:key="id">
+    <view class="card booking-card" data-booking="{{item}}" bindtap="onBookingDetail">
+      <view class="booking-header flex-between">
+        <text class="venue-name">{{item.venue_name}}</text>
+        <text class="booking-status {{item.status}}">{{statusLabel[item.status] || item.status}}</text>
+      </view>
+      <view class="booking-body">
+        <view class="info-row">
+          <text class="info-label">日期</text>
+          <text class="info-value">{{item.slot_date}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">时间</text>
+          <text class="info-value">{{item.slot_start}} - {{item.slot_end}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">金额</text>
+          <text class="info-value text-primary">¥{{item.amount}}</text>
+        </view>
+      </view>
+      <view class="booking-footer" wx:if="{{item.status === 'paid' || item.status === 'pending'}}">
+        <button
+          class="btn-cancel"
+          catchtap="onCancelBooking"
+          data-booking="{{item}}"
+        >取消预约</button>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{bookings.length === 0 && !loading}}" class="empty-state">
+    <text>暂无预约记录</text>
+  </view>
+</view>

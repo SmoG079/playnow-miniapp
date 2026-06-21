@@ -1,7 +1,7 @@
 <view class="page">
   <view class="card">
     <text class="form-label">标题 *</text>
-    <input class="form-input" placeholder="如：周末羽毛球3缺1" value="{{title}}" bindinput="onField" data-field="title" />
+    <input class="form-input" placeholder="如：周末网球3缺1" value="{{title}}" bindinput="onField" data-field="title" />
 
     <text class="form-label">俱乐部 *</text>
     <picker mode="selector" range="{{clubNames}}" value="{{clubIndex}}" bindchange="onClubChange">
@@ -11,31 +11,53 @@
       </view>
     </picker>
 
-    <text class="form-label">运动类型</text>
-    <input class="form-input" placeholder="如：羽毛球" value="{{sportType}}" bindinput="onField" data-field="sportType" />
-
-    <text class="form-label">日期</text>
-    <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange">
-      <view class="form-picker">
-        <text class="{{preferredDate ? '' : 'text-light'}}">{{preferredDate || '选择日期'}}</text>
-        <text>›</text>
-      </view>
-    </picker>
-
-    <text class="form-label">时间</text>
-    <view class="form-row">
-      <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart">
-        <view class="form-picker-half">
-          <text class="{{preferredStart ? '' : 'text-light'}}">{{preferredStart || '开始'}}</text>
-        </view>
-      </picker>
-      <text class="form-divider">至</text>
-      <picker mode="time" value="{{preferredEnd}}" bindchange="onTimeEnd">
-        <view class="form-picker-half">
-          <text class="{{preferredEnd ? '' : 'text-light'}}">{{preferredEnd || '结束'}}</text>
-        </view>
-      </picker>
+    <!-- Mode Switch -->
+    <text class="form-label">约球模式</text>
+    <view class="mode-switch">
+      <view class="mode-item {{mode === 0 ? 'active' : ''}}" data-mode="0" bindtap="onModeSwitch">🏸 自由约球</view>
+      <view class="mode-item {{mode === 1 ? 'active' : ''}}" data-mode="1" bindtap="onModeSwitch">🏟️ 订场约球</view>
     </view>
+
+    <!-- 订场约球: slot selection -->
+    <block wx:if="{{mode === 1}}">
+      <text class="form-label">选择场地</text>
+      <picker mode="selector" range="{{venueNames}}" value="{{venueIndex}}" bindchange="onVenueChange">
+        <view class="form-picker">
+          <text class="{{venueIndex > -1 ? '' : 'text-light'}}">{{venueIndex > -1 ? venueNames[venueIndex] : '请选择'}}</text>
+          <text>›</text>
+        </view>
+      </picker>
+
+      <block wx:if="{{venueIndex > -1}}">
+        <!-- Date tabs -->
+        <scroll-view class="date-scroll" scroll-x style="margin-top:16rpx">
+          <view wx:for="{{dates}}" wx:key="value"
+            class="date-tab {{selectedDate === item.value ? 'active' : ''}}"
+            data-date="{{item.value}}" bindtap="onDateSelect">{{item.label}}</view>
+        </scroll-view>
+
+        <!-- Slot grid -->
+        <view class="slot-grid" wx:if="{{!slotLoading}}">
+          <view wx:for="{{venueSlots}}" wx:key="id"
+            class="slot-item {{item.status}} {{item._sel ? 'selected' : ''}}"
+            data-slot="{{item}}" bindtap="onSlotTap">
+            <text class="slot-time">{{item.start_time}}-{{item.end_time}}</text>
+            <text class="slot-price">¥{{item.price}}</text>
+            <text class="slot-tag" wx:if="{{item.status === 'booked'}}">已约</text>
+            <text class="slot-tag" wx:elif="{{item.status === 'locked'}}">锁定</text>
+            <text class="slot-tick" wx:elif="{{item._sel}}">✓</text>
+          </view>
+        </view>
+        <text wx:if="{{slotLoading}}" class="text-sm text-secondary">加载中...</text>
+        <text wx:if="{{!slotLoading && venueSlots.length === 0}}" class="text-sm text-secondary">暂无可用时段</text>
+
+        <!-- Selected slot info -->
+        <view class="slot-selected" wx:if="{{selectedSlotInfo}}">
+          <text class="text-primary">已选：{{selectedSlotInfo.date}} {{selectedSlotInfo.startTime}}-{{selectedSlotInfo.endTime}} · ¥{{selectedSlotInfo.price}}</text>
+        </view>
+        <text class="form-hint">选择连续两格=1小时，发布时自动锁定场地</text>
+      </block>
+    </block>
 
     <text class="form-label">还差几人</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
@@ -53,6 +75,6 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1}}">发布约球帖</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1 || (mode === 1 && !selectedSlotInfo)}}">发布约球帖</button>
   </view>
 </view>

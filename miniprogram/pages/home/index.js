@@ -6,8 +6,6 @@ Page({
     tournaments: [],
     loading: false,
     sportFilter: '',
-    sportFilters: ['全部', '羽毛球', '篮球', '网球', '乒乓球', '足球'],
-    activeSport: '全部',
   },
 
   onLoad() {
@@ -42,18 +40,6 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
-  },
-
-  onSportFilter(e) {
-    const sport = e.currentTarget.dataset.sport;
-    if (sport === '全部') {
-      this.loadFeed();
-    } else {
-      app.request({ url: `/posts?sport=${sport}&page=1` }).then(res => {
-        this.setData({ posts: res.items || [] });
-      });
-    }
-    this.setData({ activeSport: sport });
   },
 
   onPostDetail(e) {

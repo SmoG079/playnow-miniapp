@@ -1,6 +1,6 @@
-from datetime import datetime, date, time
+from datetime import datetime, date, time as dt_time
 from typing import Optional, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer, field_validator
 from decimal import Decimal
 
 
@@ -102,9 +102,11 @@ class ClubListParams(BaseModel):
 
 class VenueCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
-    sport_type: str
+    sport_type: str = "tennis"
     price_per_hour: Decimal = Field(..., gt=0)
     max_capacity: int = Field(default=4, ge=1)
+    open_time: str = "08:00"
+    close_time: str = "22:00"
     cover_image: Optional[str] = None
     sort_order: int = 0
 
@@ -113,9 +115,20 @@ class VenueUpdate(BaseModel):
     sport_type: Optional[str] = None
     price_per_hour: Optional[Decimal] = None
     max_capacity: Optional[int] = None
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
     cover_image: Optional[str] = None
     sort_order: Optional[int] = None
     status: Optional[str] = None
+
+def _coerce_time(v):
+    """Convert datetime.time -> 'HH:MM' string for ORM validation."""
+    if v is None:
+        return None
+    if isinstance(v, dt_time):
+        return v.strftime("%H:%M")
+    return v
+
 
 class VenueBrief(BaseModel):
     id: int
@@ -124,8 +137,17 @@ class VenueBrief(BaseModel):
     sport_type: str
     price_per_hour: Decimal
     max_capacity: int
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
     cover_image: Optional[str]
     status: str
+
+    _v_open = field_validator("open_time", mode="before")(_coerce_time)
+    _v_close = field_validator("close_time", mode="before")(_coerce_time)
+
+    @field_serializer("open_time", "close_time")
+    def _serialize_time(self, v):
+        return _coerce_time(v)
 
     class Config:
         from_attributes = True
@@ -142,16 +164,16 @@ class VenueDetail(VenueBrief):
 class SlotGenerateRequest(BaseModel):
     date_from: date
     date_to: date
-    start_time: time = time(8, 0)
-    end_time: time = time(22, 0)
+    start_time: dt_time = dt_time(8, 0)
+    end_time: dt_time = dt_time(22, 0)
     interval_minutes: int = Field(default=60, ge=30)
 
 class SlotBrief(BaseModel):
     id: int
     venue_id: int
     date: date
-    start_time: time
-    end_time: time
+    start_time: dt_time
+    end_time: dt_time
     price: Decimal  # effective price (override or venue default)
     status: str
 
@@ -167,6 +189,7 @@ class SlotDateGroup(BaseModel):
 
 class BookingCreateRequest(BaseModel):
     slot_id: int
+    slot2_id: Optional[int] = None  # second 30-min slot for 1-hour booking
 
 class BookingDetail(BaseModel):
     id: int
@@ -185,8 +208,8 @@ class BookingDetail(BaseModel):
     venue_name: Optional[str] = None
     club_name: Optional[str] = None
     slot_date: Optional[date] = None
-    slot_start: Optional[time] = None
-    slot_end: Optional[time] = None
+    slot_start: Optional[dt_time] = None
+    slot_end: Optional[dt_time] = None
 
     class Config:
         from_attributes = True
@@ -224,8 +247,8 @@ class PostCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     sport_type: Optional[str] = None
     preferred_date: Optional[date] = None
-    preferred_start: Optional[time] = None
-    preferred_end: Optional[time] = None
+    preferred_start: Optional[dt_time] = None
+    preferred_end: Optional[dt_time] = None
     players_needed: int = Field(default=1, ge=1)
     level_required: Optional[str] = None
     notes: Optional[str] = None
@@ -239,8 +262,8 @@ class PostBrief(BaseModel):
     title: str
     sport_type: Optional[str]
     preferred_date: Optional[date]
-    preferred_start: Optional[time]
-    preferred_end: Optional[time]
+    preferred_start: Optional[dt_time]
+    preferred_end: Optional[dt_time]
     players_needed: int
     level_required: Optional[str]
     status: str
@@ -249,14 +272,14 @@ class PostBrief(BaseModel):
     user_avatar: Optional[str] = None
     club_name: Optional[str] = None
     registration_count: int = 0
+    venue_id: Optional[int] = None
+    booking_id: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 class PostDetail(PostBrief):
     notes: Optional[str]
-    venue_id: Optional[int]
-    booking_id: Optional[int]
     registrations: list["RegistrationBrief"] = []
 
     class Config:

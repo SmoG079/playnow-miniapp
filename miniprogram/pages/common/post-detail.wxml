@@ -1,1 +1,75 @@
-<view class="page"><text>Page</text></view>
+<view class="page" wx:if="{{post}}">
+  <!-- Post Info -->
+  <view class="card post-card">
+    <view class="post-author flex-between" data-uid="{{post.user_id}}" bindtap="onViewUser">
+      <view class="flex-center">
+        <image class="author-avatar" src="{{post.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+        <view>
+          <text class="author-name">{{post.user_nickname || '匿名用户'}}</text>
+          <text class="text-sm text-secondary">{{post.club_name}}</text>
+        </view>
+      </view>
+      <text wx:if="{{isOwner}}" class="text-sm text-primary">我的帖子</text>
+    </view>
+
+    <text class="post-title">{{post.title}}</text>
+
+    <view class="post-meta">
+      <text class="meta-item">网球</text>
+      <text class="meta-item" wx:if="{{post.venue_id}}">🏟️ 订场约球</text>
+      <text class="meta-item" wx:else>🏸 自由约球</text>
+      <text class="meta-item" wx:if="{{post.preferred_date}}">{{post.preferred_date}}</text>
+      <text class="meta-item" wx:if="{{post.preferred_start}}">{{post.preferred_start}} - {{post.preferred_end}}</text>
+      <text class="meta-item" wx:if="{{post.players_needed}}">差{{post.players_needed}}人</text>
+      <text class="meta-item" wx:if="{{post.level_required}}">{{post.level_required}}水平</text>
+    </view>
+
+    <text class="post-notes" wx:if="{{post.notes}}">{{post.notes}}</text>
+
+    <view class="post-footer flex-between">
+      <text class="text-sm text-secondary">{{post.registration_count}} 人已报名</text>
+      <button wx:if="{{!isOwner}}" class="btn-primary btn-sm" bindtap="onRegister">我要报名</button>
+      <button wx:if="{{isOwner}}" open-type="share" class="btn-outline btn-sm">分享</button>
+    </view>
+  </view>
+
+  <!-- Registration List -->
+  <view class="card reg-card" wx:if="{{post.registrations && post.registrations.length > 0}}">
+    <text class="reg-title">报名列表（{{post.registrations.length}}）</text>
+    <view
+      wx:for="{{post.registrations}}" wx:key="id"
+      class="reg-item flex-between"
+    >
+      <view class="flex-center" data-uid="{{item.user_id}}" bindtap="onViewUser">
+        <image class="reg-avatar" src="{{item.user_avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+        <view>
+          <text class="reg-name">{{item.user_nickname || '匿名用户'}}</text>
+          <text class="text-sm text-secondary" wx:if="{{item.message}}">{{item.message}}</text>
+        </view>
+      </view>
+      <view class="flex-center">
+        <text class="reg-status {{item.status}}">{{statusLabel[item.status] || item.status}}</text>
+        <button
+          wx:if="{{isOwner && item.status === 'pending'}}"
+          class="btn-review btn-sm" data-uid="{{item.user_id}}"
+          catchtap="onReview"
+        >审核</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- Register Modal -->
+  <view class="modal-mask" wx:if="{{showRegisterInput}}" bindtap="onCancelRegister"></view>
+  <view class="modal-form" wx:if="{{showRegisterInput}}">
+    <view class="form-header flex-between">
+      <text>报名约球</text>
+      <text class="text-primary" bindtap="onConfirmRegister">确认</text>
+    </view>
+    <view class="form-group">
+      <text class="form-label">留言（选填）</text>
+      <textarea class="form-textarea" placeholder="介绍一下自己的水平或想说的话..." value="{{registerMessage}}" bindinput="onMessageInput" maxlength="256" />
+    </view>
+  </view>
+</view>
+
+<view wx:else class="empty-state"><text>加载中...</text></view>
