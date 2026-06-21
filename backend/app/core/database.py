@@ -9,7 +9,7 @@ engine = create_async_engine(
     pool_size=20,
     max_overflow=10,
     pool_pre_ping=False,
-    echo=settings.DEBUG,
+    echo=False,  # SQL logging controlled via LOG_MYSQL_LEVEL in logger.py
 )
 
 async_session_factory = async_sessionmaker(
