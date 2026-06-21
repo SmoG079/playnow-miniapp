@@ -62,6 +62,37 @@ uvicorn app.main:app --reload --port 8000
 # API 文档: http://127.0.0.1:8000/docs
 ```
 
+### 日志系统
+
+后端通过 `app/core/logger.py` 提供统一日志，支持三级分类输出。
+
+**使用方式：**
+```python
+from app.core.logger import get_logger
+logger = get_logger(__name__)
+
+logger.debug("变量值: %s", val)         # DEBUG — 开发调试
+logger.info("订单创建: id=%s", oid)     # INFO  — 业务关键节点
+logger.error("支付失败", exc_info=True) # ERROR — 异常/错误
+```
+
+**日志文件：**
+| 文件 | 级别 | 轮转策略 | 保留 |
+|------|------|---------|------|
+| `logs/debug.log` | 仅 DEBUG | 20 MB | 20 个文件 |
+| `logs/info.log` | INFO 及以上 | 每日 0 点 | 10 天 |
+| `logs/error.log` | ERROR 及以上 | 每日 0 点 | 10 天 |
+| `logs/mysql.log` | SQL 查询（独立） | 20 MB | 20 个文件 |
+
+**配置（`.env`）：**
+```env
+LOG_LEVEL=DEBUG            # 业务日志级别
+LOG_MYSQL_LEVEL=WARNING    # SQL 日志（INFO=显示语句）
+LOG_BACKUP_DAYS=10
+LOG_MAX_BYTES=20971520     # 20 MB
+LOG_BACKUP_COUNT=20
+```
+
 ### 前端
 
 1. 微信开发者工具打开 `miniprogram/` 目录
