@@ -7,14 +7,20 @@ Page({
     page: 1,
     hasMore: true,
     keyword: '',
-    sportFilter: '网球',
+    sportFilter: '',
     latitude: null,
     longitude: null,
-    sortBy: 'default', // 'default' | 'distance'
+    sortBy: 'default',
   },
 
   onLoad() {
     this.getLocation();
+    this.loadClubs();
+  },
+
+  onToggleSort() {
+    const next = this.data.sortBy === 'distance' ? 'default' : 'distance';
+    this.setData({ sortBy: next });
     this.loadClubs();
   },
 

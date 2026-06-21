@@ -38,17 +38,12 @@ Page({
     const commonMenu = [
       { icon: '📋', title: '我的预约', page: '/pages/profile/my-bookings' },
       { icon: '📝', title: '我的报名', page: '/pages/profile/my-registrations' },
-      { icon: '💬', title: '我的约球帖', page: '/pages/profile/my-posts' },
-      { icon: '👤', title: '编辑资料', page: '/pages/profile/edit' },
+      { icon: '📋', title: '活动管理', page: '/pages/profile/my-posts' },
     ];
 
     const adminMenu = [
       { icon: '🏠', title: '俱乐部管理', page: '/pages/profile/club-dashboard' },
-      { icon: '🏟️', title: '场地管理', page: '/pages/publish/venue-manage' },
-      { icon: '⏰', title: '时段管理', page: '/pages/publish/slot-manage' },
-      { icon: '📋', title: '订单管理', page: '/pages/publish/order-manage' },
       { icon: '💰', title: '分账记录', page: '/pages/profile/settlement-list' },
-      { icon: '📊', title: '数据统计', page: '/pages/profile/stats' },
     ];
 
     const menu = [...commonMenu];
@@ -72,6 +67,24 @@ Page({
 
   onEditProfile() {
     wx.navigateTo({ url: '/pages/profile/edit' });
+  },
+
+  onLogout() {
+    wx.showModal({
+      title: '退出登录',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          app.globalData.token = null;
+          app.globalData.refreshToken = null;
+          app.globalData.userInfo = null;
+          wx.removeStorageSync('access_token');
+          wx.removeStorageSync('refresh_token');
+          this.setData({ isLoggedIn: false, userInfo: null });
+          wx.showToast({ title: '已退出', icon: 'success' });
+        }
+      },
+    });
   },
 
   onShareAppMessage() {

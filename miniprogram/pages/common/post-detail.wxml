@@ -23,8 +23,8 @@
 
     <!-- 标题区 -->
     <view class="header-section">
-      <view class="badge-row" wx:if="{{post.sport_type}}">
-        <view class="sport-badge">{{post.sport_type}}</view>
+      <view class="badge-row">
+        <view class="sport-badge">网球</view>
       </view>
       <text class="post-title">{{post.title}}</text>
       <view class="tags-row" wx:if="{{post.notes}}">

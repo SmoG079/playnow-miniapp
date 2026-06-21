@@ -1,6 +1,6 @@
 from datetime import datetime, date, time
 from typing import Optional, Any, List, Annotated
-from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator
 from decimal import Decimal
 
 
@@ -74,6 +74,8 @@ class ClubCreate(BaseModel):
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
     contact_phone: str = Field(..., min_length=1, max_length=20)
+    opening_time: Optional[str] = "08:00"
+    closing_time: Optional[str] = "22:00"
 
 class ClubUpdate(BaseModel):
     name: Optional[str] = None
@@ -87,6 +89,8 @@ class ClubUpdate(BaseModel):
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
     contact_phone: Optional[str] = None
+    opening_time: Optional[str] = None
+    closing_time: Optional[str] = None
 
 class ClubBrief(BaseModel):
     id: int
@@ -99,7 +103,16 @@ class ClubBrief(BaseModel):
     status: str
     view_count: int = 0
     exposure_count: int = 0
-    distance: Optional[float] = None  # km, rounded to 1 decimal
+    distance: Optional[float] = None
+    opening_time: Optional[str] = None
+    closing_time: Optional[str] = None
+
+    @field_validator("opening_time", "closing_time", mode="before")
+    @classmethod
+    def _coerce_time(cls, v):
+        if v is None: return None
+        if isinstance(v, time): return v.strftime("%H:%M")
+        return v
 
     class Config:
         from_attributes = True
@@ -116,6 +129,16 @@ class ClubDetail(ClubBrief):
     class Config:
         from_attributes = True
 
+class GeocodeRequest(BaseModel):
+    address: str
+
+
+class GeocodeResponse(BaseModel):
+    address: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
 class ClubListParams(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -129,14 +152,12 @@ class ClubListParams(BaseModel):
 
 class VenueCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
-    sport_type: str
+    sport_type: str = "tennis"
     price_per_hour: Decimal = Field(..., gt=0)
     max_capacity: int = Field(default=4, ge=1)
     cover_image: Optional[str] = None
     sort_order: int = 0
-    opening_time: Optional[time] = time(8, 0)
-    closing_time: Optional[time] = time(22, 0)
-    slot_interval_minutes: Optional[int] = Field(default=60, ge=30)
+    price_rules: Optional[list[dict]] = None
 
 class VenueUpdate(BaseModel):
     name: Optional[str] = None
@@ -146,9 +167,7 @@ class VenueUpdate(BaseModel):
     cover_image: Optional[str] = None
     sort_order: Optional[int] = None
     status: Optional[str] = None
-    opening_time: Optional[time] = None
-    closing_time: Optional[time] = None
-    slot_interval_minutes: Optional[int] = Field(default=None, ge=30)
+    price_rules: Optional[list[dict]] = None
 
 class VenueBrief(BaseModel):
     id: int
@@ -159,9 +178,7 @@ class VenueBrief(BaseModel):
     max_capacity: int
     cover_image: Optional[str]
     status: str
-    opening_time: Optional[time] = None
-    closing_time: Optional[time] = None
-    slot_interval_minutes: int = 60
+    price_rules: Optional[list[dict]] = None
 
     class Config:
         from_attributes = True
@@ -308,12 +325,12 @@ class PaginatedResponse(BaseModel):
 # ── Match Post ──
 
 class PostCreate(BaseModel):
-    club_id: int
+    club_id: Optional[int] = None
     title: str = Field(..., min_length=1, max_length=256)
     sport_type: Optional[str] = None
-    preferred_date: date
-    preferred_start: time
-    preferred_end: time
+    preferred_date: Optional[date] = None
+    preferred_start: Optional[time] = None
+    preferred_end: Optional[time] = None
     players_needed: int = Field(default=1, ge=1)
     price: Decimal = Field(..., ge=Decimal("0.00"))
     level_required: Optional[str] = None
@@ -323,6 +340,7 @@ class PostCreate(BaseModel):
     venue_id: Optional[int] = None
     booking_id: Optional[int] = None
     approval_required: bool = False
+    images: Optional[list[str]] = None
 
 class PostUpdate(BaseModel):
     title: Optional[str] = None
@@ -332,6 +350,7 @@ class PostUpdate(BaseModel):
     preferred_end: Optional[time] = None
     players_needed: Optional[int] = Field(default=None, ge=1)
     price: Optional[Decimal] = None
+    status: Optional[str] = None
     level_required: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
@@ -342,7 +361,7 @@ class PostUpdate(BaseModel):
 
 class PostBrief(BaseModel):
     id: int
-    club_id: int
+    club_id: Optional[int] = None
     user_id: int
     title: str
     sport_type: Optional[str]
@@ -361,6 +380,9 @@ class PostBrief(BaseModel):
     registration_count: int = 0
     pending_count: int = 0
     distance: Optional[float] = None  # km
+    venue_id: Optional[int] = None
+    booking_id: Optional[int] = None
+    images: Optional[list[str]] = None
 
     class Config:
         from_attributes = True
@@ -436,7 +458,7 @@ class CommentBrief(BaseModel):
 # ── Tournament ──
 
 class TournamentCreate(BaseModel):
-    club_id: int
+    club_id: Optional[int] = None
     title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = None
     sport_type: Optional[str] = None
@@ -446,6 +468,7 @@ class TournamentCreate(BaseModel):
     lock_venue: bool = False
     max_participants: Optional[int] = None
     entry_fee: Decimal = Decimal("0")
+    images: Optional[list[str]] = None
     cover_image: Optional[str] = None
     prize: Optional[str] = None
 

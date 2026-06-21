@@ -1,4 +1,5 @@
 <view class="page">
+  <view class="page-title">{{isEdit ? '编辑俱乐部' : '创建俱乐部'}}</view>
   <view class="card">
     <text class="form-label">俱乐部名称 *</text>
     <input class="form-input" placeholder="输入俱乐部名称" value="{{name}}" bindinput="onNameInput" />
@@ -19,6 +20,17 @@
 
     <text class="form-label">联系电话 *</text>
     <input class="form-input" type="number" placeholder="联系电话" value="{{phone}}" bindinput="onPhoneInput" />
+
+    <text class="form-label">营业时间</text>
+    <view class="form-row">
+      <picker mode="time" value="{{opening_time}}" bindchange="onOpenTimeChange">
+        <view class="form-picker-half">{{opening_time || '08:00'}}</view>
+      </picker>
+      <text class="form-divider">至</text>
+      <picker mode="time" value="{{closing_time}}" bindchange="onCloseTimeChange">
+        <view class="form-picker-half">{{closing_time || '22:00'}}</view>
+      </picker>
+    </view>
 
     <text class="form-label">场馆图片（最多9张，可选）</text>
     <view class="image-upload-grid">
@@ -48,6 +60,6 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{submitDisabled}}">创建俱乐部</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{submitDisabled}}">{{isEdit ? '保存变更' : '创建俱乐部'}}</button>
   </view>
 </view>

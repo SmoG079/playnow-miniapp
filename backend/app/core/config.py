@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "generate-a-random-secret-key-here"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # WeChat Mini Program
     WX_APP_ID: str = ""

@@ -39,12 +39,8 @@
     </view>
   </block>
 
-  <!-- About (always visible) -->
-  <view class="menu-list" style="margin-top: 20rpx;">
-    <view class="menu-item">
-      <text class="menu-icon">ℹ️</text>
-      <text class="menu-title">关于我们</text>
-      <text class="menu-arrow">›</text>
-    </view>
+  <!-- Logout -->
+  <view class="logout-area" wx:if="{{isLoggedIn}}">
+    <button class="logout-btn" bindtap="onLogout">退出登录</button>
   </view>
 </view>

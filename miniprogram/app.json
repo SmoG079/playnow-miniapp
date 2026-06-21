@@ -20,7 +20,6 @@
     "pages/profile/my-registrations",
     "pages/profile/club-dashboard",
     "pages/profile/settlement-list",
-    "pages/profile/stats",
     "pages/admin/dashboard",
     "pages/admin/club-manage",
     "pages/admin/venue-manage",

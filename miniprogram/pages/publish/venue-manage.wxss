@@ -1,198 +1,24 @@
-.page {
-  background-color: #f5f5f5;
-  min-height: 100vh;
-  padding-bottom: 120rpx;
-}
+.page { background: #f5f5f5; min-height: 100vh; padding-bottom: 100rpx; }
 
-/* Venue Card */
-.venue-list {
-  padding: 20rpx;
+.float-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: #fff; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 24rpx 12rpx;
+  box-shadow: 0 1rpx 6rpx rgba(0,0,0,0.06);
 }
+.back-btn { font-size: 30rpx; color: #07c160; }
+.header-title { font-size: 32rpx; font-weight: 600; color: #333; }
 
-.venue-card {
-  background-color: #fff;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-}
+.card { background: #fff; margin: 16rpx 20rpx; border-radius: 12rpx; padding: 24rpx; }
+.flabel { font-size: 28rpx; color: #333; font-weight: 500; display: block; margin: 20rpx 0 10rpx; }
+.finput { width: 100%; height: 80rpx; border: 1rpx solid #e5e5e5; border-radius: 8rpx; padding: 0 16rpx; font-size: 28rpx; box-sizing: border-box; margin-bottom: 10rpx; }
+.rule-pick { display: flex; align-items: center; color: #333; }
 
-.venue-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
-}
+.rules-section { margin-top: 20rpx; border-top: 1rpx solid #eee; padding-top: 12rpx; }
+.rules-hd { display: flex; justify-content: space-between; align-items: center; }
+.add-link { font-size: 26rpx; color: #07c160; }
+.rule-card { position: relative; background: #f9f9f9; border-radius: 8rpx; padding: 16rpx; margin: 12rpx 0; }
+.rule-remove { position: absolute; top: 8rpx; right: 12rpx; color: #f44336; font-size: 28rpx; }
 
-.venue-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.venue-status {
-  font-size: 22rpx;
-  padding: 4rpx 16rpx;
-  border-radius: 8rpx;
-}
-
-.venue-status.active {
-  background-color: #e8f5e9;
-  color: #2e7d32;
-}
-
-.venue-status.maintenance {
-  background-color: #fff3e0;
-  color: #e65100;
-}
-
-.venue-status.closed {
-  background-color: #eeeeee;
-  color: #757575;
-}
-
-.venue-tags {
-  display: flex;
-  gap: 12rpx;
-  flex-wrap: wrap;
-}
-
-.tag {
-  font-size: 24rpx;
-  padding: 6rpx 16rpx;
-  border-radius: 8rpx;
-}
-
-.tag.sport {
-  background-color: #e3f2fd;
-  color: #1565c0;
-}
-
-.tag.price {
-  background-color: #fce4ec;
-  color: #c2185b;
-}
-
-.tag.capacity {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.venue-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 24rpx;
-  margin-top: 20rpx;
-  padding-top: 20rpx;
-  border-top: 1rpx solid #f5f5f5;
-}
-
-.action-link {
-  font-size: 26rpx;
-  color: #4CD964;
-}
-
-.action-link.danger {
-  color: #f44336;
-}
-
-/* FAB */
-.fab-btn {
-  position: fixed;
-  right: 40rpx;
-  bottom: calc(60rpx + env(safe-area-inset-bottom));
-  width: 96rpx;
-  height: 96rpx;
-  background-color: #4CD964;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(76, 217, 100, 0.4);
-}
-
-.fab-icon {
-  font-size: 48rpx;
-  color: #fff;
-  line-height: 96rpx;
-}
-
-/* Modal */
-.modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 100;
-  display: flex;
-  align-items: flex-end;
-}
-
-.modal-content {
-  background-color: #fff;
-  width: 100%;
-  border-radius: 24rpx 24rpx 0 0;
-  padding: 40rpx;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30rpx;
-}
-
-.modal-title {
-  font-size: 34rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.modal-close {
-  font-size: 32rpx;
-  color: #999;
-  padding: 8rpx;
-}
-
-.form-group {
-  margin-bottom: 24rpx;
-}
-
-.form-label {
-  font-size: 28rpx;
-  color: #666;
-  margin-bottom: 12rpx;
-  display: block;
-}
-
-.form-input,
-.form-picker {
-  height: 80rpx;
-  border-bottom: 1rpx solid #eee;
-  font-size: 30rpx;
-  color: #333;
-  line-height: 80rpx;
-}
-
-.btn-submit {
-  margin-top: 40rpx;
-  background-color: #4CD964;
-  color: #fff;
-  border-radius: 40rpx;
-  height: 88rpx;
-  line-height: 88rpx;
-  font-size: 32rpx;
-  border: none;
-}
-
-/* Empty / Loading */
-.empty-state,
-.loading-state {
-  text-align: center;
-  padding: 120rpx 40rpx;
-  color: #999;
-  font-size: 30rpx;
-}
+.submit-area { padding: 20rpx 20rpx; }
+.btn-save { width: 100%; height: 88rpx; line-height: 88rpx; background: #07c160; color: #fff; font-size: 32rpx; border-radius: 44rpx; border: none; }

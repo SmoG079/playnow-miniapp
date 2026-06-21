@@ -7,32 +7,32 @@ const app = getApp();
  * 3. Store tokens in storage + globalData
  */
 async function login() {
-  return new Promise((resolve, reject) => {
-    wx.login({
-      success: async (loginRes) => {
-        try {
-          const res = await app.request({
-            url: '/auth/login',
-            method: 'POST',
-            data: { code: loginRes.code },
-            skipAuth: true,
-          });
-
-          app.globalData.token = res.access_token;
-          app.globalData.refreshToken = res.refresh_token;
-          wx.setStorageSync('access_token', res.access_token);
-          wx.setStorageSync('refresh_token', res.refresh_token);
-
-          // Fetch user info
-          await app.fetchUserInfo();
-          resolve(app.globalData.userInfo);
-        } catch (e) {
-          reject(e);
-        }
-      },
-      fail: reject,
+  const postLogin = async (code) => {
+    const res = await app.request({
+      url: '/auth/login',
+      method: 'POST',
+      data: { code },
+      skipAuth: true,
     });
-  });
+    app.globalData.token = res.access_token;
+    app.globalData.refreshToken = res.refresh_token;
+    wx.setStorageSync('access_token', res.access_token);
+    wx.setStorageSync('refresh_token', res.refresh_token);
+    await app.fetchUserInfo();
+    return app.globalData.userInfo;
+  };
+
+  // Try real WeChat login first
+  try {
+    const code = await new Promise((resolve, reject) => {
+      wx.login({ success: r => resolve(r.code), fail: reject });
+    });
+    if (code) return await postLogin(code);
+  } catch (e) {
+    console.warn('wx.login failed, using dev login:', e);
+  }
+
+  throw new Error('wx.login failed');
 }
 
 /**
@@ -60,4 +60,24 @@ function checkLogin() {
   return true;
 }
 
-module.exports = { login, getPhoneNumber, checkLogin };
+/**
+ * Require phone number — redirect to edit profile if missing.
+ * Returns true if phone exists, false if redirected.
+ */
+function requirePhone() {
+  const phone = (app.globalData.userInfo || {}).phone;
+  if (phone) return true;
+  wx.showModal({
+    title: '需要手机号',
+    content: '预订场地和报名活动需要先提供手机号',
+    confirmText: '去完善',
+    success: (res) => {
+      if (res.confirm) {
+        wx.navigateTo({ url: '/pages/profile/edit' });
+      }
+    },
+  });
+  return false;
+}
+
+module.exports = { login, getPhoneNumber, checkLogin, requirePhone };

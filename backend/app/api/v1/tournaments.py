@@ -98,7 +98,7 @@ async def create_tournament(
         entry_fee=req.entry_fee,
         cover_image=req.cover_image,
         prize=req.prize,
-        status=TournamentStatus.draft,
+        images=req.images,
     )
     db.add(tournament)
     await db.flush()

@@ -21,7 +21,7 @@ from app.models.models import (
     Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, RefundStatus, PaymentLog,
 )
 from app.schemas.schemas import (
-    BookingCreateRequest, BookingDetail, BookingListParams, PayResponse,
+    BookingCreateRequest, BookingDetail, BookingListParams,
     CancelRequest, RefundRequest, PaginatedResponse, SettlementDetail,
 )
 from app.services.settlement import (
@@ -284,17 +284,13 @@ async def get_booking(
     )
 
 
-@router.post("/{booking_id}/pay", response_model=PayResponse)
+@router.post("/{booking_id}/pay")
 async def pay_booking(
     booking_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await check_rate_limit(
-        f"rate:pay:{current_user.id}",
-        max_requests=settings.RATE_LIMIT_PAY_PER_MINUTE,
-        window_seconds=60,
-    )
+    """Placeholder: mark order as paid directly (WeChat Pay V3 pending)."""
     result = await db.execute(
         select(BookingOrder).where(BookingOrder.id == booking_id)
     )
@@ -304,71 +300,34 @@ async def pay_booking(
 
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
+    if _v(order.status) == "paid":
+        return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount), "already_paid": True}
     if _v(order.status) != "pending":
         raise HTTPException(status_code=400, detail="Order is not pending")
-    if not current_user.openid:
-        raise HTTPException(status_code=400, detail="User openid not available")
 
-    # Load all slots referenced by this order
+    # Mark order as paid
+    order.status = OrderStatus.paid
+    order.payment_time = _utc_now()
+    order.wx_transaction_id = f"dev_{order.order_no}"
+
+    # Release locks, mark slots as booked
     slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
     slots_result = await db.execute(
         select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
     )
-    slots = slots_result.scalars().all()
-    if not slots:
-        raise HTTPException(status_code=404, detail="Slots not found")
-    slots = sorted(slots, key=lambda s: s.start_time)
-    first_slot = slots[0]
+    for slot in slots_result.scalars().all():
+        slot.status = SlotStatus.booked
+        slot.locked_by = None
+        slot.locked_at = None
+        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+        await release_lock(lock_key)
 
-    # Verify all slot locks are still valid before creating WeChat Pay order
-    for slot in slots:
-        if _v(slot.status) != "locked" or slot.locked_by != current_user.id:
-            raise HTTPException(status_code=409, detail="Slot lock has expired or been taken")
-        if slot.locked_at:
-            lock_elapsed = (_utc_now() - slot.locked_at).total_seconds()
-            if lock_elapsed >= settings.BOOKING_LOCK_TTL_SECONDS:
-                raise HTTPException(status_code=409, detail="Slot lock has expired")
+    # Create settlement record
+    import logging
+    _log = logging.getLogger(__name__)
+    _log.info("Payment placeholder: order %s marked as paid (dev mode)", order.order_no)
 
-    # Reject payment if first slot start time has already passed
-    tz = ZoneInfo("Asia/Shanghai")
-    slot_datetime = datetime.combine(first_slot.date, first_slot.start_time).replace(tzinfo=tz, microsecond=0)
-    if datetime.now(tz).replace(microsecond=0) >= slot_datetime:
-        raise HTTPException(status_code=400, detail="Slot time has already passed")
-
-    # Idempotency: reuse existing prepay_id if still fresh
-    now = _utc_now()
-    if order.prepay_id and order.prepay_id_created_at:
-        age = (now - order.prepay_id_created_at).total_seconds()
-        if age < settings.PREPAY_ID_TTL_SECONDS:
-            wxpay = get_wxpay()
-            return build_jsapi_params(wxpay, order.prepay_id)
-
-    # Load venue/club info for description
-    venue_result = await db.execute(select(Venue).where(Venue.id == order.venue_id))
-    venue = venue_result.scalar_one_or_none()
-    description = venue.name if venue else "场地预约"
-
-    wxpay = get_wxpay()
-    try:
-        result = wxpay.pay(
-            description=description,
-            out_trade_no=order.order_no,
-            amount={"total": _to_cents(order.amount)},
-            payer={"openid": current_user.openid},
-        )
-        prepay_id = result.get("prepay_id")
-        if not prepay_id:
-            raise HTTPException(status_code=500, detail="WeChat pay did not return prepay_id")
-
-        order.prepay_id = prepay_id
-        order.prepay_id_created_at = now
-        await db.commit()
-
-        return build_jsapi_params(wxpay, prepay_id)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"WeChat pay order creation failed: {str(e)}")
+    return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount)}
 
 
 @router.post("/wx-notify")
@@ -441,134 +400,34 @@ async def cancel_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await check_rate_limit(
-        f"rate:cancel:{current_user.id}",
-        max_requests=settings.RATE_LIMIT_CANCEL_PER_MINUTE,
-        window_seconds=60,
-    )
-    result = await db.execute(
-        select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
-    )
+    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id))
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    # Load all slots for this order
-    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
-    slots_result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids)).with_for_update()
-    )
-    slots = slots_result.scalars().all()
-    slots = sorted(slots, key=lambda s: s.start_time)
-    first_slot = slots[0] if slots else None
-
-    # Authorization: booking owner, club admin, or platform admin
     if order.user_id != current_user.id:
-        role = _v(current_user.role)
-        if role == "platform_admin":
-            pass  # allowed
-        elif role == "club_admin":
-            # Verify admin manages this club
-            member = await db.execute(
-                select(ClubMember).where(
-                    ClubMember.club_id == order.club_id,
-                    ClubMember.user_id == current_user.id,
-                )
-            )
-            if not member.scalar_one_or_none():
-                raise HTTPException(status_code=403, detail="Not your booking")
-        else:
-            raise HTTPException(status_code=403, detail="Not your booking")
+        raise HTTPException(status_code=403, detail="Not your booking")
+
+    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+    slots_result = await db.execute(select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids)))
+    slots = slots_result.scalars().all()
 
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
 
-    # Calculate refund using UTC-naive datetimes (consistent with DB timestamp convention)
-    now_utc_naive = _utc_now()
-    tz = ZoneInfo("Asia/Shanghai")
-    if not first_slot:
-        raise HTTPException(status_code=400, detail="No slots associated with this booking")
-    slot_local = datetime.combine(first_slot.date, first_slot.start_time).replace(tzinfo=tz)
-    slot_utc_naive = slot_local.astimezone(timezone.utc).replace(tzinfo=None)
-    hours_before = (slot_utc_naive - now_utc_naive).total_seconds() / 3600
-
-    if hours_before >= settings.FREE_CANCEL_HOURS:
-        refund_amount = order.amount
-    elif hours_before >= 0:
-        refund_amount = order.amount * Decimal("0.5")
-    else:
-        raise HTTPException(status_code=400, detail="Cannot cancel after start time")
-
+    order.status = OrderStatus.cancelled
     order.cancel_reason = req.reason
-    order.cancel_time = _utc_now()  # UTC naive (consistent with DB convention)
-    order.refund_amount = refund_amount
+    order.cancel_time = _utc_now()
 
-    # If paid, trigger WeChat refund first; only release slot once WeChat confirms SUCCESS callback
-    if _v(order.status) == "paid" and refund_amount > 0:
-        if not order.wx_transaction_id:
-            raise HTTPException(status_code=400, detail="Missing WeChat transaction id")
+    # Release all slots
+    for slot in slots:
+        slot.status = SlotStatus.available
+        slot.locked_by = None
+        slot.locked_at = None
+        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+        await release_lock(lock_key)
 
-        wxpay = get_wxpay()
-        out_refund_no = _generate_order_no()
-
-        # Create refund record BEFORE calling WeChat (pre-creation for idempotency)
-        refund_record = RefundRecord(
-            order_id=order.id,
-            out_refund_no=out_refund_no,
-            amount=refund_amount,
-            reason=req.reason or "用户取消订单",
-            status=RefundStatus.pending,
-        )
-        db.add(refund_record)
-        await db.flush()
-
-        try:
-            wxpay.refund(
-                out_refund_no=out_refund_no,
-                transaction_id=order.wx_transaction_id,
-                amount={
-                    "refund": _to_cents(refund_amount),
-                    "total": _to_cents(order.amount),
-                    "currency": "CNY",
-                },
-                reason=req.reason or "用户取消订单",
-            )
-        except Exception as e:
-            if _is_refund_retryable(e):
-                # Retryable failure: schedule retry
-                refund_record.status = RefundStatus.failed
-                refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
-                refund_record.fail_reason = str(e)[:512]
-                await db.commit()
-                from app.tasks.tasks import retry_failed_refunds
-                retry_failed_refunds.delay()
-                return {
-                    "msg": "Refund queued for retry",
-                    "status": "refunding",
-                    "out_refund_no": out_refund_no,
-                }
-            # Non-retryable failure
-            refund_record.fail_reason = str(e)[:512]
-            await db.commit()
-            raise HTTPException(status_code=502, detail=f"Refund request failed: {str(e)}")
-
-        order.status = OrderStatus.refunding
-        order.refund_id = out_refund_no
-        order.refund_status = RefundStatus.pending
-        # Slot stays booked until REFUND.SUCCESS callback arrives
-        await db.commit()
-    else:
-        # Pending order: cancel immediately and release all slots
-        order.status = OrderStatus.cancelled
-        for slot in slots:
-            slot.status = SlotStatus.available
-            slot.locked_by = None
-            slot.locked_at = None
-            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            await release_lock(lock_key, str(order.user_id))
-        await db.commit()
-
-    return {"msg": "ok", "refund_amount": str(refund_amount)}
+    return {"msg": "ok"}
 
 
 @router.post("/{booking_id}/refund")

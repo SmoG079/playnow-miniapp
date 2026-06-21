@@ -1,4 +1,4 @@
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -20,6 +20,17 @@ from app.schemas.schemas import (
     CourtSlotRow, CourtSlotCell, VenueSlotGridResponse,
 )
 from app.models.models import VenueTimeSlot, SlotStatus, VenueStatus
+
+
+def _parse_time(val):
+    """Convert 'HH:MM' string to time, or return default."""
+    if not val:
+        return None
+    try:
+        h, m = map(int, val.split(':'))
+        return time(h, m)
+    except (ValueError, TypeError):
+        return None
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/clubs", tags=["clubs"])
@@ -144,6 +155,8 @@ async def create_club(
         latitude=req.latitude,
         longitude=req.longitude,
         contact_phone=req.contact_phone,
+        opening_time=_parse_time(req.opening_time),
+        closing_time=_parse_time(req.closing_time),
     )
     db.add(club)
     await db.flush()
@@ -334,6 +347,34 @@ async def get_club_venue_slots(
             rows=[],
         )
 
+    # Auto-generate slots for any venue that has none for the requested date
+    _ot = club.opening_time or time(8, 0)
+    _ct = club.closing_time or time(22, 0)
+    open_t = _ot if isinstance(_ot, time) else (datetime.min + _ot).time()
+    close_t = _ct if isinstance(_ct, time) else (datetime.min + _ct).time()
+
+    for venue in venues:
+        existing = await db.execute(
+            select(func.count(VenueTimeSlot.id)).where(
+                VenueTimeSlot.venue_id == venue.id,
+                VenueTimeSlot.date == query_date,
+            )
+        )
+        if existing.scalar() == 0 and open_t < close_t:
+            slots_batch = []
+            slot_start = datetime.combine(query_date, open_t)
+            slot_end = datetime.combine(query_date, close_t)
+            while slot_start + timedelta(minutes=30) <= slot_end:
+                next_time = slot_start + timedelta(minutes=30)
+                slots_batch.append(VenueTimeSlot(
+                    venue_id=venue.id,
+                    date=query_date,
+                    start_time=slot_start.time(),
+                    end_time=next_time.time(),
+                ))
+                slot_start = next_time
+            db.add_all(slots_batch)
+
     # Build price map from venues to avoid lazy loads
     price_map = {v.id: v.price_per_hour for v in venues}
 
@@ -349,23 +390,62 @@ async def get_club_venue_slots(
     )
     slots = slot_result.scalars().all()
 
-    # Filter out slots whose start time has already passed (Asia/Shanghai)
+    # Filter out slots whose start time has already passed + release expired locks
     tz = ZoneInfo("Asia/Shanghai")
     now_local = datetime.now(tz).replace(microsecond=0)
     filtered_slots = []
     for slot in slots:
         slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz, microsecond=0)
-        if slot_datetime > now_local:
-            filtered_slots.append(slot)
+        if slot_datetime <= now_local:
+            continue
+        # Release expired Redis locks
+        if slot.status == SlotStatus.locked:
+            from app.core.redis import redis_client as _redis
+            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
+            ttl = await _redis.ttl(lock_key)
+            if ttl <= 0:
+                slot.status = SlotStatus.available
+                slot.locked_by = None
+                slot.locked_at = None
+        filtered_slots.append(slot)
     slots = filtered_slots
 
     # Group slots by start_time
     from collections import defaultdict
+
+    def _effective_price(venue, slot):
+        """Check venue price_rules for matching special pricing."""
+        rules = venue.price_rules or []
+        base = slot.price_override or venue.price_per_hour or 0
+        for rule in rules:
+            rtype = rule.get("type", "")
+            rprice = rule.get("price")
+            if rprice is None: continue
+            if rtype == "date_range":
+                sd = rule.get("start_date", "")
+                ed = rule.get("end_date", "")
+                if sd and ed and sd <= str(slot.date) <= ed:
+                    st = rule.get("start_time", "")
+                    et = rule.get("end_time", "")
+                    if st or et:
+                        slot_time = slot.start_time.strftime("%H:%M")
+                        if st and st > slot_time: continue
+                        if et and et <= slot_time: continue
+                    return Decimal(str(rprice))
+            elif rtype in ("time_range", "daily_time"):
+                st = rule.get("start_time", "")
+                et = rule.get("end_time", "")
+                slot_time = slot.start_time.strftime("%H:%M")
+                if st and et and st <= slot_time < et:
+                    return Decimal(str(rprice))
+        return Decimal(str(base))
+
     time_groups = defaultdict(dict)
     for slot in slots:
         time_key = slot.start_time.strftime("%H:%M")
         duration_minutes = (slot.end_time.hour * 60 + slot.end_time.minute) - (slot.start_time.hour * 60 + slot.start_time.minute)
-        base_price = slot.price_override if slot.price_override is not None else price_map.get(slot.venue_id, 0)
+        venue = next((v for v in venues if v.id == slot.venue_id), None)
+        base_price = _effective_price(venue, slot) if venue else price_map.get(slot.venue_id, 0)
         price = base_price * Decimal(duration_minutes) / Decimal("60")
         time_groups[time_key][slot.venue_id] = CourtSlotCell(
             slot_id=slot.id,

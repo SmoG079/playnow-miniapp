@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tencentdocs": {
+      "command": "python3",
+      "args": ["scripts/mcp-bridge.py"],
+      "env": {
+        "TENCENTDOCS_MCP_URL": "https://docs.qq.com/openapi/mcp",
+        "TENCENTDOCS_AUTH_TOKEN": "3fc6ae349620458b98e1440ff0f7d076"
+      }
+    }
+  }
+}

@@ -4,160 +4,81 @@ const perm = require('../../utils/permission');
 Page({
   data: {
     clubId: null,
-    venues: [],
+    venue: null,
+    isEdit: false,
+    form: { name: '', price_per_hour: '', price_rules: [] },
     loading: false,
-    showModal: false,
-    modalMode: 'create', // 'create' | 'edit'
-    editingVenue: null,
-    form: {
-      name: '',
-      sport_type: '',
-      price_per_hour: '',
-      max_capacity: 4,
-      sort_order: 0,
-      status: 'active',
-    },
+    statusBarH: 0,
   },
 
   onLoad(options) {
     if (!perm.requireClubAdmin()) return;
-    const clubId = options.club_id || perm.getManagedClubIds()[0];
-    if (!clubId) {
-      wx.showToast({ title: '参数错误', icon: 'none' });
-      return wx.navigateBack();
+    const barH = wx.getSystemInfoSync().statusBarHeight || 20;
+    this.setData({ clubId: parseInt(options.club_id), statusBarH: barH });
+    if (options.venue_id) {
+      this.setData({ isEdit: true });
+      this.loadVenue(parseInt(options.venue_id));
     }
-    this.setData({ clubId: parseInt(clubId) });
-    this.loadVenues();
   },
 
-  async loadVenues() {
-    this.setData({ loading: true });
+  onBack() { wx.navigateBack(); },
+
+  async loadVenue(id) {
     try {
       const res = await app.request({ url: `/clubs/${this.data.clubId}/venues` });
-      this.setData({ venues: res || [], loading: false });
-    } catch (e) {
-      console.error(e);
-      wx.showToast({ title: '加载失败', icon: 'none' });
-      this.setData({ loading: false });
-    }
+      const v = (res || []).find(x => x.id === id);
+      if (v) {
+        this.setData({
+          venue: v,
+          form: { name: v.name, price_per_hour: String(v.price_per_hour || ''), price_rules: v.price_rules || [] },
+        });
+      }
+    } catch (e) { console.error(e); }
   },
 
-  onShowModal(e) {
-    const mode = e.currentTarget.dataset.mode || 'create';
-    const venue = e.currentTarget.dataset.venue;
-    if (mode === 'edit' && venue) {
-      this.setData({
-        showModal: true,
-        modalMode: 'edit',
-        editingVenue: venue,
-        form: {
-          name: venue.name,
-          sport_type: venue.sport_type,
-          price_per_hour: String(venue.price_per_hour),
-          max_capacity: venue.max_capacity || 4,
-          sort_order: venue.sort_order || 0,
-          status: venue.status || 'active',
-        },
-      });
-    } else {
-      this.setData({
-        showModal: true,
-        modalMode: 'create',
-        editingVenue: null,
-        form: { name: '', sport_type: '网球', price_per_hour: '', max_capacity: 4, sort_order: 0, status: 'active' },
-      });
-    }
-  },
+  onField(e) { this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value }); },
 
-  onCloseModal() {
-    this.setData({ showModal: false });
+  // Price rules
+  onAddRule() {
+    const rules = [...this.data.form.price_rules, { type: 'date_range', start_date: '', end_date: '', start_time: '', end_time: '', price: '' }];
+    this.setData({ 'form.price_rules': rules });
   },
-
-  onInputChange(e) {
-    const { field } = e.currentTarget.dataset;
-    const value = e.detail.value;
-    this.setData({ [`form.${field}`]: value });
+  onRuleField(e) {
+    const { idx, field } = e.currentTarget.dataset;
+    const val = e.detail.value;
+    const rules = [...this.data.form.price_rules];
+    rules[idx][field] = val;
+    this.setData({ 'form.price_rules': rules });
+  },
+  onRuleTypeChange(e) {
+    const { idx } = e.currentTarget.dataset;
+    const rules = [...this.data.form.price_rules];
+    rules[idx].type = e.detail.value === '0' ? 'date_range' : 'daily_time';
+    this.setData({ 'form.price_rules': rules });
+  },
+  onRemoveRule(e) {
+    const idx = e.currentTarget.dataset.idx;
+    const rules = this.data.form.price_rules.filter((_, i) => i !== idx);
+    this.setData({ 'form.price_rules': rules });
   },
 
   async onSubmit() {
-    const { form, modalMode, editingVenue, clubId } = this.data;
-    if (!form.name.trim()) {
-      return wx.showToast({ title: '请输入场地名称', icon: 'none' });
-    }
-    const price = parseFloat(form.price_per_hour);
-    if (isNaN(price) || price <= 0) {
-      return wx.showToast({ title: '请输入有效的价格', icon: 'none' });
-    }
-
+    const f = this.data.form;
+    if (!f.name) return wx.showToast({ title: '请输入场地名称', icon: 'none' });
+    const price = parseFloat(f.price_per_hour);
+    if (!price || price <= 0) return wx.showToast({ title: '请输入有效价格', icon: 'none' });
     const payload = {
-      name: form.name.trim(),
-      sport_type: form.sport_type || '网球',
-      price_per_hour: price,
-      max_capacity: parseInt(form.max_capacity) || 4,
-      sort_order: parseInt(form.sort_order) || 0,
-      status: form.status,
+      name: f.name, price_per_hour: price,
+      price_rules: (f.price_rules || []).filter(r => r.price && parseFloat(r.price) > 0),
     };
-
     try {
-      if (modalMode === 'edit' && editingVenue) {
-        await app.request({
-          url: `/venues/${editingVenue.id}/with-club/${clubId}`,
-          method: 'PUT',
-          data: payload,
-        });
-        wx.showToast({ title: '更新成功', icon: 'success' });
+      if (this.data.isEdit && this.data.venue) {
+        await app.request({ url: `/venues/${this.data.venue.id}/with-club/${this.data.clubId}`, method: 'PUT', data: payload });
       } else {
-        await app.request({
-          url: `/venues/with-club/${clubId}`,
-          method: 'POST',
-          data: payload,
-        });
-        wx.showToast({ title: '创建成功', icon: 'success' });
+        await app.request({ url: `/venues/with-club/${this.data.clubId}`, method: 'POST', data: payload });
       }
-      this.setData({ showModal: false });
-      this.loadVenues();
-    } catch (e) {
-      wx.showToast({ title: '操作失败', icon: 'none' });
-    }
-  },
-
-  onDelete(e) {
-    const venue = e.currentTarget.dataset.venue;
-    wx.showModal({
-      title: '确认删除',
-      content: `确定要删除场地"${venue.name}"吗？`,
-      confirmColor: '#f44336',
-      success: (res) => {
-        if (res.confirm) this.doDelete(venue.id);
-      },
-    });
-  },
-
-  async doDelete(venueId) {
-    try {
-      await app.request({
-        url: `/venues/${venueId}/with-club/${this.data.clubId}`,
-        method: 'DELETE',
-      });
-      wx.showToast({ title: '已删除', icon: 'success' });
-      this.loadVenues();
-    } catch (e) {
-      wx.showToast({ title: '删除失败', icon: 'none' });
-    }
-  },
-
-  onSlotManage(e) {
-    const venueId = e.currentTarget.dataset.id;
-    wx.navigateTo({
-      url: `/pages/publish/slot-manage?club_id=${this.data.clubId}&venue_id=${venueId}`,
-    });
-  },
-
-  onPanelTap() {
-    // Prevent modal close when tapping inside modal content
-  },
-
-  onPullDownRefresh() {
-    this.loadVenues().then(() => wx.stopPullDownRefresh());
+      wx.showToast({ title: '保存成功', icon: 'success' });
+      setTimeout(() => wx.navigateBack(), 1000);
+    } catch (e) { wx.showToast({ title: '操作失败', icon: 'none' }); }
   },
 });

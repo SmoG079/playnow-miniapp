@@ -1,9 +1,9 @@
 <view class="page">
   <!-- Club Selector (when managing multiple clubs) -->
   <view class="club-picker" wx:if="{{managedClubs.length > 1}}">
-    <picker bindchange="onClubChange" value="0" range="{{managedClubs}}">
+    <picker bindchange="onClubChange" value="{{clubIndex}}" range="{{managedClubs}}" range-key="name">
       <view class="picker-value">
-        <text>切换俱乐部</text>
+        <text>🏠 {{managedClubs[clubIndex].name}}</text>
         <text class="picker-arrow">▼</text>
       </view>
     </picker>
@@ -12,7 +12,11 @@
   <!-- Club Info Card -->
   <view class="club-card" wx:if="{{club}}">
     <view class="club-cover-wrap">
-      <image class="club-cover" src="{{club.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
+      <swiper class="club-swiper" indicator-dots="{{imgList.length > 1}}" autoplay circular>
+        <swiper-item wx:for="{{imgList}}" wx:key="*this">
+          <image class="club-cover" src="{{item}}" mode="aspectFill" />
+        </swiper-item>
+      </swiper>
       <view class="club-name-overlay">
         <text class="club-name">{{club.name}}</text>
         <text class="club-status {{club.status === 'active' ? 'active' : 'inactive'}}">
@@ -63,21 +67,31 @@
     </view>
   </view>
 
-  <!-- Management Menu -->
-  <view class="menu-grid" wx:if="{{club}}">
-    <view class="menu-item" bindtap="onVenueManage">
-      <text class="menu-icon">🏟️</text>
-      <text class="menu-title">场地与时段</text>
+  <!-- Venue List -->
+  <view class="section" wx:if="{{club}}">
+    <view class="section-hd">
+      <text class="section-title">🏟️ 场地管理 ({{venues.length}}个)</text>
+      <text class="add-link" bindtap="onAddVenue">+ 添加场地</text>
     </view>
-    <view class="menu-item" bindtap="onOrderManage">
-      <text class="menu-icon">📋</text>
-      <text class="menu-title">订单管理</text>
+    <view wx:for="{{venues}}" wx:key="id" class="venue-row">
+      <view class="venue-info">
+        <text class="vname">{{item.name}}</text>
+        <text class="vmeta">¥{{item.price_per_hour}}/h · {{item.status === 'active' ? '正常' : item.status}}</text>
+      </view>
+      <text class="edit-link" bindtap="onEditVenue" data-id="{{item.id}}">编辑</text>
     </view>
-    <view class="menu-item" bindtap="onEditClub">
-      <text class="menu-icon">✏️</text>
-      <text class="menu-title">编辑信息</text>
+    <view wx:if="{{venues.length === 0}}" class="empty-hint">暂无场地，点击上方添加</view>
+  </view>
+
+  <!-- Quick Actions -->
+  <view class="section">
+    <view class="section-title">快捷操作</view>
+    <view class="action-list">
+      <view class="action-item" bindtap="onEditClub">✏️ 编辑俱乐部信息</view>
+      <view class="action-item" bindtap="onOrderManage">📋 订单管理</view>
     </view>
   </view>
+
 
   <!-- Empty State: No Clubs -->
   <view class="empty-state" wx:if="{{managedClubs.length === 0 && !loading}}">

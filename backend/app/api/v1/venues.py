@@ -46,6 +46,33 @@ async def create_venue_for_club(
     db.add(venue)
     await db.flush()
     await db.refresh(venue)
+
+    # Auto-generate 30-min slots for next 3 days using club hours
+    slots_batch = []
+    today = date.today()
+    # Load club hours
+    club_result = await db.execute(select(Club).where(Club.id == club_id))
+    club = club_result.scalar_one_or_none()
+    _ot = club.opening_time if club else time(8, 0)
+    _ct = club.closing_time if club else time(22, 0)
+    open_t = _ot if isinstance(_ot, time) else (datetime.min + _ot).time()
+    close_t = _ct if isinstance(_ct, time) else (datetime.min + _ct).time()
+    for day_offset in range(3):
+        slot_date = today + timedelta(days=day_offset)
+        slot_start = datetime.combine(slot_date, open_t)
+        slot_end = datetime.combine(slot_date, close_t)
+        while slot_start + timedelta(minutes=30) <= slot_end:
+            next_time = slot_start + timedelta(minutes=30)
+            slots_batch.append(VenueTimeSlot(
+                venue_id=venue.id,
+                date=slot_date,
+                start_time=slot_start.time(),
+                end_time=next_time.time(),
+            ))
+            slot_start = next_time
+    if slots_batch:
+        db.add_all(slots_batch)
+
     return VenueBrief.model_validate(venue)
 
 
