@@ -2,7 +2,7 @@
 Centralized logging configuration.
 
 日志文件:
-  logs/debug.log   — DEBUG 及以上，按大小轮转（20 MB × 20 个文件）
+  logs/debug.log   — 仅 DEBUG 级别，按大小轮转（20 MB × 20 个文件）
   logs/info.log    — INFO  及以上，按日轮转（保留 10 天）
   logs/error.log   — ERROR 及以上，按日轮转（保留 10 天）
   logs/mysql.log   — SQLAlchemy 引擎，按大小轮转（20 MB × 20 个文件）
@@ -38,6 +38,17 @@ _COLORS = {
 _CONSOLE_FMT = "%(asctime)s  %(levelname_color)s  %(name)s - %(message)s"
 _FILE_FMT = "%(asctime)s  %(levelname)-8s  %(name)s - %(message)s"
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+class LevelFilter(logging.Filter):
+    """Only allow records whose level exactly matches *level*."""
+
+    def __init__(self, level: int):
+        super().__init__()
+        self.level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno == self.level
 
 
 class ColoredFormatter(logging.Formatter):
@@ -77,11 +88,13 @@ def setup_logging(settings) -> None:
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
 
-        # debug  — size-based rotation (20 MB × 20)
-        root.addHandler(_rotating_handler(
+        # debug  — only DEBUG level, size-based (20 MB × 20)
+        dh = _rotating_handler(
             "debug.log", log_dir, settings.LOG_MAX_BYTES,
             settings.LOG_BACKUP_COUNT, logging.DEBUG,
-        ))
+        )
+        dh.addFilter(LevelFilter(logging.DEBUG))
+        root.addHandler(dh)
 
         # info   — daily rotation (10 days)
         root.addHandler(_timed_handler(
