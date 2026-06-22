@@ -1,0 +1,56 @@
+# Production overrides — uses GHCR pre-built images.
+# Merge with docker-compose.yml (which provides mysql / redis / nginx):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+#
+# The --no-build flag ensures we always pull, never build locally.
+
+services:
+  api:
+    image: ghcr.io/smog079/playnow-miniapp-api:latest
+    container_name: club-api
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery_worker:
+    image: ghcr.io/smog079/playnow-miniapp-api:latest
+    container_name: club-celery-worker
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+    command: celery -A app.tasks.worker worker -l info -c 2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery_beat:
+    image: ghcr.io/smog079/playnow-miniapp-api:latest
+    container_name: club-celery-beat
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://club_user:club_pass@mysql:3306/club_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+    command: celery -A app.tasks.worker beat -l info
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      celery_worker:
+        condition: service_started
+    restart: unless-stopped
