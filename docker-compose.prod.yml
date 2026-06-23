@@ -9,6 +9,8 @@ services:
   api:
     image: ghcr.io/smog079/playnow-miniapp-api:latest
     container_name: club-api
+    ports:
+      - "8000:8000"
     env_file:
       - ./backend/.env
     environment:
