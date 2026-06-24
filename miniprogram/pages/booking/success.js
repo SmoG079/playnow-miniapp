@@ -20,7 +20,7 @@ Page({
     const orderNo = options.order_no;
     if (!bookingId) {
       wx.showToast({ title: '参数错误', icon: 'none' });
-      return wx.redirectTo({ url: '/pages/home/index' });
+      return wx.switchTab({ url: '/pages/home/index' });
     }
     this.setData({ bookingId: parseInt(bookingId), orderNo, error: false });
     this.loadBooking();
