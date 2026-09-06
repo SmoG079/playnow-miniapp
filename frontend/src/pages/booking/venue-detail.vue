@@ -1,24 +1,172 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import AppShell from '../../components/AppShell.vue'
-import { clubs, dateLabel, dayLabel, tab } from '../../data/fixtures'
-import { selectSlot, totalPrice, canBook, type Slot } from '../../domain/booking'
-import { usePrototype } from '../../stores/prototype'
-const store = usePrototype(), clubId = ref(1), day = ref(0), selected = ref<Slot[]>([]), confirm = ref(false), success = ref(false), error = ref('')
-const club = computed(() => clubs.find(c => c.id === clubId.value) || clubs[0])
-onLoad(q => { clubId.value = Number(q?.id || 1) })
-const times = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-const grid = computed(() => times.map((time,index) => ({ time, slots: [0,1,2].map(court => ({ id: `${clubId.value}-${day.value}-${court}-${index}`, index, court, price: club.value.price / 2 + (index >= 4 ? 10 : 0), available: !((index + court + day.value) % 5 === 3) })) })))
-const sum = computed(() => totalPrice(selected.value))
-const range = computed(() => { if (!selected.value.length) return ''; const start = times[selected.value[0].index]; const endIndex = selected.value[selected.value.length - 1].index + 1; return `${start}–${times[endIndex] || '21:00'}` })
-function choose(slot: Slot) { const result = selectSlot(selected.value, slot); selected.value = result.slots; error.value = result.error || '' }
-function changeDay(value: number) { day.value = value; selected.value = []; error.value = '' }
-function reserve() { if (!canBook(selected.value) || success.value) return; store.bookings.push({ id: Date.now(), club: club.value.name, time: `${dateLabel(day.value)} ${range.value}`, price: sum.value }); success.value = true }
+import { computed, ref } from "vue";
+import { onLoad } from "@dcloudio/uni-app";
+import AppShell from "../../components/AppShell.vue";
+import { request } from "../../services/api";
+const clubId = ref(""),
+  club = ref<any>(null),
+  venues = ref<any[]>([]),
+  rows = ref<any[]>([]),
+  selected = ref<any[]>([]),
+  date = ref(""),
+  dates = ref<any[]>([]),
+  loading = ref(false),
+  returnMode = ref("");
+const mins = (x: string) => {
+  const p = x.split(":").map(Number);
+  return p[0] * 60 + p[1];
+};
+const duration = computed(() =>
+  selected.value.reduce((n, s) => n + mins(s.end_time) - mins(s.start_time), 0),
+);
+const total = computed(() =>
+  selected.value.reduce((n, s) => n + Number(s.price || 0), 0).toFixed(2),
+);
+function init() {
+  const d = new Date();
+  dates.value = [0, 1, 2].map((i) => {
+    const x = new Date(d);
+    x.setDate(x.getDate() + i);
+    return {
+      label:
+        i === 0
+          ? "今天"
+          : i === 1
+            ? "明天"
+            : `${x.getMonth() + 1}/${x.getDate()}`,
+      value: `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`,
+    };
+  });
+  date.value = dates.value[0].value;
+}
+async function load() {
+  loading.value = true;
+  selected.value = [];
+  try {
+    const [c, r] = await Promise.all([
+      request<any>(`/clubs/${clubId.value}`),
+      request<any>(`/clubs/${clubId.value}/venue-slots?date=${date.value}`),
+    ]);
+    club.value = c;
+    venues.value = r.venues || c.venues || [];
+    rows.value = r.rows || [];
+  } catch (e: any) {
+    uni.showToast({ title: e.message, icon: "none" });
+  } finally {
+    loading.value = false;
+  }
+}
+onLoad((q) => {
+  clubId.value = String(q?.id || q?.club_id || "");
+  returnMode.value = String(q?.return_mode || "");
+  init();
+  load();
+});
+function selectedCell(c: any) {
+  return selected.value.some((s) => s.slot_id === c.slot_id);
+}
+function choose(c: any) {
+  if (c.status !== "available" || !c.slot_id) return;
+  const idx = selected.value.findIndex((s) => s.slot_id === c.slot_id);
+  if (idx >= 0) {
+    selected.value.splice(idx);
+    return;
+  }
+  if (selected.value.length) {
+    const last = selected.value[selected.value.length - 1];
+    if (
+      last.venue_id !== c.venue_id ||
+      mins(c.start_time) !== mins(last.end_time)
+    )
+      return uni.showToast({ title: "请选择同一场地的连续时段", icon: "none" });
+  }
+  selected.value.push(c);
+}
+function book() {
+  if (duration.value < 60)
+    return uni.showToast({ title: "请至少选择 1 小时", icon: "none" });
+  const first = selected.value[0],
+    last = selected.value[selected.value.length - 1],
+    v = venues.value.find((x) => x.id === first.venue_id);
+  uni.navigateTo({
+    url: `/pages/booking/confirm?slot_ids=${selected.value.map((s) => s.slot_id).join(",")}&venue_id=${first.venue_id}&price=${total.value}&date=${date.value}&start=${first.start_time}&end=${last.end_time}&venue_name=${encodeURIComponent(v?.name || "")}${returnMode.value ? "&return_mode=" + returnMode.value : ""}`,
+  });
+}
 </script>
 <template>
-  <AppShell back title="场地预订"><view class="detail-photo"><image :src="club.image" mode="aspectFill" /><text class="photo-badge">场地示意 · {{ club.name }}</text></view><view class="content booking-content"><view class="row between section-head"><text class="page-title compact">{{ club.name }}</text><text class="tag">室外硬地</text></view><text class="muted small"><wd-icon name="location" /> {{ club.area }} · {{ club.distance }}km</text><view class="section-head"><text class="section-title">选一个时间，上场</text><text class="muted small">30 分钟 / 格 · 连续 1 小时起订</text></view><view class="date-options"><button v-for="i in [0,1,2]" :key="i" :class="{ chosen: day === i }" @click="changeDay(i)"><text>{{ dayLabel(i) }}</text><text class="small">{{ dateLabel(i) }}</text></button></view><view class="legend"><text><i class="dot available" />可订</text><text><i class="dot reserved" />已订</text><text><i class="dot selected" />已选</text></view><view class="slot-grid"><view class="slot-header"><text>时间</text><text v-for="i in 3" :key="i">{{ i }} 号场</text></view><view v-for="row in grid" :key="row.time" class="slot-row"><text class="time-label">{{ row.time }}</text><button v-for="slot in row.slots" :key="slot.id" :disabled="!slot.available" :class="['slot', { unavailable: !slot.available, picked: selected.some(s => s.id === slot.id) }]" @click="choose(slot)">{{ !slot.available ? '已订' : selected.some(s => s.id === slot.id) ? '已选' : '¥' + slot.price }}</button></view></view><text v-if="error" class="error-text" role="alert">{{ error }}</text><view class="booking-rules"><text class="strong">预订须知</text><text class="muted small">请在同一片场地连续选择时段。原型预约只保存在本次会话，不锁定真实场地。</text></view></view>
-    <view class="fixed-action"><view><text class="price large">¥{{ sum }}</text><text class="small muted">{{ selected.length ? range : '选择至少 2 个连续时段' }}</text></view><wd-button :disabled="!canBook(selected)" @click="confirm = true; success = false">确认时段</wd-button></view>
-    <wd-popup v-model="confirm" position="bottom" closable custom-class="prototype-sheet"><view class="sheet"><template v-if="!success"><text class="eyebrow">YOUR NEXT GAME</text><text class="section-title">确认这一次上场</text><view class="summary-row"><text class="muted">球场</text><text>{{ club.name }} · {{ selected[0] ? selected[0].court + 1 : 1 }} 号场</text></view><view class="summary-row"><text class="muted">日期</text><text>{{ dateLabel(day) }}</text></view><view class="summary-row"><text class="muted">时段</text><text>{{ range }}</text></view><view class="summary-row"><text class="muted">合计</text><text class="price">¥{{ sum }}</text></view><text class="notice">模拟预约，不扣款、不占用真实场地</text><wd-button block @click="reserve">完成模拟预约</wd-button></template><template v-else><view class="success-mark"><wd-icon name="check" size="30px" /></view><text class="section-title">预约已记录，准备上场</text><text class="muted">{{ dateLabel(day) }} {{ range }}</text><text class="notice">这是原型演示记录</text><wd-button block @click="tab('profile')">查看我的预约</wd-button></template></view></wd-popup>
-  </AppShell>
+  <AppShell back title="选择时段"
+    ><template v-if="club"
+      ><view class="detail-photo"
+        ><wd-img
+          width="100%"
+          height="100%"
+          :src="club.cover_image || '/static/court.jpg'"
+          mode="aspectFill" /></view
+      ><view class="content booking-content"
+        ><text class="page-title compact">{{ club.name }}</text
+        ><text class="muted"
+          ><wd-icon name="location" /> {{ club.address }}</text
+        ><view class="date-options section-head"
+          ><button
+            v-for="d in dates"
+            :key="d.value"
+            :class="{ chosen: date === d.value }"
+            @click="
+              date = d.value;
+              load();
+            "
+          >
+            <text>{{ d.label }}</text
+            ><text class="small">{{ d.value.slice(5) }}</text>
+          </button></view
+        ><scroll-view scroll-x class="slot-scroll"
+          ><view class="slot-table" :style="`--cols:${venues.length}`"
+            ><view class="slot-header"
+              ><text>时间</text
+              ><text v-for="v in venues" :key="v.id">{{ v.name }}</text></view
+            ><view v-for="r in rows" :key="r.time_label" class="slot-row"
+              ><text class="time-label">{{ r.time_label }}</text
+              ><button
+                v-for="c in r.cells"
+                :key="c.slot_id || c.venue_id"
+                :disabled="c.status !== 'available'"
+                :class="[
+                  'slot',
+                  {
+                    picked: selectedCell(c),
+                    unavailable: c.status !== 'available',
+                  },
+                ]"
+                @click="choose(c)"
+              >
+                {{
+                  c.status === "available"
+                    ? selectedCell(c)
+                      ? "已选"
+                      : "¥" + c.price
+                    : c.status === "booked"
+                      ? "已订"
+                      : "—"
+                }}
+              </button></view
+            ></view
+          ></scroll-view
+        ><wd-loading v-if="loading" /><view class="booking-rules"
+          ><text class="strong">预订须知</text
+          ><text class="muted small"
+            >请选择同一片场地的连续时段，至少 1 小时。</text
+          ></view
+        ></view
+      ><view class="fixed-action"
+        ><view
+          ><text class="price large">¥{{ total }}</text
+          ><text class="small muted">{{
+            duration ? duration + " 分钟" : "请选择时段"
+          }}</text></view
+        ><wd-button :disabled="duration < 60" @click="book"
+          >确认时段</wd-button
+        ></view
+      ></template
+    ></AppShell
+  >
 </template>

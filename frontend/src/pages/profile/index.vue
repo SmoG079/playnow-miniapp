@@ -1,11 +1,84 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import AppShell from '../../components/AppShell.vue'
-import { activities, go } from '../../data/fixtures'
-import { usePrototype } from '../../stores/prototype'
-const store = usePrototype(), panel = ref(''), role = ref(0)
-const roles = ['球友','俱乐部管理员','平台管理员']
+import { computed } from "vue";
+import { onShow } from "@dcloudio/uni-app";
+import AppShell from "../../components/AppShell.vue";
+import { useSession } from "../../stores/session";
+import { openPage } from "../../utils/navigation";
+const s = useSession();
+onShow(() => s.fetchUser().catch(() => {}));
+const menus = computed(() => {
+  const common = [
+    ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
+    ["user", "我的报名", "/pages/profile/my-registrations"],
+    ["edit", "活动管理", "/pages/profile/my-posts"],
+    ["notification", "系统通知", "/pages/message/list"],
+  ];
+  if (s.isClubAdmin && s.user?.managed_club_ids?.length)
+    common.splice(
+      1,
+      0,
+      ["home", "俱乐部管理", "/pages/profile/club-dashboard"],
+      ["money-circle", "分账记录", "/pages/profile/settlement-list"],
+    );
+  return common;
+});
+function logout() {
+  uni.showModal({
+    title: "退出登录",
+    content: "确定要退出登录吗？",
+    success: (r) => r.confirm && s.logout(),
+  });
+}
 </script>
 <template>
-  <AppShell active="profile"><view class="content"><view class="row between page-heading"><text class="brand">PlayNow<text class="brand-dot">.</text></text><picker :range="roles" :value="role" @change="role = Number($event.detail.value)"><text class="small muted">{{ roles[role] }} · 演示 <wd-icon name="arrow-down" /></text></picker></view><view class="profile-header"><view class="profile-avatar">林</view><view><text class="page-title compact">林间的风</text><text class="muted">杭州 · 右手持拍</text><view class="row gap8 profile-tags"><text class="tag yellow">NTRP 3.0</text><text class="tag">享受每一局</text></view></view></view><view class="profile-stats"><view><text>{{ store.joinedIds.length }}</text><text>我的报名</text></view><view><text>{{ store.bookings.length }}</text><text>场地预约</text></view><view><text>{{ store.published.length }}</text><text>发起活动</text></view></view><view class="next-game"><view class="row between"><text class="eyebrow">SEE YOU ON COURT</text><wd-icon name="arrow-right" /></view><text class="section-title">{{ store.bookings.length ? '下一场，已经安排好了' : '给自己安排一场好球' }}</text><text class="muted small">{{ store.bookings[0]?.time || '约上球友，把运动放进日程' }}</text><wd-button size="small" variant="text" @click="store.bookings.length ? panel = '我的预约' : go('clubs')">{{ store.bookings.length ? '查看预约' : '去找球场' }} <wd-icon name="arrow-right" /></wd-button></view><text class="section-title section-head">我的网球日常</text><view class="menu-list"><wd-cell title="我的预约" icon="calendar-line" is-link :value="String(store.bookings.length)" @click="panel = '我的预约'" /><wd-cell title="我的报名" icon="user" is-link :value="String(store.joinedIds.length)" @click="panel = '我的报名'" /><wd-cell title="我发起的活动" icon="edit" is-link :value="String(store.published.length)" @click="panel = '我发起的活动'" /><wd-cell title="个人资料" icon="user" is-link @click="panel = '个人资料'" /></view><template v-if="role > 0"><text class="section-title section-head">{{ role === 1 ? '俱乐部工作台' : '平台管理' }}</text><wd-cell :title="role === 1 ? '场地与预约管理' : '俱乐部与订单管理'" is-link @click="panel = '管理入口'" /></template><text class="end-note">PLAYNOW · 上场见</text></view><wd-popup :model-value="!!panel" position="bottom" closable custom-class="prototype-sheet" @close="panel = ''"><view class="sheet"><text class="section-title">{{ panel }}</text><template v-if="panel === '我的预约'"><view v-for="b in store.bookings" :key="b.id" class="record"><text class="strong">{{ b.club }}</text><text class="muted small">{{ b.time }}</text><text class="price">¥{{ b.price }} · 模拟预约</text></view><text v-if="!store.bookings.length" class="muted">还没有预约，找个好时间上场吧。</text></template><template v-else-if="panel === '我的报名'"><view v-for="id in store.joinedIds" :key="id" class="record"><text>{{ [...store.published, ...activities].find(a => a.id === id)?.title }}</text><text class="link small">已报名 · 模拟</text></view><text v-if="!store.joinedIds.length" class="muted">还没有报名活动。</text></template><template v-else-if="panel === '我发起的活动'"><view v-for="a in store.published" :key="a.id" class="record" @click="go('activity', '?id=' + a.id)"><text>{{ a.title }}</text><text class="link small">查看活动 <wd-icon name="arrow-right" /></text></view><text v-if="!store.published.length" class="muted">还没有发起活动。</text></template><template v-else><text class="muted">{{ panel === '个人资料' ? '林间的风 · 杭州 · NTRP 3.0' : '当前仅展示角色入口，管理页面将在后续迁移。' }}</text></template></view></wd-popup></AppShell>
+  <AppShell active="profile"
+    ><view class="content"
+      ><view class="page-heading"
+        ><text class="brand"
+          >PlayNow<text class="brand-dot">.</text></text
+        ></view
+      ><template v-if="s.loggedIn"
+        ><view class="profile-header" @click="openPage('/pages/profile/edit')"
+          ><wd-img
+            round
+            width="75px"
+            height="75px"
+            :src="s.user?.avatar_url || '/static/tennis.jpg'"
+          /><view
+            ><text class="page-title compact">{{
+              s.user?.nickname || "网球爱好者"
+            }}</text
+            ><text class="muted">{{ s.user?.city || "未设置城市" }}</text
+            ><text v-if="s.user?.ntrp_level" class="tag yellow"
+              >NTRP {{ s.user.ntrp_level }}</text
+            ></view
+          ></view
+        ><view class="menu-list"
+          ><wd-cell
+            v-for="m in menus"
+            :key="m[2]"
+            :title="m[1]"
+            :icon="m[0]"
+            is-link
+            @click="openPage(m[2])" /><wd-cell
+            title="编辑个人资料"
+            icon="user"
+            is-link
+            @click="openPage('/pages/profile/edit')" /></view
+        ><view class="publish-action"
+          ><wd-button block variant="plain" type="danger" @click="logout"
+            >退出登录</wd-button
+          ></view
+        ></template
+      ><view v-else class="empty-state"
+        ><wd-icon name="user" size="52px" color="#147553" /><text
+          class="section-title"
+          >登录后开启完整体验</text
+        ><text class="muted">报名、订场、发布活动与管理俱乐部</text
+        ><wd-button @click="openPage('/pages/common/login')"
+          >微信登录</wd-button
+        ></view
+      ></view
+    ></AppShell
+  >
 </template>

@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onLaunch } from '@dcloudio/uni-app'
+import { onLaunch } from "@dcloudio/uni-app";
+import { useSession } from "./stores/session";
 onLaunch(() => {
-  if (import.meta.env.VITE_APP_MODE !== 'prototype') throw new Error('Prototype data cannot be used outside prototype mode.')
-})
+  useSession()
+    .fetchUser()
+    .catch(() => {});
+});
 </script>
 <style lang="scss">
-@use './styles/theme.scss';
+@use "./styles/theme.scss";
 </style>
