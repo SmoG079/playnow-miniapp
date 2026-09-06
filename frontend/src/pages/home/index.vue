@@ -62,7 +62,9 @@ async function load() {
     loading.value = false;
   }
 }
-onShow(load);
+onShow(() => {
+  load();
+});
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
 function dateChange(e: any) {
   date.value = e.detail.value;
@@ -128,11 +130,12 @@ function dateChange(e: any) {
           @click="openPage('/pages/common/post-detail?id=' + p.id)"
           ><view class="row between"
             ><view class="row gap8"
-              ><wd-img
+              ><Photo
                 round
                 width="40px"
                 height="40px"
-                :src="p.user_avatar || '/static/tennis.jpg'"
+                :src="p.user_avatar"
+                fallback="/static/tennis.jpg"
               /><view
                 ><text class="strong">{{ p.user_nickname || "匿名球友" }}</text
                 ><text class="muted small">{{ p.created_at }}</text></view
@@ -157,10 +160,11 @@ function dateChange(e: any) {
           :key="t.id"
           class="venue-card"
           @click="openPage('/pages/common/tournament-detail?id=' + t.id)"
-          ><wd-img
+          ><Photo
             width="100%"
             height="170px"
-            :src="t.cover_image || '/static/tennis.jpg'"
+            :src="t.cover_image"
+            fallback="/static/tennis.jpg"
             mode="aspectFill"
           /><view class="venue-card-body"
             ><text class="section-title">{{ t.title }}</text

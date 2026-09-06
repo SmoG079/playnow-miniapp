@@ -43,3 +43,6 @@ node_modules/
 # Private keys & scripts
 private.*.key
 scripts/upload-miniprogram.sh
+
+# WorkBuddy local memory (not for version control)
+.workbuddy/

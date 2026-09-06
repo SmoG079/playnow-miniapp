@@ -74,7 +74,7 @@ async function save() {
         class="field-label"
         >封面图</text
       ><view class="image-grid"
-        ><wd-img
+        ><Photo
           v-if="form.cover_image"
           width="100px"
           height="100px"

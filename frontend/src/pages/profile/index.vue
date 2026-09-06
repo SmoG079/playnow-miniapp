@@ -11,7 +11,7 @@ const menus = computed(() => {
     ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
     ["user", "我的报名", "/pages/profile/my-registrations"],
     ["edit", "活动管理", "/pages/profile/my-posts"],
-    ["notification", "系统通知", "/pages/message/list"],
+    ["notification", "系统通知", "/pages/chat/conversation?peer=system"],
   ];
   if (s.isClubAdmin && s.user?.managed_club_ids?.length)
     common.splice(
@@ -39,11 +39,12 @@ function logout() {
         ></view
       ><template v-if="s.loggedIn"
         ><view class="profile-header" @click="openPage('/pages/profile/edit')"
-          ><wd-img
+          ><Photo
             round
             width="75px"
             height="75px"
-            :src="s.user?.avatar_url || '/static/tennis.jpg'"
+            :src="s.user?.avatar_url"
+            fallback="/static/tennis.jpg"
           /><view
             ><text class="page-title compact">{{
               s.user?.nickname || "网球爱好者"

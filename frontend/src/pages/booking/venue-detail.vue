@@ -97,10 +97,11 @@ function book() {
   <AppShell back title="选择时段"
     ><template v-if="club"
       ><view class="detail-photo"
-        ><wd-img
+        ><Photo
           width="100%"
           height="100%"
-          :src="club.cover_image || '/static/court.jpg'"
+          :src="club.cover_image"
+          fallback="/static/court.jpg"
           mode="aspectFill" /></view
       ><view class="content booking-content"
         ><text class="page-title compact">{{ club.name }}</text

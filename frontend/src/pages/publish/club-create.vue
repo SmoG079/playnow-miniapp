@@ -208,7 +208,7 @@ async function save() {
         class="field-label"
         >场馆图片（最多9张）</text
       ><view class="image-grid"
-        ><wd-img
+        ><Photo
           v-for="(x, i) in images"
           :key="x"
           width="72px"

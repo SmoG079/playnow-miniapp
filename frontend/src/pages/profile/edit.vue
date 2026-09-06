@@ -94,11 +94,12 @@ async function save() {
     ><view class="content publish-content"
       ><view class="avatar-edit"
         ><button open-type="chooseAvatar" @chooseavatar="avatar">
-          <wd-img
+          <Photo
             round
             width="88px"
             height="88px"
-            :src="form.avatar_url || '/static/tennis.jpg'"
+            :src="form.avatar_url"
+            fallback="/static/tennis.jpg"
           /></button></view
       ><text class="field-label">昵称 *</text
       ><input

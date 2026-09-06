@@ -60,11 +60,12 @@ function callClub() {
         ><wd-loading /><text class="muted">正在加载俱乐部...</text></view
       ><template v-else-if="club"
         ><view class="profile-header"
-          ><wd-img
+          ><Photo
             round
             width="75px"
             height="75px"
-            :src="club.cover_image || '/static/court.jpg'"
+            :src="club.cover_image"
+            fallback="/static/court.jpg"
           /><view
             ><text class="page-title compact">{{ club.name }}</text
             ><text class="muted">{{ club.address }}</text

@@ -26,10 +26,11 @@ onShow(async () => {
     ><view class="content list-content"
       ><view v-for="c in clubs" :key="c.id" class="record-card"
         ><view class="row gap8"
-          ><wd-img
+          ><Photo
             width="64px"
             height="64px"
-            :src="c.cover_image || '/static/court.jpg'"
+            :src="c.cover_image"
+            fallback="/static/court.jpg"
           /><view
             ><text class="strong">{{ c.name }}</text
             ><text class="muted small">{{ c.address }}</text></view

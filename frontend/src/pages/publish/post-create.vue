@@ -179,7 +179,7 @@ function goBook() {
         :maxlength="1000"
       /><text class="field-label">活动图片</text
       ><view class="image-grid"
-        ><wd-img
+        ><Photo
           v-for="(img, i) in images"
           :key="img"
           width="72px"

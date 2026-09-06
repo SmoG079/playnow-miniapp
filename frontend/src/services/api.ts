@@ -151,7 +151,10 @@ export function uploadFile(filePath: string): Promise<{ url: string }> {
           reject(error);
         }
       },
-      fail: reject,
+      fail: (err) => {
+        uni.showToast({ title: "图片上传失败，请重试", icon: "none" });
+        reject(err);
+      },
     });
   });
 }

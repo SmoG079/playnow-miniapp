@@ -77,10 +77,11 @@ onReachBottom(() => more.value && load(true));
         class="venue-card"
         @click="openPage('/pages/booking/venue-detail?id=' + c.id)"
         ><view class="venue-photo"
-          ><wd-img
+          ><Photo
             width="100%"
             height="100%"
-            :src="c.cover_image || '/static/court.jpg'"
+            :src="c.cover_image"
+            fallback="/static/court.jpg"
             mode="aspectFill"
           /><text v-if="c.distance != null" class="distance-badge"
             >{{ c.distance }}km</text

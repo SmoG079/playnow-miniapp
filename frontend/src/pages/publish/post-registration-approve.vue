@@ -30,11 +30,12 @@ async function review(r: any, status: string) {
         :key="r.user_id"
         class="record-card"
         ><view class="row gap8"
-          ><wd-img
+          ><Photo
             round
             width="42px"
             height="42px"
-            :src="r.user_avatar || '/static/tennis.jpg'"
+            :src="r.user_avatar"
+            fallback="/static/tennis.jpg"
           /><view
             ><text class="strong">{{ r.user_nickname || "球友" }}</text
             ><text class="muted small">{{

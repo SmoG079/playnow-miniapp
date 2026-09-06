@@ -133,10 +133,11 @@ function remove(c: any) {
   <AppShell back title="活动详情"
     ><template v-if="post"
       ><view v-if="post.images?.length" class="detail-photo"
-        ><wd-img
+        ><Photo
           width="100%"
           height="100%"
           :src="post.images[0]"
+          fallback="/static/tennis.jpg"
           mode="aspectFill" /></view
       ><view class="content detail-content"
         ><view class="row gap8 section-head"
@@ -181,11 +182,12 @@ function remove(c: any) {
           post.description || post.notes || "发起人暂未填写更多说明。"
         }}</text
         ><view class="organizer"
-          ><wd-img
+          ><Photo
             round
             width="40px"
             height="40px"
-            :src="post.user_avatar || '/static/tennis.jpg'"
+            :src="post.user_avatar"
+            fallback="/static/tennis.jpg"
           /><view
             ><text class="strong"
               >{{ post.user_nickname || "匿名" }} · 发起人</text

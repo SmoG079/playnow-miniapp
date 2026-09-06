@@ -82,10 +82,11 @@ async function action() {
   <AppShell back title="赛事详情"
     ><template v-if="t"
       ><view class="detail-photo"
-        ><wd-img
+        ><Photo
           width="100%"
           height="100%"
-          :src="t.cover_image || '/static/tennis.jpg'"
+          :src="t.cover_image"
+          fallback="/static/tennis.jpg"
           mode="aspectFill" /></view
       ><view class="content detail-content"
         ><text class="tag">{{ t.sport_type || "网球" }}赛事</text

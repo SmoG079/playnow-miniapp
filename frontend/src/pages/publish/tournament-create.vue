@@ -144,7 +144,7 @@ async function save() {
         @click="pick"
       >
         <wd-icon name="image" /> 封面图</button
-      ><wd-img v-if="image" width="100%" height="160px" :src="image" /><view
+      ><Photo v-if="image" width="100%" height="160px" :src="image" /><view
         class="publish-action"
         ><wd-button block :loading="loading" @click="save"
           >创建赛事</wd-button

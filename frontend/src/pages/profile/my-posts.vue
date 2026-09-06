@@ -63,10 +63,8 @@ function close(p: any) {
             >{{ p.preferred_date }} {{ p.preferred_start }}–{{
               p.preferred_end
             }}</text
-          ><view class="row gap8"
-            ><wd-button size="small" variant="plain" @click.stop="close(p)"
-              >关闭</wd-button
-            ></view
+          ><view class="row gap8" @click.stop="close(p)"
+            ><wd-button size="small" variant="plain">关闭</wd-button></view
           ></view
         ><wd-empty
           v-if="!loading && !posts.length"
