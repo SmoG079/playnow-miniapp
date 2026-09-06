@@ -57,6 +57,6 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-save" bindtap="onSubmit">保存</button>
+    <button class="btn-save" bindtap="onSubmit" loading="{{loading}}" disabled="{{loading}}">保存</button>
   </view>
 </view>

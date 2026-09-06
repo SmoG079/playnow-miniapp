@@ -23,6 +23,7 @@ Page({
   },
 
   async onLogin() {
+    if (this.data.loading) return;
     if (!this.data.agreed) {
       wx.showToast({ title: '请先同意用户协议', icon: 'none' });
       return;
@@ -34,14 +35,14 @@ Page({
 
       // New user without nickname → go to edit profile
       if (!userInfo.nickname) {
-        wx.reLaunch({ url: '/pages/profile/edit?new_user=1' });
+        wx.reLaunch({ url: '/pages/profile/edit?new_user=1&redirect=' + encodeURIComponent(this.data.redirect) });
         return;
       }
 
       // Returning user → go home or redirect
       const redirect = this.data.redirect;
       if (redirect && redirect.startsWith('/pages/')) {
-        wx.reLaunch({ url: redirect });
+        app.openPage(redirect);
       } else {
         wx.switchTab({ url: '/pages/home/index' });
       }

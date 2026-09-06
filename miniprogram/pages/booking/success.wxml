@@ -11,9 +11,9 @@
 
   <block wx:if="{{!loading && !error && booking}}">
     <view class="success-header">
-      <view class="{{getStatusMeta(booking.status, polling).icon}}"></view>
-      <text class="success-title">{{getStatusMeta(booking.status, polling).title}}</text>
-      <text class="success-subtitle" wx:if="{{getStatusMeta(booking.status, polling).subtitle}}">{{getStatusMeta(booking.status, polling).subtitle}}</text>
+      <view class="{{statusMeta.icon}}"></view>
+      <text class="success-title">{{statusMeta.title}}</text>
+      <text class="success-subtitle" wx:if="{{statusMeta.subtitle}}">{{statusMeta.subtitle}}</text>
     </view>
 
     <view class="order-card">
@@ -39,7 +39,7 @@
       </view>
       <view class="info-row">
         <text class="info-label">支付状态</text>
-        <text class="info-value status-{{booking.status}}">{{formatStatus(booking.status)}}</text>
+        <text class="info-value status-{{booking.status}}">{{statusText}}</text>
       </view>
     </view>
 

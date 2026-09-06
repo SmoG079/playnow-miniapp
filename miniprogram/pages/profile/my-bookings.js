@@ -42,7 +42,8 @@ Page({
   },
 
   async loadBookings(reset = false) {
-    if (this.data.loading) return;
+    if (this.data.loading && !reset) return;
+    const requestId = this._requestId = (this._requestId || 0) + 1;
     const page = reset ? 1 : this.data.page;
     this.setData({ loading: true });
 
@@ -52,7 +53,8 @@ Page({
         url += `&status=${this.data.activeStatus}`;
       }
       const res = await app.request({ url });
-      const items = res.items || [];
+      if (requestId !== this._requestId) return;
+      const items = (res.items || []).map(item => ({ ...item, statusText: this.formatStatus(item.status), statusClass: this.statusColor(item.status) }));
       this.setData({
         bookings: reset ? items : [...this.data.bookings, ...items],
         page: page + 1,
@@ -61,6 +63,7 @@ Page({
       });
     } catch (e) {
       console.error(e);
+      if (requestId !== this._requestId) return;
       wx.showToast({ title: '加载失败', icon: 'none' });
       this.setData({ loading: false });
     }
@@ -104,6 +107,7 @@ Page({
   },
 
   async onPayNow(e) {
+    if (this._paying) return;
     const id = e.currentTarget.dataset.id;
     const booking = this._getBookingById(id);
     if (!booking) {
@@ -112,6 +116,7 @@ Page({
     if (booking.status !== 'pending') {
       return wx.showToast({ title: '该订单无法支付', icon: 'none' });
     }
+    this._paying = true;
     try {
       await wxpay.payBooking(booking.id);
       wx.redirectTo({
@@ -121,6 +126,8 @@ Page({
       if ((e && e.message) !== '用户取消支付') {
         wx.showToast({ title: '支付失败', icon: 'none' });
       }
+    } finally {
+      this._paying = false;
     }
   },
 
@@ -173,6 +180,8 @@ Page({
   },
 
   async doCancel(bookingId) {
+    if (this._canceling) return;
+    this._canceling = true;
     try {
       const res = await app.request({
         url: `/bookings/${bookingId}/cancel`,
@@ -185,6 +194,8 @@ Page({
     } catch (e) {
       const detail = (e.data && e.data.detail) || '取消失败';
       wx.showToast({ title: detail, icon: 'none' });
+    } finally {
+      this._canceling = false;
     }
   },
 

@@ -57,11 +57,11 @@
   </view>
 
   <!-- Bottom Bar -->
-  <view class="bottom-bar" wx:if="{{totalPrice > 0}}">
+  <view class="bottom-bar" wx:if="{{selectedSlots.length > 0}}">
     <view class="price-info">
       <text class="price-label">{{selectedInfo.date}} · {{selectedInfo.start}}-{{selectedInfo.end}}</text>
       <text class="price-value">¥{{totalPrice}}</text>
     </view>
-    <button class="btn-book" bindtap="onBook">立即预约</button>
+    <button class="btn-book" bindtap="onBook" disabled="{{!selectedInfo}}">立即预约</button>
   </view>
 </view>

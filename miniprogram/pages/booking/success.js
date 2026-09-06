@@ -20,7 +20,7 @@ Page({
     const orderNo = options.order_no;
     if (!bookingId) {
       wx.showToast({ title: '参数错误', icon: 'none' });
-      return wx.redirectTo({ url: '/pages/home/index' });
+      return wx.switchTab({ url: '/pages/home/index' });
     }
     this.setData({ bookingId: parseInt(bookingId), orderNo, error: false });
     this.loadBooking();
@@ -47,7 +47,7 @@ Page({
       const booking = await app.request({
         url: `/bookings/${this.data.bookingId}`,
       });
-      this.setData({ booking, loading: false });
+      this.setData({ booking, loading: false, statusText: this.formatStatus(booking.status), statusMeta: this.getStatusMeta(booking.status, booking.status === 'pending') });
 
       if (booking.status === 'pending') {
         this.setData({ polling: true });
@@ -64,16 +64,18 @@ Page({
     if (!this.data.polling) return;
     const poll = async () => {
       if (this.data.pollCount >= MAX_POLL_COUNT) {
-        this.setData({ polling: false });
+        this.setData({ polling: false, statusMeta: this.getStatusMeta(this.data.booking.status, false) });
         return;
       }
+      this.setData({ pollCount: this.data.pollCount + 1 });
       try {
         const booking = await app.request({
           url: `/bookings/${this.data.bookingId}`,
         });
         this.setData({
           booking,
-          pollCount: this.data.pollCount + 1,
+          statusText: this.formatStatus(booking.status),
+          statusMeta: this.getStatusMeta(booking.status, booking.status === 'pending'),
         });
         if (booking.status !== 'pending') {
           this.setData({ polling: false });
@@ -82,12 +84,13 @@ Page({
       } catch (e) {
         console.error('Poll booking failed', e);
       }
-      this._pollTimer = setTimeout(poll, POLL_INTERVAL);
+      if (this.data.polling) this._pollTimer = setTimeout(poll, POLL_INTERVAL);
     };
     this._pollTimer = setTimeout(poll, POLL_INTERVAL);
   },
 
   _stopPolling() {
+    this.setData({ polling: false });
     if (this._pollTimer) {
       clearTimeout(this._pollTimer);
       this._pollTimer = null;

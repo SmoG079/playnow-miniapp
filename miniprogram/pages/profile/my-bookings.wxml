@@ -23,7 +23,7 @@
     >
       <view class="card-header">
         <text class="order-no">{{item.order_no}}</text>
-        <text class="status-badge {{statusColor(item.status)}}">{{formatStatus(item.status)}}</text>
+        <text class="status-badge {{item.statusClass}}">{{item.statusText}}</text>
       </view>
 
       <view class="card-body">

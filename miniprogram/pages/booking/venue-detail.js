@@ -1,12 +1,10 @@
 const app = getApp();
 
-const START_H = 8, END_H = 22, STEP_MIN = 30;
-const TIME_LABELS = [];
-for (let h = START_H; h < END_H; h++) {
-  for (let m = 0; m < 60; m += STEP_MIN) {
-    TIME_LABELS.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-  }
-}
+const minutes = time => {
+  const parts = String(time || '').split(':').map(Number);
+  return parts[0] * 60 + parts[1];
+};
+const duration = slots => slots.reduce((sum, s) => sum + minutes(s.end_time) - minutes(s.start_time), 0);
 
 Page({
   data: {
@@ -80,9 +78,11 @@ Page({
   },
 
   async loadSlots(date) {
+    const requestId = this._slotRequestId = (this._slotRequestId || 0) + 1;
     this.setData({ loading: true, selectedSlots: [], totalPrice: 0, selectedInfo: null });
     try {
       const res = await app.request({ url: `/clubs/${this.data.clubId}/venue-slots?date=${date}` });
+      if (requestId !== this._slotRequestId) return;
       const venues = res.venues || [];
       const rows = res.rows || [];
       this.setData({ venues });
@@ -97,7 +97,7 @@ Page({
       }
 
       const now = this._nowStr();
-      const grid = TIME_LABELS.map(tl => ({
+      const grid = rows.map(row => row.time_label).sort().map(tl => ({
         time_label: tl,
         cells: venues.map(venue => {
           const slot = slotMaps[venue.id]?.[tl];
@@ -109,7 +109,7 @@ Page({
             start_time: slot?.start_time || tl,
             end_time: slot?.end_time,
             price: slot?.price,
-            status: slot?.status || (past ? 'past' : 'none'),
+            status: past ? 'past' : (slot?.slot_id ? slot.status : 'none'),
             _sel: false,
           };
         }),
@@ -119,7 +119,7 @@ Page({
     } catch (e) {
       console.error('Load slots failed', e);
     } finally {
-      this.setData({ loading: false });
+      if (requestId === this._slotRequestId) this.setData({ loading: false });
     }
   },
 
@@ -150,12 +150,16 @@ Page({
     if (sel.length === 0) {
       sel.push({ ...cell, row_idx: rowIdx, col_idx: colIdx });
       grid[rowIdx].cells[colIdx]._sel = true;
-      if (rowIdx < grid.length - 1) {
-        const next = grid[rowIdx + 1].cells[colIdx];
-        if (next.status === 'available') {
-          sel.push({ ...next, row_idx: rowIdx + 1, col_idx: colIdx });
-          grid[rowIdx + 1].cells[colIdx]._sel = true;
-        }
+      while (duration(sel) < 60) {
+        const last = sel[sel.length - 1];
+        const nextRow = grid.findIndex(row => {
+          const next = row.cells[colIdx];
+          return next.status === 'available' && !next._sel && minutes(next.start_time) === minutes(last.end_time) && minutes(next.end_time) > minutes(next.start_time);
+        });
+        if (nextRow < 0) break;
+        const next = grid[nextRow].cells[colIdx];
+        sel.push({ ...next, row_idx: nextRow, col_idx: colIdx });
+        next._sel = true;
       }
       this._recalc(grid, sel);
       return;
@@ -166,7 +170,7 @@ Page({
       wx.showToast({ title: '请在同一列中选择连续时段', icon: 'none' });
       return;
     }
-    if (rowIdx === lastSel.row_idx + 1) {
+    if (minutes(cell.start_time) === minutes(lastSel.end_time)) {
       sel.push({ ...cell, row_idx: rowIdx, col_idx: colIdx });
       grid[rowIdx].cells[colIdx]._sel = true;
       this._recalc(grid, sel);
@@ -183,7 +187,7 @@ Page({
       grid,
       selectedSlots: sel,
       totalPrice: total.toFixed(2),
-      selectedInfo: sel.length >= 2 ? {
+      selectedInfo: duration(sel) >= 60 ? {
         date: first.date || this.data.selectedDate,
         start: first.start_time, end: last.end_time,
         venueId: first.venue_id,
@@ -194,7 +198,7 @@ Page({
   onBook() {
     const sel = this.data.selectedSlots;
     const info = this.data.selectedInfo;
-    if (sel.length < 2 || !info) {
+    if (duration(sel) < 60 || !info) {
       wx.showToast({ title: '请至少选择 1 小时', icon: 'none' });
       return;
     }

@@ -11,6 +11,7 @@ Page({
   },
 
   onLoad(options) {
+    if (!app.requireLogin()) return;
     const postId = options.postId;
     if (!postId) {
       wx.showToast({ title: '参数错误', icon: 'none' });
@@ -24,6 +25,11 @@ Page({
     this.setData({ loading: true });
     try {
       const post = await app.request({ url: `/posts/${this.data.postId}` });
+      if (post.user_id !== (app.globalData.userInfo || {}).id && app.globalData.role !== 'platform_admin') {
+        wx.showToast({ title: '无权审核此活动', icon: 'none' });
+        wx.navigateBack();
+        return;
+      }
       const registrations = post.registrations || [];
       this.setData({
         post,
@@ -51,6 +57,8 @@ Page({
   },
 
   async onReview(e) {
+    if (this._reviewing) return;
+    this._reviewing = true;
     const { userId, status } = e.currentTarget.dataset;
     try {
       await app.request({
@@ -62,6 +70,8 @@ Page({
       this.loadPost();
     } catch (e) {
       wx.showToast({ title: '操作失败', icon: 'none' });
+    } finally {
+      this._reviewing = false;
     }
   },
 

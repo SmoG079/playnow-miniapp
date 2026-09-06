@@ -11,7 +11,7 @@
       <view class="message-content">
         <view class="message-header">
           <text class="message-title">{{item.title || '系统通知'}}</text>
-          <text class="message-time">{{formatTime(item.created_at)}}</text>
+          <text class="message-time">{{item.timeText}}</text>
         </view>
         <view class="message-preview">{{item.content}}</view>
       </view>

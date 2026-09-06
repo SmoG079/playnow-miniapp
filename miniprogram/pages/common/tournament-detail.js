@@ -89,7 +89,7 @@ Page({
 
   onRegister() {
     if (!this.data.isLoggedIn) {
-      return wx.navigateTo({ url: '/pages/common/login' });
+      return app.requireLogin({ redirect: `/pages/common/tournament-detail?id=${this.data.tournamentId}` });
     }
     if (this.data.myRegistration) {
       const status = this.data.myRegistration.status;
@@ -101,6 +101,7 @@ Page({
     }
 
     const tournament = this.data.tournament;
+    if (!tournament || tournament.status !== 'open' || this.data.isFull) return wx.showToast({ title: '当前比赛不可报名', icon: 'none' });
     const fee = tournament.entry_fee || 0;
     const content = fee > 0
       ? `确定报名「${tournament.title}」吗？报名费 ¥${fee}`

@@ -29,7 +29,8 @@ async function login() {
     });
     if (code) return await postLogin(code);
   } catch (e) {
-    console.warn('wx.login failed, using dev login:', e);
+    app.clearSession();
+    console.warn('wx.login failed:', e);
   }
 
   throw new Error('wx.login failed');

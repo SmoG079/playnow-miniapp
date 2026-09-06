@@ -89,6 +89,8 @@
     <view class="action-list">
       <view class="action-item" bindtap="onEditClub">✏️ 编辑俱乐部信息</view>
       <view class="action-item" bindtap="onOrderManage">📋 订单管理</view>
+      <view class="action-item" bindtap="onVenueList">场地与时段管理</view>
+      <view class="action-item" bindtap="onStatistics">经营统计</view>
     </view>
   </view>
 

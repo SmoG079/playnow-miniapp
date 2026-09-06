@@ -1,5 +1,6 @@
 <view class="page">
   <view class="chat-actions">
+    <view class="chat-card" bindtap="onNotifications"><text class="chat-title">系统通知</text></view>
     <view class="chat-card" bindtap="onContactService">
       <text class="chat-icon">🎧</text>
       <view>
@@ -23,6 +24,6 @@
 
   <view wx:if="{{conversations.length === 0}}" class="empty-state">
     <text>暂无群聊</text>
-    <text class="text-sm text-secondary">参与约球或比赛后可创建群聊</text>
+    <text class="text-sm text-secondary">聊天服务暂未接通</text>
   </view>
 </view>

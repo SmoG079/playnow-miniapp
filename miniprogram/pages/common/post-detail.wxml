@@ -9,7 +9,7 @@
   <block wx:if="{{!loading && post}}">
     <!-- 顶部图片 -->
     <view class="cover-image-wrapper">
-      <image class="cover-image" src="{{post.cover_image || '/images/default-venue.jpg'}}" mode="aspectFill" />
+      <image class="cover-image" src="{{post.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
       <view class="cover-gradient"></view>
       <view class="nav-bar">
         <view class="nav-back" bindtap="onBack">
@@ -27,6 +27,7 @@
         <view class="sport-badge">网球</view>
       </view>
       <text class="post-title">{{post.title}}</text>
+      <text wx:if="{{post.level_required}}">NTRP {{post.level_required}}</text>
       <view class="tags-row" wx:if="{{post.notes}}">
         <text class="tag-text">{{post.notes}}</text>
       </view>
@@ -82,6 +83,9 @@
     </view>
 
     <!-- 附件/PDF -->
+    <view wx:if="{{post.images && post.images.length}}">
+      <image wx:for="{{post.images}}" wx:key="*this" src="{{item}}" mode="widthFix" style="width:100%" />
+    </view>
     <view class="documents-section" wx:if="{{post.documents && post.documents.length > 0}}">
       <text class="section-title">附件</text>
       <view class="document-list">
@@ -148,7 +152,7 @@
                 <text class="reply-name">{{reply.user_nickname}}</text>
                 <text class="reply-content {{reply.is_deleted ? 'deleted' : ''}}">{{reply.content}}</text>
               </view>
-              <text wx:if="{{item.reply_count > item.replies.length}}" class="reply-more">展开更多回复</text>
+              <text wx:if="{{item.reply_count > item.replies.length}}" class="reply-more">另有 {{item.reply_count - item.replies.length}} 条回复暂未展示</text>
             </view>
           </view>
         </view>

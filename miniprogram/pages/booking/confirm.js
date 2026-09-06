@@ -35,7 +35,8 @@ Page({
   onLoad(options) {
     options = options || {};
     const slotIds = options.slot_ids ? options.slot_ids.split(',').map(Number) : (options.slot_id ? [parseInt(options.slot_id)] : []);
-    const redirectUrl = `/pages/booking/confirm?slot_ids=${(options.slot_ids || '')}&venue_id=${options.venue_id || ''}&price=${options.price || ''}&date=${options.date || ''}&start=${options.start || ''}&end=${options.end || ''}&venue_name=${encodeURIComponent(options.venue_name || '')}&club_name=${encodeURIComponent(options.club_name || '')}`;
+    const redirectUrl = '/pages/booking/confirm?' + Object.keys(options).map(key => `${encodeURIComponent(key)}=${encodeURIComponent(options[key])}`).join('&');
+    this._redirectUrl = redirectUrl;
     if (!app.requireLogin({ redirect: redirectUrl })) {
       return;
     }
@@ -62,6 +63,10 @@ Page({
   },
 
   onShow() {
+    if (!app.globalData.token) {
+      app.requireLogin({ redirect: this._redirectUrl });
+      return;
+    }
     if (this.data.slotIds.length > 0) {
       const slotIdsStr = this.data.slotIds.join(',');
       if (!app.requireLogin({ redirect: `/pages/booking/confirm?slot_ids=${slotIdsStr}&venue_id=${this.data.venueId}&price=${this.data.price}&date=${this.data.date}&start=${this.data.startTime}&end=${this.data.endTime}&venue_name=${encodeURIComponent(this.data.venueName)}&club_name=${encodeURIComponent(this.data.clubName)}` })) {
@@ -184,7 +189,7 @@ Page({
       setTimeout(function() {
         if (that.data.returnMode === 'post' || that.data.returnMode === 'tournament') {
           const targetPage = that.data.returnMode === 'tournament' ? 'tournament-create' : 'post-create';
-          const tabPages = ['post-create', 'tournament-create'];
+          const tabPages = ['post-create'];
           // Store booking info in globalData for the target page to read
           const app = getApp();
           app.globalData._bookingReturn = {
@@ -198,9 +203,10 @@ Page({
           if (tabPages.includes(targetPage)) {
             wx.switchTab({ url: `/pages/publish/${targetPage}` });
           } else {
-            wx.redirectTo({
-              url: `/pages/publish/${targetPage}?booking_id=${booking.id}&venue_id=${that.data.venueId}&venue_name=${encodeURIComponent(that.data.venueName)}&slot_date=${that.data.date}&slot_start=${that.data.startTime}&slot_end=${that.data.endTime}`,
-            });
+            const pages = getCurrentPages();
+            const targetIndex = pages.findIndex(page => page.route === `pages/publish/${targetPage}`);
+            if (targetIndex >= 0) wx.navigateBack({ delta: pages.length - 1 - targetIndex });
+            else wx.redirectTo({ url: `/pages/publish/${targetPage}` });
           }
         } else {
           wx.redirectTo({

@@ -54,12 +54,14 @@ Page({
         });
       },
       fail: () => {
-        // Location denied, still show clubs without distance
+        this.setData({ latitude: null, longitude: null, sortBy: 'default' });
+        this.resetAndLoadClubs();
       },
     });
   },
 
   async loadClubs(append = false) {
+    const requestId = this._requestId = (this._requestId || 0) + 1;
     this.setData({ loading: true });
     try {
       const page = append ? this.data.page + 1 : 1;
@@ -74,6 +76,7 @@ Page({
         url += `&keyword=${encodeURIComponent(this.data.keyword)}`;
       }
       const res = await app.request({ url });
+      if (requestId !== this._requestId) return;
       const items = res.items || [];
       const clubs = append ? this.data.clubs.concat(items) : items;
       this.setData({
@@ -84,14 +87,13 @@ Page({
     } catch (e) {
       console.error('Load clubs failed', e);
     } finally {
-      this.setData({ loading: false });
+      if (requestId === this._requestId) this.setData({ loading: false });
     }
   },
 
   resetAndLoadClubs() {
-    this.setData({ page: 1, hasMore: true, clubs: [] }, () => {
-      this.loadClubs();
-    });
+    this.setData({ page: 1, hasMore: true, clubs: [] });
+    return this.loadClubs();
   },
 
   onSearchInput(e) {
@@ -108,8 +110,10 @@ Page({
     this.resetAndLoadClubs();
   },
 
-  onSortToggle() {
-    if (this.data.sortBy === 'distance') {
+  onSortToggle(e) {
+    const target = e.currentTarget.dataset.value;
+    if (target === this.data.sortBy) return;
+    if (target === 'default') {
       this.setData({ sortBy: 'default' }, () => this.resetAndLoadClubs());
       return;
     }
@@ -122,6 +126,7 @@ Page({
       content: '按距离排序需要获取您的位置',
       success: (res) => {
         if (res.confirm) {
+          this.setData({ sortBy: 'distance' });
           this.getLocation();
         }
       },

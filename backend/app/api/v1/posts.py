@@ -106,7 +106,7 @@ async def list_posts(
                Club.latitude, Club.longitude,
                approved_count, pending_count)
         .join(User, MatchPost.user_id == User.id)
-        .join(Club, MatchPost.club_id == Club.id)
+        .outerjoin(Club, MatchPost.club_id == Club.id)
         .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
     )
     count_query = select(func.count(MatchPost.id))
@@ -326,7 +326,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
                approved_count, pending_count)
         .join(User, MatchPost.user_id == User.id)
-        .join(Club, MatchPost.club_id == Club.id)
+        .outerjoin(Club, MatchPost.club_id == Club.id)
         .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
         .where(MatchPost.id == post_id)
         .group_by(MatchPost.id)
@@ -407,7 +407,8 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         registrations=registrations,
         price=post.price, user_phone=user_phone, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
-        cover_image=cover_image, club_documents=club_documents,
+        cover_image=(post.images[0] if post.images else cover_image), club_documents=club_documents,
+        images=post.images,
     )
 
 

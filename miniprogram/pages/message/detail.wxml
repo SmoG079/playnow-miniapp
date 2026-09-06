@@ -8,7 +8,7 @@
       <text class="message-icon">{{message.type === 'tournament' ? '🏆' : (message.type === 'booking' ? '📋' : (message.type === 'match' ? '🏸' : '📢'))}}</text>
       <view class="message-meta">
         <text class="message-title">{{message.title || '系统通知'}}</text>
-        <text class="message-time">{{formatTime(message.created_at)}}</text>
+        <text class="message-time">{{timeText}}</text>
       </view>
     </view>
     <view class="message-body">{{message.content}}</view>

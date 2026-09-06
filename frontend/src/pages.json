@@ -1,0 +1,10 @@
+{
+  "easycom": { "autoscan": true, "custom": { "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue" } },
+  "pages": [
+    { "path": "pages/home/index" }, { "path": "pages/booking/club-list" },
+    { "path": "pages/booking/venue-detail" }, { "path": "pages/common/post-detail" },
+    { "path": "pages/publish/post-create" }, { "path": "pages/profile/index" },
+    { "path": "pages/chat/index" }
+  ],
+  "globalStyle": { "navigationStyle": "custom", "backgroundColor": "#f5f7f6" }
+}

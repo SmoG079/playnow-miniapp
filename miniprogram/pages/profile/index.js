@@ -39,6 +39,7 @@ Page({
       { icon: '📋', title: '我的预约', page: '/pages/profile/my-bookings' },
       { icon: '📝', title: '我的报名', page: '/pages/profile/my-registrations' },
       { icon: '📋', title: '活动管理', page: '/pages/profile/my-posts' },
+      { icon: '📋', title: '系统通知', page: '/pages/message/list' },
     ];
 
     const adminMenu = [
@@ -75,12 +76,9 @@ Page({
       content: '确定要退出登录吗？',
       success: (res) => {
         if (res.confirm) {
-          app.globalData.token = null;
-          app.globalData.refreshToken = null;
-          app.globalData.userInfo = null;
-          wx.removeStorageSync('access_token');
-          wx.removeStorageSync('refresh_token');
+          app.clearSession();
           this.setData({ isLoggedIn: false, userInfo: null });
+          this.buildMenu();
           wx.showToast({ title: '已退出', icon: 'success' });
         }
       },

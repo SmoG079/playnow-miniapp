@@ -22,7 +22,7 @@
     <!-- NTRP row -->
     <scroll-view class="ntrp-row" scroll-x>
       <text wx:for="{{NTRP_OPTIONS}}" wx:key="*this"
-        class="ntrp-item {{filterNtrp === item ? 'active' : ''}}"
+        class="ntrp-item {{filterNtrp === (item === '不限' ? '' : item) ? 'active' : ''}}"
         data-val="{{item === '不限' ? '' : item}}" bindtap="onNtrpChange">{{item}}</text>
     </scroll-view>
 

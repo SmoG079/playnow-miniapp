@@ -32,7 +32,7 @@ Page({
       const res = await app.request({
         url: `/users/me/notifications?page=${page}&page_size=${this.data.pageSize}`,
       });
-      const items = res.items || [];
+      const items = (res.items || []).map(item => ({ ...item, timeText: this.formatTime(item.created_at) }));
       this.setData({
         messages: reset ? items : [...this.data.messages, ...items],
         page: page + 1,

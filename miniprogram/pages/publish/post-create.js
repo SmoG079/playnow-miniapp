@@ -21,7 +21,7 @@ Page({
     playersNeeded: '1',
     price: '',
     levelMin: 0,
-    levelMax: 13,
+    levelMax: 0,
     levelOptions: ['不限', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'],
     description: '',
     notes: '',
@@ -32,6 +32,7 @@ Page({
   },
 
   onShow() {
+    if (!app.requireLogin({ redirect: '/pages/publish/post-create' })) return;
     this.loadClubs();
     // Check globalData for booking return (from confirm page via switchTab)
     const info = app.globalData._bookingReturn;
@@ -53,15 +54,13 @@ Page({
     try {
       const managedIds = app.globalData.managedClubIds || [];
       if (managedIds.length === 0) {
-        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
-        setTimeout(() => wx.navigateBack(), 1500);
+        this.setData({ clubIds: [], clubNames: [], clubIndex: -1 });
         return;
       }
-      const res = await app.request({ url: '/clubs?page=1&page_size=50' });
+      const res = { items: await app.listAll('/clubs') };
       const clubs = (res.items || []).filter(c => managedIds.includes(c.id));
       if (clubs.length === 0) {
-        wx.showToast({ title: '您没有管理的俱乐部，无法发布约球帖', icon: 'none' });
-        setTimeout(() => wx.navigateBack(), 1500);
+        this.setData({ clubIds: [], clubNames: [], clubIndex: -1 });
         return;
       }
       this.setData({
@@ -77,6 +76,7 @@ Page({
   onPriceChange(e) { this.setData({ price: e.detail.value }); },
   onClubChange(e) {
     const clubIndex = parseInt(e.detail.value);
+    if (clubIndex !== this.data.clubIndex) this.onClearBooking();
     this.setData({ clubIndex });
   },
 
@@ -134,7 +134,7 @@ Page({
   _formatLevelRange() {
     const { levelMin, levelMax, levelOptions } = this.data;
     if (levelMin === 0 && levelMax === 0) return null;
-    const start = levelOptions[levelMin];
+    const start = levelOptions[levelMin || 1];
     const end = levelOptions[levelMax];
     if (levelMin === levelMax) return start;
     return `${start}-${end}`;
@@ -145,12 +145,16 @@ Page({
   },
 
   async onAddDocument() {
+    if (this.data.documents.length >= 5) return wx.showToast({ title: '最多5个附件', icon: 'none' });
     try {
       const res = await wx.chooseMessageFile({
+        count: 1,
         type: 'file',
         extension: ['pdf'],
       });
       const file = res.tempFiles[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) return wx.showToast({ title: '附件不能超过10MB', icon: 'none' });
       wx.showLoading({ title: '上传中...' });
       const uploaded = await app.uploadFile(file.path);
       wx.hideLoading();
@@ -193,20 +197,23 @@ Page({
     const urls = [];
     for (const path of this.data.images) {
       if (path.startsWith('http')) { urls.push(path); continue; }
-      try {
-        const res = await app.uploadFile(path);
-        urls.push(res.url);
-      } catch (e) { console.error('Upload failed', e); }
+      const res = await app.uploadFile(path);
+      urls.push(res.url);
     }
     return urls;
   },
 
   async onSubmit() {
+    if (this.data.loading) return;
+    if (!app.requireLogin({ redirect: '/pages/publish/post-create' })) return;
     if (!this.data.title) {
       return wx.showToast({ title: '请输入标题', icon: 'none' });
     }
     if (this.data.matchMode === 'venue' && this.data.clubIndex === -1) {
       return wx.showToast({ title: '定场约球请选择俱乐部', icon: 'none' });
+    }
+    if (this.data.matchMode === 'venue' && !this.data.linkedBookingId) {
+      return wx.showToast({ title: '请先订场并关联预约', icon: 'none' });
     }
     if (!this.data.preferredDate) {
       return wx.showToast({ title: '请选择日期', icon: 'none' });
@@ -224,8 +231,8 @@ Page({
     if (isNaN(priceNum) || priceNum < 0) {
       return wx.showToast({ title: '费用不能为负数', icon: 'none' });
     }
-    const playersNeeded = parseInt(this.data.playersNeeded) || 1;
-    if (playersNeeded < 1) {
+    const playersNeeded = Number(this.data.playersNeeded);
+    if (!Number.isInteger(playersNeeded) || playersNeeded < 1) {
       return wx.showToast({ title: '人数至少为 1', icon: 'none' });
     }
 

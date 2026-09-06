@@ -69,6 +69,7 @@ Page({
   },
 
   onRegister() {
+    if (!this.data.post) return;
     // Must be logged in to register/cancel/manage registrations
     if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
       return;
@@ -90,6 +91,8 @@ Page({
         content: `确定取消${statusText}的报名吗？`,
         success: async (res) => {
           if (res.confirm) {
+            if (this._registrationBusy) return;
+            this._registrationBusy = true;
             try {
               await app.request({
                 url: `/posts/${this.data.postId}/register`,
@@ -99,18 +102,23 @@ Page({
               this.loadPost(this.data.postId);
             } catch (e) {
               wx.showToast({ title: '操作失败', icon: 'none' });
+            } finally {
+              this._registrationBusy = false;
             }
           }
         },
       });
     } else {
       // 报名 — require phone
+      if (this.data.isFull || this.data.post.status !== 'open') return wx.showToast({ title: '当前活动不可报名', icon: 'none' });
       if (!auth.requirePhone()) return;
       wx.showModal({
         title: '确认报名',
         content: `确定报名参加「${this.data.post.title}」吗？`,
         success: async (res) => {
           if (res.confirm) {
+            if (this._registrationBusy) return;
+            this._registrationBusy = true;
             try {
               await app.request({
                 url: `/posts/${this.data.postId}/register`,
@@ -123,6 +131,8 @@ Page({
             } catch (e) {
               const msg = (e.data && e.data.detail) || '报名失败';
               wx.showToast({ title: msg, icon: 'none' });
+            } finally {
+              this._registrationBusy = false;
             }
           }
         },
@@ -181,12 +191,17 @@ Page({
       success: (res) => {
         wx.hideLoading();
         if (res.statusCode === 200) {
+          if (/\.(png|jpe?g|webp)(?:\?|$)/i.test(url)) {
+            wx.previewImage({ current: url, urls: [url] });
+            return;
+          }
           wx.openDocument({
             filePath: res.tempFilePath,
             fileType: 'pdf',
             showMenu: true,
+            fail: () => wx.showToast({ title: '文件打开失败', icon: 'none' }),
           });
-        }
+        } else wx.showToast({ title: '文件下载失败', icon: 'none' });
       },
       fail: () => {
         wx.hideLoading();
@@ -205,6 +220,7 @@ Page({
     wx.showActionSheet({
       itemList: ['举报', '复制链接', '取消'],
       success: (res) => {
+        if (res.tapIndex === 0) wx.showToast({ title: '举报服务暂未接通', icon: 'none' });
         if (res.tapIndex === 1) {
           wx.setClipboardData({
             data: `/pages/common/post-detail?id=${this.data.postId}`,
@@ -252,6 +268,7 @@ Page({
   },
 
   async onSubmitComment() {
+    if (this._commentSubmitting) return;
     if (!app.requireLogin({ redirect: `/pages/common/post-detail?id=${this.data.postId}` })) {
       return;
     }
@@ -259,6 +276,7 @@ Page({
     if (!content) {
       return wx.showToast({ title: '请输入评论内容', icon: 'none' });
     }
+    this._commentSubmitting = true;
     try {
       await app.request({
         url: `/posts/${this.data.postId}/comments`,
@@ -272,6 +290,8 @@ Page({
       this.loadComments();
     } catch (e) {
       wx.showToast({ title: '评论失败', icon: 'none' });
+    } finally {
+      this._commentSubmitting = false;
     }
   },
 

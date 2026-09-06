@@ -167,6 +167,7 @@ Page({
   },
 
   async onGenerate() {
+    if (this.data.generating) return;
     const { venues, venueIndex, dateFrom, dateTo, startTime, endTime, intervals, intervalIndex, priceRules } = this.data;
     console.log('[slot-manage] onGenerate called', { venueIndex, dateFrom, dateTo, startTime, endTime, interval: intervals[intervalIndex], priceRules });
     if (venues.length === 0) {
@@ -178,13 +179,16 @@ Page({
       return wx.showToast({ title: '结束日期不能早于开始日期', icon: 'none' });
     }
     const dayDiff = (new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24);
-    if (dayDiff > 31) {
+    if (dayDiff >= 31) {
       console.warn('[slot-manage] date range too large', dayDiff);
       return wx.showToast({ title: '最多生成31天的时段', icon: 'none' });
     }
     if (endTime <= startTime) {
       console.warn('[slot-manage] endTime not after startTime');
       return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
+    }
+    if (priceRules.some(r => !Number.isFinite(Number(r.price)) || Number(r.price) <= 0 || !r.start_time || !r.end_time || r.end_time <= r.start_time)) {
+      return wx.showToast({ title: '请检查分时定价规则', icon: 'none' });
     }
 
     const venue = venues[venueIndex];

@@ -36,10 +36,14 @@ Page({
   },
 
   getLocation() {
-    wx.getLocation({ type: 'gcj02', success: r => this.setData({ lat: r.latitude, lng: r.longitude }) });
+    wx.getLocation({ type: 'gcj02', success: r => {
+      this.setData({ lat: r.latitude, lng: r.longitude });
+      if (this.data.sortByDist) this.loadFeed();
+    }, fail: () => this.setData({ sortByDist: false }) });
   },
 
   async loadFeed() {
+    const requestId = this._requestId = (this._requestId || 0) + 1;
     this.setData({ loading: true });
     try {
       let postUrl = '/posts?page=1&page_size=20';
@@ -55,12 +59,13 @@ Page({
         app.request({ url: postUrl }),
         app.request({ url: tourUrl }),
       ]);
+      if (requestId !== this._requestId) return;
       this.setData({ posts: postRes.items || [], tournaments: tourRes.items || [] });
       this._doFilter();
     } catch (e) {
       console.error('Load feed failed', e);
     } finally {
-      this.setData({ loading: false });
+      if (requestId === this._requestId) this.setData({ loading: false });
     }
   },
 

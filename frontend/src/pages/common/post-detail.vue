@@ -1,0 +1,15 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
+import AppShell from '../../components/AppShell.vue'
+import { activities, dayLabel, dateLabel, go } from '../../data/fixtures'
+import { usePrototype } from '../../stores/prototype'
+const store = usePrototype(), id = ref(1), message = ref('')
+onLoad(q => { id.value = Number(q?.id || 1) })
+const activity = computed(() => [...store.published, ...activities].find(a => a.id === id.value))
+const joined = computed(() => store.joinedIds.includes(id.value))
+function join() { if (activity.value) message.value = store.join(activity.value) }
+</script>
+<template>
+  <AppShell back title="活动详情"><template v-if="activity"><view class="detail-photo"><image :src="activity.image" mode="aspectFill" /><text class="photo-badge">活动示意照片</text></view><view class="content detail-content"><view class="row gap8 section-head"><text class="tag">{{ activity.kind === 'match' ? '球友约球' : '网球赛事' }}</text><text class="tag yellow">NTRP {{ activity.level.toFixed(1) }}</text></view><text class="page-title">{{ activity.title }}</text><text class="muted subtitle">好球有人接，快乐有人分享。</text><view class="detail-facts"><view class="fact"><wd-icon name="time-line" size="23px" /><view><text class="strong">{{ dateLabel(activity.day) }} · {{ dayLabel(activity.day) }}</text><text class="muted">{{ activity.time }}</text></view></view><view class="fact" @click="go('venue', '?id=' + (activity.distance < 3 ? 1 : 2))"><wd-icon name="location" size="23px" /><view><text class="strong">{{ activity.club }}</text><text class="muted">室外硬地 · 距离 {{ activity.distance }}km</text></view><wd-icon name="arrow-right" /></view></view><view class="section-head row between"><text class="section-title">一起上场的球友</text><text class="link">{{ activity.joined + (joined ? 1 : 0) }}/{{ activity.capacity }} 人</text></view><view class="players"><view v-for="(name,i) in ['林同学','陈小满','周末选手']" :key="name"><view :class="['player-avatar','tone-'+i]">{{ name.slice(0,1) }}</view><text class="small">{{ name }}</text></view><view><view class="player-avatar vacant"><wd-icon :name="joined ? 'check' : 'plus'" /></view><text class="small muted">{{ joined ? '你已加入' : '等你加入' }}</text></view></view><view class="section-head"><text class="section-title">关于这场球</text></view><text class="body-copy">热身后轮换搭档，友好交流，不计输赢。欢迎球技相近的朋友一起练球，请自备球拍和饮用水，提前 10 分钟到场。</text><view class="organizer"><view class="club-monogram big">林</view><view><text class="strong">林同学 · 发起人</text><text class="muted small">享受每一次回球</text></view><text class="tag">球友</text></view><text v-if="message" class="feedback" role="status">{{ message }}（模拟）</text></view><view class="fixed-action"><view><text class="price large">¥{{ activity.price }}<text class="small muted"> / 人</text></text><text class="small muted">场地费用 AA</text></view><wd-button :disabled="joined || activity.joined >= activity.capacity" @click="join">{{ joined ? '已报名' : activity.joined >= activity.capacity ? '已满员' : '加入这场球' }}</wd-button></view></template><view v-else class="empty-state"><text>活动不存在</text><wd-button @click="go('home')">返回首页</wd-button></view></AppShell>
+</template>

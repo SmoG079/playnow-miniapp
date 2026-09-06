@@ -12,6 +12,8 @@ Page({
   },
 
   onLoad(options) {
+    if (!app.requireLogin()) return;
+    this.setData({ redirect: options.redirect ? decodeURIComponent(options.redirect) : '' });
     if (options.new_user === '1') {
       this.setData({ isNewUser: true });
       wx.setNavigationBarTitle({ title: '完善资料' });
@@ -45,13 +47,15 @@ Page({
 
   onGetPhoneNumber(e) {
     const { code, errMsg } = e.detail;
-    const phoneCode = code || 'dev_phone';
-    if (!code) console.warn('getPhoneNumber fallback:', errMsg);
+    if (!code) {
+      wx.showToast({ title: '未授权手机号，可手动填写', icon: 'none' });
+      return;
+    }
     app.request({
-      url: '/auth/phone', method: 'POST', data: { code: phoneCode },
+      url: '/auth/phone', method: 'POST', data: { code },
     }).then(() => {
       wx.showToast({ title: '已获取手机号', icon: 'success' });
-      app.fetchUserInfo().then(() => {
+      return app.fetchUserInfo().then(() => {
         const phone = (app.globalData.userInfo || {}).phone;
         if (phone) this.setData({ phone });
       });
@@ -70,12 +74,18 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.loading) return;
+    if (!this.data.nickname.trim()) return wx.showToast({ title: '请输入昵称', icon: 'none' });
+    if (this.data.phone && !/^1\d{10}$/.test(this.data.phone)) return wx.showToast({ title: '手机号格式不正确', icon: 'none' });
     this.setData({ loading: true });
     try {
       const updateData = {};
       if (this.data.nickname) updateData.nickname = this.data.nickname;
       if (this.data.phone) updateData.phone = this.data.phone;
-      if (this.data.avatarUrl) updateData.avatar_url = this.data.avatarUrl;
+      if (this.data.avatarUrl) {
+        updateData.avatar_url = /^https?:\/\//.test(this.data.avatarUrl)
+          ? this.data.avatarUrl : (await app.uploadFile(this.data.avatarUrl)).url;
+      }
       if (this.data.ntrpLevel) updateData.ntrp_level = parseFloat(this.data.ntrpLevel);
 
       await app.request({
@@ -87,7 +97,8 @@ Page({
       await app.fetchUserInfo();
       wx.showToast({ title: '保存成功', icon: 'success' });
       if (this.data.isNewUser) {
-        setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1000);
+        const redirect = this.data.redirect;
+        setTimeout(() => app.openPage(redirect && redirect.startsWith('/pages/') ? redirect : '/pages/home/index'), 1000);
       } else {
         setTimeout(() => wx.navigateBack(), 1000);
       }

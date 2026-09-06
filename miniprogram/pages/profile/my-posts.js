@@ -34,7 +34,12 @@ Page({
     this.setData({ ['editForm.' + e.currentTarget.dataset.field]: e.detail.value });
   },
   async onSaveEdit() {
+    if (this._saving) return;
     const f = this.data.editForm;
+    if (!String(f.title || '').trim() || !f.preferred_date || !f.preferred_start || !f.preferred_end || f.preferred_end <= f.preferred_start) return wx.showToast({ title: '请检查标题与活动时间', icon: 'none' });
+    if (!Number.isInteger(Number(f.players_needed)) || Number(f.players_needed) < 1 || !Number.isFinite(Number(f.price)) || Number(f.price) < 0) return wx.showToast({ title: '请检查人数和费用', icon: 'none' });
+    this._saving = true;
+    try {
     await app.request({
       url: `/posts/${this.data.editingId}`, method: 'PUT',
       data: {
@@ -51,9 +56,13 @@ Page({
     wx.showToast({ title: '已更新', icon: 'success' });
     this.setData({ showEditModal: false });
     this.loadData();
+    } catch (e) {
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+    } finally { this._saving = false; }
   },
 
   onShow() {
+    if (!perm.requireLogin()) return;
     this.setData({ isAdmin: perm.isClubAdmin() });
     this.loadData();
   },
@@ -62,20 +71,14 @@ Page({
     this.setData({ loading: true });
     try {
       const managedIds = perm.getManagedClubIds();
-      let tourUrl = '/tournaments?page=1&page_size=20';
-      if (managedIds.length === 1) {
-        tourUrl += `&club_id=${managedIds[0]}`;
-      } else if (managedIds.length > 1) {
-        // Show all tournaments if managing multiple clubs
+      const posts = await app.listAll('/users/me/posts');
+      const tournaments = [];
+      if (perm.isClubAdmin()) {
+        for (const id of managedIds) tournaments.push(...await app.listAll(`/tournaments?club_id=${id}`));
       }
-
-      const [postRes, tourRes] = await Promise.all([
-        app.request({ url: '/users/me/posts' }),
-        app.request({ url: tourUrl }),
-      ]);
       this.setData({
-        posts: postRes.items || [],
-        tournaments: tourRes.items || [],
+        posts,
+        tournaments,
       });
     } catch (e) {
       console.error('Load activity failed', e);

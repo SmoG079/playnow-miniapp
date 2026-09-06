@@ -52,8 +52,7 @@
       "desc": "用于搜索附近的俱乐部"
     }
   },
-  "requiredPrivateInfos": ["getLocation", "chooseAddress"],
-  "lazyCodeLoading": "requiredComponents",
+  "requiredPrivateInfos": ["getLocation", "chooseLocation"],
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

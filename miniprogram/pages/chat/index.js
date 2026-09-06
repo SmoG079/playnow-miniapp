@@ -12,9 +12,10 @@ Page({
   },
 
   onContactService() {
-    // Open WeChat customer service
-    // Uses <contact-button> component in WXML
+    wx.showToast({ title: '客服暂未接通', icon: 'none' });
   },
+
+  onNotifications() { wx.navigateTo({ url: '/pages/message/list' }); },
 
   onConversationTap(e) {
     const id = e.currentTarget.dataset.id;

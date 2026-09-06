@@ -17,7 +17,7 @@
     <view class="order-card" wx:for="{{orders}}" wx:key="id">
       <view class="order-header">
         <text class="order-no">{{item.order_no}}</text>
-        <text class="order-status {{statusColor(item.status)}}">{{formatStatus(item.status)}}</text>
+        <text class="order-status {{item.statusClass}}">{{item.statusText}}</text>
       </view>
 
       <view class="order-body">

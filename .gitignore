@@ -35,7 +35,6 @@ backend/ssl/*.key
 
 # Node
 node_modules/
-package-lock.json
 
 # Private keys & scripts
 private.*.key

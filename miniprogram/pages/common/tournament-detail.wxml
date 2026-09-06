@@ -7,7 +7,7 @@
   <block wx:if="{{!loading && tournament}}">
     <!-- Cover Header -->
     <view class="cover-wrap">
-      <image class="cover-image" src="{{tournament.cover_image || '/images/default-venue.jpg'}}" mode="aspectFill" />
+      <image class="cover-image" src="{{tournament.cover_image || '/images/default-venue.png'}}" mode="aspectFill" />
       <view class="cover-gradient"></view>
       <view class="nav-bar">
         <view class="nav-back" bindtap="onBack">
@@ -55,7 +55,7 @@
     <view class="section-card">
       <text class="section-title">赛程安排</text>
       <view class="placeholder">
-        <text>赛程将在报名截止后生成</text>
+        <text>赛程功能暂未接通</text>
       </view>
     </view>
   </block>

@@ -51,7 +51,7 @@ Page({
     const urls = [];
     for (const path of this.data.images) {
       if (path.startsWith('http')) { urls.push(path); continue; }
-      try { const r = await app.uploadFile(path); urls.push(r.url); } catch (e) {}
+      const r = await app.uploadFile(path); urls.push(r.url);
     }
     return urls;
   },
@@ -65,6 +65,8 @@ Page({
         linkedVenueId: info.venue_id,
         linkedVenueName: info.venue_name,
         linkedSlot: `${info.slot_date} ${info.slot_start}-${info.slot_end}`,
+        'form.start_time': `${info.slot_date}T${info.slot_start.slice(0, 5)}`,
+        'form.end_time': `${info.slot_date}T${info.slot_end.slice(0, 5)}`,
       });
     }
   },
@@ -77,14 +79,14 @@ Page({
       return wx.navigateBack();
     }
     try {
-      const res = await app.request({ url: '/clubs?page=1&page_size=50' });
+      const res = { items: await app.listAll('/clubs') };
       const clubs = (res.items || []).filter(c => managedIds.includes(c.id));
       this.setData({
         managedClubs: clubs.map(c => c.id),
         clubNames: clubs.map(c => c.name),
       });
     } catch (e) { console.error(e); }
-    this.setDefaultTimes();
+    if (!this.data.linkedBookingId) this.setDefaultTimes();
   },
 
   setDefaultTimes() {
@@ -104,6 +106,7 @@ Page({
   },
 
   onClubChange(e) {
+    if (Number(e.detail.value) !== Number(this.data.clubIndex)) this.onClearBooking();
     this.setData({ clubIndex: e.detail.value });
   },
 
@@ -122,6 +125,7 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.loading) return;
     const { form, managedClubs, clubIndex } = this.data;
     if (!form.title.trim()) {
       return wx.showToast({ title: '请输入赛事名称', icon: 'none' });
@@ -135,8 +139,11 @@ Page({
       return wx.showToast({ title: '结束时间必须晚于开始时间', icon: 'none' });
     }
 
-    const entryFee = parseFloat(form.entry_fee) || 0;
-    const maxParticipants = form.max_participants ? parseInt(form.max_participants) : null;
+    const entryFee = form.entry_fee === '' ? 0 : Number(form.entry_fee);
+    const maxParticipants = form.max_participants ? Number(form.max_participants) : null;
+    if (!Number.isFinite(entryFee) || entryFee < 0) return wx.showToast({ title: '报名费不能为负数', icon: 'none' });
+    if (maxParticipants !== null && (!Number.isInteger(maxParticipants) || maxParticipants < 1)) return wx.showToast({ title: '报名人数必须为正整数', icon: 'none' });
+    if (!managedClubs[clubIndex]) return wx.showToast({ title: '请选择管理的俱乐部', icon: 'none' });
 
     const payload = {
       club_id: managedClubs[clubIndex],

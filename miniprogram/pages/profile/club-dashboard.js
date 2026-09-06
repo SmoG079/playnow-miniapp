@@ -26,12 +26,13 @@ Page({
       return;
     }
     try {
-      const clubs = await app.request({ url: '/clubs?page=1&page_size=50' });
+      const clubs = { items: await app.listAll('/clubs') };
       const managedClubs = (clubs.items || []).filter(c => managedIds.includes(c.id)).map(c => ({ id: c.id, name: c.name }));
       this.setData({ managedClubs });
+      if (!managedClubs.length) return;
       let clubId = options.club_id ? parseInt(options.club_id) : managedClubs[0].id;
       const idx = managedClubs.findIndex(c => c.id === clubId);
-      this.setData({ clubId, clubIndex: idx >= 0 ? idx : 0 });
+      this.setData({ clubId: idx >= 0 ? clubId : managedClubs[0].id, clubIndex: idx >= 0 ? idx : 0 });
       this.loadData();
     } catch (e) { console.error(e); }
   },
@@ -39,6 +40,14 @@ Page({
   onShow() {
     if (this.data.clubId) this.loadData();
   },
+
+  onPullDownRefresh() { return this.loadData().finally(() => wx.stopPullDownRefresh()); },
+  onPhoneTap() {
+    const phone = this.data.club && this.data.club.contact_phone;
+    if (phone) wx.makePhoneCall({ phoneNumber: phone });
+  },
+  onVenueList() { wx.navigateTo({ url: `/pages/admin/venue-manage?club_id=${this.data.clubId}` }); },
+  onStatistics() { wx.navigateTo({ url: '/pages/admin/dashboard' }); },
 
   async loadData() {
     if (!this.data.clubId) return;

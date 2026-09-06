@@ -35,14 +35,16 @@ Page({
   },
 
   async loadOrders(reset = false) {
-    if (this.data.loading) return;
+    if (this.data.loading && !reset) return;
+    const requestId = this._requestId = (this._requestId || 0) + 1;
     const page = reset ? 1 : this.data.page;
     this.setData({ loading: true });
     try {
       let url = `/bookings/club/${this.data.clubId}?page=${page}&page_size=${this.data.pageSize}`;
       if (this.data.activeStatus) url += `&status=${this.data.activeStatus}`;
       const res = await app.request({ url });
-      const items = res.items || [];
+      if (requestId !== this._requestId) return;
+      const items = (res.items || []).map(item => ({ ...item, statusText: this.formatStatus(item.status), statusClass: this.statusColor(item.status) }));
       this.setData({
         orders: reset ? items : [...this.data.orders, ...items],
         page: page + 1,
@@ -51,6 +53,7 @@ Page({
       });
     } catch (e) {
       console.error(e);
+      if (requestId !== this._requestId) return;
       wx.showToast({ title: '加载失败', icon: 'none' });
       this.setData({ loading: false });
     }
@@ -79,6 +82,8 @@ Page({
   },
 
   async doCancel(orderId) {
+    if (this._canceling) return;
+    this._canceling = true;
     try {
       await app.request({
         url: `/bookings/${orderId}/cancel`,
@@ -89,6 +94,8 @@ Page({
       this.loadOrders(true);
     } catch (e) {
       wx.showToast({ title: '取消失败', icon: 'none' });
+    } finally {
+      this._canceling = false;
     }
   },
 

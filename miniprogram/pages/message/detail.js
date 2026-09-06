@@ -23,7 +23,7 @@ Page({
     this.setData({ loading: true });
     try {
       const message = await app.request({ url: `/users/me/notifications/${this.data.messageId}` });
-      this.setData({ message, loading: false });
+      this.setData({ message, loading: false, timeText: this.formatTime(message.created_at) });
       if (!message.is_read) {
         this.markRead(this.data.messageId);
       }

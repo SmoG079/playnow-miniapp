@@ -20,6 +20,7 @@ Page({
   },
 
   onLoad(options) {
+    if (!app.requireLogin()) return;
     const isEdit = options.mode === 'edit' && options.club_id;
     this.setData({ isEdit, clubId: options.club_id ? parseInt(options.club_id) : null });
     wx.setNavigationBarTitle({ title: isEdit ? '编辑俱乐部' : '创建俱乐部' });
@@ -71,8 +72,8 @@ Page({
       address,
       // If user clears/changes the address manually, reset map-derived coordinates
       // so we don't submit stale lat/lng from a previous map pick.
-      latitude: address ? this.data.latitude : null,
-      longitude: address ? this.data.longitude : null,
+      latitude: address === this.data.address ? this.data.latitude : null,
+      longitude: address === this.data.address ? this.data.longitude : null,
     }, () => this._updateSubmitDisabled());
   },
 
@@ -240,13 +241,16 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.loading) return;
     if (!this.data.name) return wx.showToast({ title: '请输入名称', icon: 'none' });
     if (!this.data.phone) return wx.showToast({ title: '请输入联系电话', icon: 'none' });
     if (!/^1\d{10}$/.test(this.data.phone) && !/^\d{7,12}$/.test(this.data.phone)) {
       return wx.showToast({ title: '联系电话格式不正确', icon: 'none' });
     }
     if (!this.data.address) return wx.showToast({ title: '请输入地址', icon: 'none' });
-    if (!this.data.latitude || !this.data.longitude) {
+    if (this.data.closing_time <= this.data.opening_time) return wx.showToast({ title: '结束营业时间须晚于开始时间', icon: 'none' });
+    this.setData({ loading: true });
+    if (this.data.latitude == null || this.data.longitude == null) {
       // Manual address without map coordinates: try backend geocoder (best effort)
       try {
         const geocoded = await this._geocodeAddress(this.data.address);

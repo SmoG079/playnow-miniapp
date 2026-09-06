@@ -30,6 +30,14 @@
       <button wx:else class="btn-book-venue" bindtap="onGoBookVenue" disabled="{{clubIndex === -1}}">🏟️ 去订场并关联此约球</button>
     </block>
 
+    <block wx:if="{{matchMode === 'free'}}">
+      <text class="form-label">日期 *</text>
+      <picker mode="date" value="{{preferredDate}}" bindchange="onDateChange"><view class="form-picker">{{preferredDate || '选择日期'}}</view></picker>
+      <text class="form-label">开始时间 *</text>
+      <picker mode="time" value="{{preferredStart}}" bindchange="onTimeStart"><view class="form-picker">{{preferredStart || '选择开始时间'}}</view></picker>
+      <text class="form-label">结束时间 *</text>
+      <picker mode="time" value="{{preferredEnd}}" bindchange="onTimeEnd"><view class="form-picker">{{preferredEnd || '选择结束时间'}}</view></picker>
+    </block>
     <text class="form-label">还差几人 *</text>
     <input class="form-input" type="number" placeholder="如：1" value="{{playersNeeded}}" bindinput="onField" data-field="playersNeeded" />
 
@@ -92,7 +100,7 @@
   </view>
 
   <view class="submit-area">
-    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{!title || clubIndex === -1}}">发布约球帖</button>
+    <button class="btn-primary" bindtap="onSubmit" loading="{{loading}}" disabled="{{loading || !title || (matchMode === 'venue' && !linkedBookingId)}}">发布约球帖</button>
     <text class="form-tip">* 号为必填项</text>
   </view>
 </view>
