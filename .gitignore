@@ -33,10 +33,16 @@ backend/ssl/*.key
 # Temp files
 需求.txt
 
+# Logs
+*.log
+backend/logs/
+
 # Node
 node_modules/
-package-lock.json
 
 # Private keys & scripts
 private.*.key
 scripts/upload-miniprogram.sh
+
+# WorkBuddy local memory (not for version control)
+.workbuddy/

@@ -1,5 +1,14 @@
 {
+  "scripts": {
+    "check:miniprogram": "npm run test:miniprogram && node scripts/upload-miniprogram.cjs --dry-run",
+    "test:miniprogram": "node --test tests/miniprogram-regression.test.cjs",
+    "upload:miniprogram": "node scripts/upload-miniprogram.cjs",
+    "wot": "wot",
+    "wot:lint": "wot lint",
+    "wot:agent:doctor": "wot agent doctor --client codex --scope project --pin 1.1.0 --timeout 20000"
+  },
   "devDependencies": {
+    "@wot-ui/cli": "1.1.0",
     "less": "^4.2.0",
     "miniprogram-ci": "^1.9.8"
   }

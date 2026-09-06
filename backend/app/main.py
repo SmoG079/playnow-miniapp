@@ -1,7 +1,7 @@
 import os
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Depends
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.database import engine
@@ -60,16 +60,26 @@ async def upload_file(
     file: UploadFile = File(...),
     _=Depends(get_current_user),
 ):
-    """Upload an image file. Returns {url, filename}."""
+    """Upload an image file. Returns {url, filename} with a client-reachable URL."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="缺少文件名")
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in settings.UPLOAD_ALLOWED_EXT:
+        raise HTTPException(status_code=400, detail="仅支持 jpg/png/webp/gif 图片")
+    content = await file.read()
+    max_bytes = settings.UPLOAD_MAX_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"图片不能超过 {settings.UPLOAD_MAX_MB}MB"
+        )
     upload_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
     os.makedirs(upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename or "img.jpg")[1] or ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(upload_dir, filename)
-    content = await file.read()
     with open(filepath, "wb") as f:
         f.write(content)
-    base = f"http://127.0.0.1:8000/uploads/{filename}"
+    base = f"{settings.PUBLIC_BASE_URL}/uploads/{filename}"
+    logger.info("upload saved: %s (%d bytes)", filename, len(content))
     return {"url": base, "filename": filename}
 
 

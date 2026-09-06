@@ -232,7 +232,7 @@ async def my_posts(
         select(MatchPost, User.nickname, User.avatar_url, Club.name,
                func.count(MatchRegistration.id))
         .join(User, MatchPost.user_id == User.id)
-        .join(Club, MatchPost.club_id == Club.id)
+        .outerjoin(Club, MatchPost.club_id == Club.id)
         .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
         .where(MatchPost.user_id == current_user.id)
         .group_by(MatchPost.id)
@@ -260,5 +260,7 @@ async def my_posts(
             user_nickname=nickname, user_avatar=avatar,
             club_name=club_name, registration_count=reg_count or 0,
             venue_id=post.venue_id, booking_id=post.booking_id,
+            price=post.price, notes=post.notes,
+            images=post.images, approval_required=post.approval_required,
         ))
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

@@ -360,6 +360,7 @@ class PostUpdate(BaseModel):
     approval_required: Optional[bool] = None
 
 class PostBrief(BaseModel):
+    notes: Optional[str] = None
     id: int
     club_id: Optional[int] = None
     user_id: int

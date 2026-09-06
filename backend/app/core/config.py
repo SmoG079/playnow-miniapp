@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # Tencent Map (optional: used for address geocoding)
     TENCENT_MAP_KEY: str = ""
 
+    # Public asset base URL — clients load uploaded images from this host.
+    # MUST be https and the same origin/port nginx exposes for /uploads.
+    PUBLIC_BASE_URL: str = "https://www.tennisplaynow.site:8443"
+    UPLOAD_MAX_MB: int = 5
+    UPLOAD_ALLOWED_EXT: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
     # Logging
     LOG_LEVEL: str = "DEBUG"
     LOG_MYSQL_LEVEL: str = "WARNING"   # INFO=显示SQL语句, WARNING=关闭
