@@ -6,6 +6,7 @@ import io
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tempfile
 from types import SimpleNamespace
@@ -19,6 +20,32 @@ spec.loader.exec_module(transport)
 
 
 class ImageTransportTests(unittest.TestCase):
+    def test_parallel_parts_reassemble_without_changing_archive_bytes(self):
+        payload = bytes(range(256)) * 65536 + b"final partial chunk"
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            archive = directory / "image.tar.gz"; archive.write_bytes(payload)
+            parts = directory / "remote-parts"; result = directory / "reassembled.tar.gz"
+            def ssh(args):
+                if args[0] == "mkdir": parts.mkdir()
+                else:
+                    command = shlex.split(args[2])
+                    self.assertEqual(command[:2], ["cat", "--"])
+                    self.assertEqual(command[-2:], [">", str(result)])
+                    result.write_bytes(b"".join(Path(p).read_bytes() for p in command[2:-2]))
+            transport.transfer_image(archive, str(parts), str(result), ssh, shutil.copyfile)
+            self.assertEqual(hashlib.sha256(result.read_bytes()).digest(), hashlib.sha256(payload).digest())
+            self.assertEqual(len(list(parts.iterdir())), 3)
+
+    def test_failed_part_prevents_archive_reassembly(self):
+        with tempfile.TemporaryDirectory() as temp:
+            archive = Path(temp) / "image.tar.gz"; archive.write_bytes(b"payload")
+            ssh = unittest.mock.Mock()
+            with self.assertRaisesRegex(RuntimeError, "transfer failed"):
+                transport.transfer_image(archive, "/tmp/parts", "/tmp/result", ssh,
+                    lambda *args: (_ for _ in ()).throw(RuntimeError("transfer failed")))
+            self.assertEqual(ssh.call_count, 1)
+
     def test_export_is_complete_and_digest_matches_transferred_bytes(self):
         payload = b"image tar payload" * 1000
         process = SimpleNamespace(stdout=io.BytesIO(payload), wait=lambda: 0)
@@ -73,7 +100,8 @@ class ImageTransportTests(unittest.TestCase):
         else:
             self.assertLess(check, load[0]); self.assertLess(load[0], deploy[0])
             self.assertIn("--bootstrap", calls[deploy[0]])
-        self.assertEqual(calls[-1], ["rm", "-f", "/tmp/playnow-release-123-1.tar.gz", "/tmp/playnow-image-123-1.tar.gz"])
+        self.assertEqual(calls[-2], ["rm", "-f", "/tmp/playnow-release-123-1.tar.gz", "/tmp/playnow-image-123-1.tar.gz"])
+        self.assertEqual(calls[-1], ["rm", "-rf", "--", "/tmp/playnow-image-123-1.parts"])
 
 
 if __name__ == "__main__":

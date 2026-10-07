@@ -28,7 +28,7 @@
 
 体验版上传需要另外设置 `WX_MINIPROGRAM_PRIVATE_KEY` 或 `WX_MINIPROGRAM_PRIVATE_KEY_BASE64`；`WX_MINIPROGRAM_ROBOT` 可选，默认为 1。这些 Secret 当前未配置，所以自动上传保持关闭。
 
-SSH 使用严格主机公钥核验及连接保活。GitHub Runner 使用临时 GITHUB_TOKEN 登录 GHCR，拉取 SHA 镜像并导出压缩归档，经 SSH/SCP 传输后在服务器核对 SHA256，再用 Docker 加载。凭据仅留在 Runner 临时目录，运行结束清除；服务器不保存 GHCR 凭据。传输及校验在停止服务之前完成，校验失败不加载镜像、不启动部署。
+SSH 使用严格主机公钥核验及连接保活。GitHub Runner 使用临时 GITHUB_TOKEN 登录 GHCR，拉取 SHA 镜像并导出压缩归档，拆为 8 MiB 分段、最多 16 路 SSH/SCP 并行传输。服务器按原顺序重组归档并核对完整 SHA256，再用 Docker 加载。凭据仅留在 Runner 临时目录，运行结束清除；服务器不保存 GHCR 凭据。分段和完整归档均会清理；单段传输限时 15 分钟。传输及校验在停止服务之前完成，任一分段失败或整体校验失败不加载镜像、不启动部署。普通发布会先检查首次接管标记，未接管时不传输镜像。
 
 ## 服务器发布步骤
 
@@ -59,7 +59,7 @@ SSH 使用严格主机公钥核验及连接保活。GitHub Runner 使用临时 G
 
 - 真实预订支付及取消退款规则按 2026-10-07 决定暂缓；10 项历史测试显式排除，保留待办，详见 [支付与退款待办](deferred-booking-payments.md)。CI 通过不表示真实收款/退款已验收，其余后端测试仍是发布条件。
 
-- 发布控制流的 9 项和镜像传输的 4 项测试已在本地通过，覆盖首次接管、预检查失败、迁移失败、schema 未变回退、schema 改变停写及损坏传输不加载/不部署。
+- 发布控制流的 9 项和镜像传输的 6 项测试已在本地通过，覆盖首次接管、预检查失败、迁移失败、schema 未变回退、schema 改变停写、分段重组一致性及损坏传输不加载/不部署。
 - 数据库空库/恢复副本接管及非法数据拦截已在服务器隔离临时库通过，见 [迁移文档](database-migration-runbook.md)。
 - 持久化和正式 Compose 已在服务器通过验证，见 [Compose 文档](production-compose-runbook.md)。
 - 首次真实 SHA 镜像、GitHub 私钥 Secret、远程镜像拉取和全链路发布还需实际 CI/维护窗口验收。仓库改动没有触发生产部署。

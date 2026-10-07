@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 
 def export_image(reference, directory, username, token):
@@ -34,6 +35,25 @@ def export_image(reference, directory, username, token):
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return archive, digest.hexdigest()
+
+
+def transfer_image(archive, remote_parts, uploaded_image, ssh, scp):
+    """Use bounded concurrent streams, then reassemble in the original order."""
+    parts = []
+    with archive.open("rb") as source:
+        while chunk := source.read(8 * 1024 * 1024):
+            part = archive.parent / f"part-{len(parts):05d}"
+            part.write_bytes(chunk)
+            parts.append(part)
+    if not parts:
+        raise RuntimeError("Cannot transfer an empty image archive")
+    ssh(["mkdir", "-m", "700", remote_parts])
+    targets = [remote_parts + "/" + p.name for p in parts]
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        futures = [executor.submit(scp, part, target) for part, target in zip(parts, targets)]
+        for future in futures:
+            future.result()
+    ssh(["sh", "-c", shlex.join(["cat", "--", *targets]) + " > " + shlex.quote(uploaded_image)])
 
 
 def main():
@@ -63,15 +83,23 @@ def main():
         remote = values["SERVER_PROJECT_PATH"] + "/.releases/" + values["DEPLOY_SHA"] + "-" + values["DEPLOY_RUN_ID"]
         uploaded = "/tmp/playnow-release-" + values["DEPLOY_RUN_ID"] + ".tar.gz"
         uploaded_image = "/tmp/playnow-image-" + values["DEPLOY_RUN_ID"] + ".tar.gz"
+        remote_parts = "/tmp/playnow-image-" + values["DEPLOY_RUN_ID"] + ".parts"
         def ssh(args, input=None):
             subprocess.run(["ssh", *options, "-p", str(port), destination, shlex.join(args)], input=input, text=True, check=True)
+        def scp(source, target):
+            subprocess.run(["scp", *options, "-P", str(port), str(source), destination + ":" + target], check=True, timeout=900)
         try:
+            if os.environ.get("DEPLOY_BOOTSTRAP") != "true":
+                try:
+                    ssh(["sudo", "-n", "test", "-f", values["SERVER_PROJECT_PATH"] + "/.deployment-ready.json"])
+                except subprocess.CalledProcessError as error:
+                    raise RuntimeError("First deployment requires manual bootstrap; no image was transferred or services stopped") from error
             reference = "ghcr.io/smog079/playnow-miniapp-api:" + values["DEPLOY_SHA"]
             image, digest = export_image(reference, directory, values["GHCR_USER"], values["GHCR_TOKEN"])
             ssh(["sudo", "-n", "install", "-d", "-m", "700", remote, remote + "/.registry"])
             subprocess.run(["scp", *options, "-P", str(port), str(archive), destination + ":" + uploaded], check=True)
             ssh(["sudo", "-n", "tar", "-xzf", uploaded, "-C", remote])
-            subprocess.run(["scp", *options, "-P", str(port), str(image), destination + ":" + uploaded_image], check=True)
+            transfer_image(image, remote_parts, uploaded_image, ssh, scp)
             ssh(["sha256sum", "--check", "--status"], digest + "  " + uploaded_image + "\n")
             ssh(["sudo", "-n", "docker", "load", "--input", uploaded_image])
             args = ["sudo", "-n", "python3", remote + "/scripts/deploy-production.py", "--release", remote,
@@ -81,6 +109,7 @@ def main():
         finally:
             ssh(["sudo", "-n", "rm", "-rf", remote + "/.registry"])
             ssh(["rm", "-f", uploaded, uploaded_image])
+            ssh(["rm", "-rf", "--", remote_parts])
 
 
 if __name__ == "__main__":
