@@ -39,7 +39,7 @@ Python 3.11 + FastAPI + SQLAlchemy 2.0 (async) + MySQL 8.0 + Redis 7.
 - **Payment**: Placeholder — `POST /bookings/{id}/pay` directly marks order as paid. WeChat Pay V3 integration pending.
 - **Models**: 15 tables (users, clubs, club_members, venues, venue_time_slots, booking_orders, settlement_records, match_posts, match_registrations, tournaments, tournament_registrations, notifications, comments, payment_logs, refund_records).
 - **Key relationships**: Club → Venue → VenueTimeSlot. BookingOrder links User+Venue+Slot+Club.
-- **Media storage**: 图片/视频存腾讯云 COS（桶 `tennis-miniapp-img-1300427458`，ap-shanghai，公有读私有写，版本控制已开）。`POST /api/v1/upload` 经 `app/services/storage.py` 写入 COS，`file_type` 表单字段选择对象前缀（`avatar`/`court`/`post`/`video`/`doc`，白名单外回落 `upload`）；配置复用 `OSS_*` 字段，生产用 CAM 子账号密钥，缺失时接口返回 502。费用、备案、视频大小限制等注意事项见 [媒体资源存储文档](docs/cos-media-storage.md)。`/uploads` 静态挂载仅为兼容历史链接而保留。
+- **Media storage**: 图片/视频存腾讯云 COS（桶 `tennis-miniapp-img-1300427458`，ap-shanghai，公有读私有写，版本控制已开）。`POST /api/v1/upload` 经 `app/services/storage.py` 写入 COS，`file_type` 表单字段选择对象前缀（`avatar`/`court`/`post`/`video`/`doc`，白名单外回落 `upload`）；配置复用 `OSS_*` 字段，生产用 CAM 子账号密钥，**密钥缺失时回退本地磁盘并打 WARNING**（CI/本地开发据此无需云凭证）。费用、备案、视频大小限制等注意事项见 [媒体资源存储文档](docs/cos-media-storage.md)。`/uploads` 静态挂载既兼容历史链接，也是回退文件的出口。
 
 ## Key Rules
 

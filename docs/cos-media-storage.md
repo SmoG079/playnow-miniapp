@@ -38,12 +38,14 @@
 实现位于 `backend/app/services/storage.py`（**以源码为准**，下列代码为同步说明）：
 
 ```python
-import uuid, os
+import os, uuid
 from typing import Optional
 from qcloud_cos import CosConfig, CosS3Client
 from app.core.config import get_settings
+from app.core.logger import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 _client: Optional[CosS3Client] = None
 
 # 扩展名 -> MIME，避免直接信任客户端上传的 content_type
@@ -54,15 +56,24 @@ MIME = {
 
 PREFIXES = {"avatar", "court", "post", "video", "doc", "upload"}
 
+# 回退目录，同时是 /uploads 静态挂载的根目录（main.py 复用此常量）
+LOCAL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
+
+
+def is_configured() -> bool:
+    """COS 密钥是否齐备；缺任一项即走本地磁盘回退。"""
+    return bool(settings.OSS_ACCESS_KEY_ID and settings.OSS_ACCESS_KEY_SECRET
+                and settings.OSS_BUCKET_NAME)
+
+
+def active_backend() -> str:
+    return "cos" if is_configured() else "local"
+
 
 def _get_client() -> CosS3Client:
-    """惰性创建全局复用的 COS 客户端；密钥缺失时抛 RuntimeError。"""
+    """惰性创建全局复用的 COS 客户端（仅在 is_configured() 为真时调用）。"""
     global _client
     if _client is None:
-        if not (settings.OSS_ACCESS_KEY_ID and settings.OSS_ACCESS_KEY_SECRET
-                and settings.OSS_BUCKET_NAME):
-            raise RuntimeError("COS 未配置：请在 .env 设置 OSS_ACCESS_KEY_ID / "
-                               "OSS_ACCESS_KEY_SECRET / OSS_BUCKET_NAME")
         _client = CosS3Client(CosConfig(
             Region=settings.COS_REGION,
             SecretId=settings.OSS_ACCESS_KEY_ID,
@@ -85,6 +96,15 @@ def public_url(key: str) -> str:
 
 
 def put_object(key: str, content: bytes, ext: str = "") -> str:
+    if not is_configured():
+        # 回退本地磁盘：CI 与本地开发无需云凭证即可跑通上传链路
+        logger.warning("COS 未配置，上传落本地磁盘（非生产预期）：key=%s", key)
+        path = _local_path(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(content)
+        return f"{settings.PUBLIC_BASE_URL}/uploads/{key}"
+
     _get_client().put_object(
         Bucket=settings.OSS_BUCKET_NAME, Key=key, Body=content,
         ContentType=MIME.get(ext.lower(), "application/octet-stream"),
@@ -93,8 +113,21 @@ def put_object(key: str, content: bytes, ext: str = "") -> str:
 
 
 def delete_object(key: str) -> None:
+    if not is_configured():
+        try:
+            os.remove(_local_path(key))
+        except FileNotFoundError:
+            pass
+        return
     _get_client().delete_object(Bucket=settings.OSS_BUCKET_NAME, Key=key)
 ```
+
+`_local_path()` 会对 key 做 `abspath` 并校验仍在 `LOCAL_DIR` 内，阻断 `../` 越界写入。
+
+**为什么保留本地回退**：项目 CI 惯例是不注入云凭证（`.github/workflows/deploy.yml` 的 backend job 只起本地 MySQL/Redis）。若密钥缺失直接抛错，`tests/http_fullflow.py` 的 `POST /upload` 会拿到 502 而失败。回退后 CI 走本地磁盘、生产走 COS，同一套断言都成立。
+
+> ⚠️ 回退是**静默降级风险点**：生产 `.env` 密钥若被误删或失效，上传会落到本地磁盘且返回的 URL 仍可访问，不易察觉。因此回退时**每次上传都打 WARNING**，并在应用启动时打印 `media storage backend: cos|local` 便于排障。生产应为 `cos`。
+
 
 `backend/app/main.py` 当前的端点实现（`file_type` 由前端 `formData` 传入，`from fastapi import Form`、`from fastapi.concurrency import run_in_threadpool`）：
 
@@ -117,16 +150,16 @@ async def upload_file(
     try:
         url = await run_in_threadpool(storage.put_object, key, content, ext)
     except Exception:
-        logger.error("cos upload failed: key=%s", key, exc_info=True)
+        logger.error("media upload failed: key=%s", key, exc_info=True)
         raise HTTPException(status_code=502, detail="图片上传失败，请稍后重试")
-    logger.info("cos upload: %s (%d bytes)", key, len(content))
+    logger.info("media upload: %s -> %s (%d bytes)", key, storage.active_backend(), len(content))
     return {"url": url, "filename": key}
 ```
 
 两点说明：
 
 - COS 调用是同步阻塞的，用 `run_in_threadpool` 包装，避免阻塞事件循环。
-- `app.mount("/uploads", StaticFiles(...))` **保留**，仅用于兼容数据库中已存在的 `/uploads/<uuid>` 历史链接（线上 2 个文件），待旧链接自然过期后再移除。
+- `app.mount("/uploads", StaticFiles(directory=storage.LOCAL_DIR))` **保留**：既兼容数据库中已存在的 `/uploads/<uuid>` 历史链接（线上 2 个文件），也是未配置 COS 时回退文件的对外出口。挂载目录改为引用 `storage.LOCAL_DIR`，避免路径在两处各写一遍。
 
 ### 环境配置
 
@@ -141,7 +174,7 @@ OSS_ACCESS_KEY_SECRET=<子账号 SecretKey>
 COS_REGION=ap-shanghai
 ```
 
-> **部署前提**：密钥未配置时 `/api/v1/upload` 会返回 502 并在日志打出 `RuntimeError: COS 未配置`。生产服务器的 `.env` 已按下节配置完毕。
+> **部署前提**：生产服务器 `.env` 已按下文配置完毕，上传走 COS。**若密钥缺失，接口不会报错，而是静默回退本地磁盘**（返回 `PUBLIC_BASE_URL/uploads/<key>`）并在日志打 WARNING。部署后用日志中的 `media storage backend: cos` 确认后端正确，或直接看上传返回的 URL 域名是否为 `myqcloud.com`。
 
 `backend/requirements.txt` 已加入 `cos-python-sdk-v5==1.9.44`。`oss2==2.19.0` 目前没有任何代码引用，确认无其它用途后可移除。
 
@@ -298,12 +331,15 @@ CDN 相关准备已就绪：加速域名证书 `static.tennisplaynow.site`（有
 | 2026-10-07 | 创建 CAM 子用户 `playnow-cos` + 单桶最小权限策略 | 子用户、策略（PolicyId 288832582）、永久密钥均创建成功 |
 | 2026-10-07 | 子账号权限边界实测 | 上传/匿名读取/删除通过；`GetBucket` 与 `GetBucketACL` 返回 `AccessDenied`，最小权限生效 |
 | 2026-10-07 | 服务器 `backend/.env` 写入 COS 配置 | 5 个键写入，原文件已备份为 `.env.bak.20261007163457` |
+| 2026-10-07 | 生产部署验证（发现未上线） | 线上镜像 `d9a2e6bf...` = master，容器内无 `storage.py` / `qcloud_cos`；真实调用 `POST /api/v1/upload` 返回 `.../uploads/<uuid>.png`（本地磁盘）且文件落于 `/app/uploads/` → **代码未进 master，未上线** |
+| 2026-10-07 | 本地回退路径验证（等价 CI 环境） | 无凭证时 `is_configured()=False`、`active_backend()='local'`；上传落盘后经 `/uploads` 挂载 GET 返回 200 且字节一致（复现 `http_fullflow.py` 断言）；非法前缀回落 `upload/`；`../` 越界被拦截 |
+| 2026-10-07 | COS 路径回归（挂载新代码 + 生产子账号密钥的临时容器） | `is_configured()=True`、`active_backend()='cos'`；上传真实对象 → 匿名 GET `200 image/png` 字节一致 → 删除成功 |
 
 ## 当前边界
 
-- 后端代码已切换到 COS 并通过本地真实验证；服务器 `backend/.env` 已写入子账号密钥（2026-10-07），但**代码尚未部署到生产**，线上 API 仍写本地磁盘 `backend/uploads`。发布由 `master` 的 CI 流程完成（`push → master` 触发构建与部署），本次未执行。
-- 验证覆盖存储层真实读写与匿名访问；**尚未经由运行中的 API 与小程序做端到端上传验证**（本机无 MySQL/Redis，起不了完整服务）。
-- 生产密钥已换成 CAM 子账号 `playnow-cos`（仅单桶三动作）；本机开发联调仍可用主账号凭证。
+- 后端代码已切换到 COS，服务器 `backend/.env` 已写入子账号密钥（2026-10-07）。**部署状态以 `master` 的 CI 结果为准**——本文件描述的代码需先合并进 `master` 才会生效（`push → master` 触发构建与部署）。
+- 存储层读写与匿名访问均已真实验证；回退路径在本地复现了 CI 断言，COS 路径在生产密钥下回归通过。
+- 生产密钥为 CAM 子账号 `playnow-cos`（仅单桶三动作）；本机开发联调可用任一有权限的凭证，CI 无凭证时自动走本地磁盘回退。
 - 桶内当前 0 个业务对象，历史 `backend/uploads` 文件未迁移（`/uploads` 挂载保留兼容）。
 - 无 CDN 加速，外网下行按 ¥0.5/GB 计费；备案未推进，无自建资源域名、无防盗链。
 - `doc/` 前缀公开可读问题尚未处理（见注意事项 10）。

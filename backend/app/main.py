@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     # Database schema is managed by Alembic migrations.
     # Run: docker-compose exec api alembic upgrade head
+    logger.info("media storage backend: %s", storage.active_backend())
     yield
     await engine.dispose()
 
@@ -65,7 +66,7 @@ async def upload_file(
     """Upload an image to COS. Returns {url, filename} with a client-reachable URL.
 
     file_type selects the object prefix: avatar / court / post / video (其他回落 upload)。
-    见 docs/cos-media-storage.md。
+    COS 未配置时回退本地磁盘（见 app/services/storage.py 与 docs/cos-media-storage.md）。
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="缺少文件名")
@@ -82,15 +83,17 @@ async def upload_file(
     try:
         url = await run_in_threadpool(storage.put_object, key, content, ext)
     except Exception:
-        logger.error("cos upload failed: key=%s", key, exc_info=True)
+        logger.error("media upload failed: key=%s", key, exc_info=True)
         raise HTTPException(status_code=502, detail="图片上传失败，请稍后重试")
-    logger.info("cos upload: %s (%d bytes)", key, len(content))
+    logger.info(
+        "media upload: %s -> %s (%d bytes)", key, storage.active_backend(), len(content)
+    )
     return {"url": url, "filename": key}
 
 
 # Serve legacy uploaded files. 2026-10-07 起新上传走 COS，此挂载仅为兼容
-# 数据库中已存在的 /uploads/<uuid> 历史链接，待其过期后移除。
+# 数据库中已存在的 /uploads/<uuid> 历史链接（storage.py 未配置 COS 时也复用它）。
 from fastapi.staticfiles import StaticFiles
-uploads_path = os.path.join(os.path.dirname(__file__), "..", "uploads")
-os.makedirs(uploads_path, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
+
+os.makedirs(storage.LOCAL_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=storage.LOCAL_DIR), name="uploads")
