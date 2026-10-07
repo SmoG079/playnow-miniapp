@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import tarfile
+import textwrap
 from urllib.parse import quote
 import urllib.request
 
@@ -93,7 +94,8 @@ def main():
         schema_unchanged = False
         backup = None
 
-        schema_code = """import os,json
+        schema_code = textwrap.dedent("""
+    import os,json
     from sqlalchemy import create_engine,inspect
     from sqlalchemy.engine import make_url
     e=create_engine(make_url(os.environ['DATABASE_URL']).set(drivername='mysql+pymysql'))
@@ -102,7 +104,7 @@ def main():
         if t=='alembic_version': continue
         data[t]={'columns':i.get_columns(t),'indexes':i.get_indexes(t),'foreign_keys':i.get_foreign_keys(t)}
     print(json.dumps(data,default=str,sort_keys=True));e.dispose()
-    """
+    """)
         def schema_fingerprint(phase):
             data = run(compose + ["run", "--rm", "--no-deps", "-T", "api", "python", "-c", schema_code], phase)
             return hashlib.sha256(json.dumps(json.loads(data), sort_keys=True).encode()).hexdigest()

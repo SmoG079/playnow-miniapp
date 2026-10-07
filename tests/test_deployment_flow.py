@@ -52,6 +52,7 @@ class DeploymentFlowTests(unittest.TestCase):
                     else:
                         out = json.dumps([{"Name": "/" + name, "State": {"Running": True}, "Mounts": [{"Destination": "/app/celerybeat"}]} for name in deployment.APP_CONTAINERS])
                 if "-c" in argv and "get_table_names" in argv[-1]:
+                    compile(argv[-1], "<schema-fingerprint>", "exec")
                     schema_calls += 1
                     out = json.dumps({"schema": "new" if schema_changed and schema_calls > 1 else "old"})
                 if fail == "preflight" and "--check-image" in argv: error = True
