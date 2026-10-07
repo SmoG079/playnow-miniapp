@@ -67,7 +67,7 @@ jobs:
         run: |
           python -m compileall app alembic scripts -q
           python -m unittest tests/test_free_post_queries.py
-          pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py
+          python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py
       - name: Empty database migration
         run: |
           python -m alembic upgrade head
