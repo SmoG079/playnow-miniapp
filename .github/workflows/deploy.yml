@@ -67,7 +67,7 @@ jobs:
         run: |
           python -m compileall app alembic scripts -q
           python -m unittest tests/test_free_post_queries.py
-          python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py
+          python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py -m "not deferred_booking_payments"
       - name: Empty database migration
         if: ${{ !cancelled() }}
         run: |

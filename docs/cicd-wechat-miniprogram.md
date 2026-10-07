@@ -57,6 +57,8 @@ SSH 使用严格主机公钥核验。GHCR 使用工作流临时 GITHUB_TOKEN，�
 
 ## 验证与当前边界
 
+- 真实预订支付及取消退款规则按 2026-10-07 决定暂缓；10 项历史测试显式排除，保留待办，详见 [支付与退款待办](deferred-booking-payments.md)。CI 通过不表示真实收款/退款已验收，其余后端测试仍是发布条件。
+
 - 发布控制流的 8 项测试已在本地通过，覆盖首次接管、预检查失败、迁移失败、schema 未变回退及 schema 改变停写。
 - 数据库空库/恢复副本接管及非法数据拦截已在服务器隔离临时库通过，见 [迁移文档](database-migration-runbook.md)。
 - 持久化和正式 Compose 已在服务器通过验证，见 [Compose 文档](production-compose-runbook.md)。

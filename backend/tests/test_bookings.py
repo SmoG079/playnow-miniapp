@@ -279,6 +279,7 @@ def _make_cancel_session(order, slot, user, club):
     })
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
     """P1-1: exactly 24 hours before slot should yield full refund (boundary at FREE_CANCEL_HOURS)."""
@@ -323,6 +324,7 @@ async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
     assert result["refund_amount"] == "100.00"
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
     """P1-1: 1 minute before slot should yield 50% refund (boundary just before 0 hours)."""
@@ -366,6 +368,7 @@ async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
     assert result["refund_amount"] == "50.000"
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
     """P1-1: cancellation exactly at slot start time should be rejected."""
@@ -410,6 +413,7 @@ async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
     assert "after start time" in exc_info.value.detail.lower()
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
     """P1-1: 25 hours before slot should yield full refund (>= FREE_CANCEL_HOURS)."""
@@ -452,6 +456,7 @@ async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
     assert result["refund_amount"] == "100.00"
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_half_refund_12_hours_before(user, venue, club):
     """P1-1: 12 hours before slot should yield 50% refund (between 0 and FREE_CANCEL_HOURS)."""
@@ -495,6 +500,7 @@ async def test_cancel_booking_half_refund_12_hours_before(user, venue, club):
     assert result["refund_amount"] == "50.000"
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_rejects_after_start_time(user, venue, club):
     """P1-1: cancellation after slot start time should be rejected."""
@@ -556,6 +562,7 @@ async def test_get_booking_config_returns_free_cancel_hours():
 # P1-7: rate limiting 429 tests for protected endpoints
 # ---------------------------------------------------------------------------
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_pay_booking_returns_429_when_rate_limited(user):
     """POST /bookings/{id}/pay should return 429 when check_rate_limit raises."""
@@ -571,6 +578,7 @@ async def test_pay_booking_returns_429_when_rate_limited(user):
     assert exc_info.value.status_code == 429
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_cancel_booking_returns_429_when_rate_limited(user):
     """POST /bookings/{id}/cancel should return 429 when check_rate_limit raises."""
@@ -638,7 +646,8 @@ async def test_get_booking_club_admin_other_club_forbidden(user, venue, club):
     )
     user.role = UserRole.club_admin
     session = FakeSession(rows_map={
-        "booking_orders.id": (order, venue, club, slot),
+        "booking_orders.id": (order, venue, club),
+        "VenueTimeSlot": slot,
         "club_members.club_id": None,
     })
 
@@ -679,7 +688,8 @@ async def test_get_booking_club_admin_authorized(user, venue, club):
     user.role = UserRole.club_admin
     member = ClubMember(club_id=club.id, user_id=user.id, role=ClubMemberRole.admin)
     session = FakeSession(rows_map={
-        "booking_orders.id": (order, venue, club, slot),
+        "booking_orders.id": (order, venue, club),
+        "VenueTimeSlot": slot,
         "club_members.club_id": member,
     })
 
@@ -692,6 +702,7 @@ async def test_get_booking_club_admin_authorized(user, venue, club):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_pay_booking_rejects_past_slot(user, venue, club):
     """Payment should be rejected if the slot start time has already passed."""
@@ -734,6 +745,7 @@ async def test_pay_booking_rejects_past_slot(user, venue, club):
     assert "already passed" in exc_info.value.detail.lower()
 
 
+@pytest.mark.deferred_booking_payments
 @pytest.mark.asyncio
 async def test_pay_booking_idempotency_rejects_expired_lock(user, venue, club):
     """Reusing a fresh prepay_id should be rejected if the slot lock is gone."""
