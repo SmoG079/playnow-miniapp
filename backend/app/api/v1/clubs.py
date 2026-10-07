@@ -9,6 +9,7 @@ from sqlalchemy import select, func, update
 import httpx
 import logging
 from app.core.database import get_db
+from app.services.pricing import slot_charge
 from app.core.config import get_settings
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord
@@ -375,9 +376,6 @@ async def get_club_venue_slots(
                 slot_start = next_time
             db.add_all(slots_batch)
 
-    # Build price map from venues to avoid lazy loads
-    price_map = {v.id: v.price_per_hour for v in venues}
-
     # Get all slots for all venues on the date
     venue_ids = [v.id for v in venues]
     slot_result = await db.execute(
@@ -413,40 +411,11 @@ async def get_club_venue_slots(
     # Group slots by start_time
     from collections import defaultdict
 
-    def _effective_price(venue, slot):
-        """Check venue price_rules for matching special pricing."""
-        rules = venue.price_rules or []
-        base = slot.price_override or venue.price_per_hour or 0
-        for rule in rules:
-            rtype = rule.get("type", "")
-            rprice = rule.get("price")
-            if rprice is None: continue
-            if rtype == "date_range":
-                sd = rule.get("start_date", "")
-                ed = rule.get("end_date", "")
-                if sd and ed and sd <= str(slot.date) <= ed:
-                    st = rule.get("start_time", "")
-                    et = rule.get("end_time", "")
-                    if st or et:
-                        slot_time = slot.start_time.strftime("%H:%M")
-                        if st and st > slot_time: continue
-                        if et and et <= slot_time: continue
-                    return Decimal(str(rprice))
-            elif rtype in ("time_range", "daily_time"):
-                st = rule.get("start_time", "")
-                et = rule.get("end_time", "")
-                slot_time = slot.start_time.strftime("%H:%M")
-                if st and et and st <= slot_time < et:
-                    return Decimal(str(rprice))
-        return Decimal(str(base))
-
     time_groups = defaultdict(dict)
     for slot in slots:
         time_key = slot.start_time.strftime("%H:%M")
-        duration_minutes = (slot.end_time.hour * 60 + slot.end_time.minute) - (slot.start_time.hour * 60 + slot.start_time.minute)
         venue = next((v for v in venues if v.id == slot.venue_id), None)
-        base_price = _effective_price(venue, slot) if venue else price_map.get(slot.venue_id, 0)
-        price = base_price * Decimal(duration_minutes) / Decimal("60")
+        price = slot_charge(venue, slot)
         time_groups[time_key][slot.venue_id] = CourtSlotCell(
             slot_id=slot.id,
             venue_id=slot.venue_id,

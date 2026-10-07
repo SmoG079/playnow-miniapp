@@ -176,8 +176,22 @@
       "passed": true
     },
     {
+      "method": "PUT",
+      "path": "/venues/1/with-club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
       "method": "GET",
       "path": "/clubs/1/venue-slots",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/venues/1/slots",
       "expected": 200,
       "actual": 200,
       "passed": true
@@ -589,7 +603,7 @@
       "passed": true
     }
   ],
-  "passed": 84,
+  "passed": 86,
   "payment_refund": "deferred",
   "real_wechat_login_phone_geocoding": "not exercised"
 }

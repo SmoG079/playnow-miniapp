@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
+from app.services.pricing import hourly_slot_price
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, VenueStatus
 from app.schemas.schemas import (
@@ -43,6 +44,7 @@ async def create_venue_for_club(
         max_capacity=req.max_capacity,
         cover_image=req.cover_image,
         sort_order=req.sort_order,
+        price_rules=req.price_rules,
     )
     db.add(venue)
     await db.flush()
@@ -164,7 +166,7 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
         date=slot.date,
         start_time=slot.start_time,
         end_time=slot.end_time,
-        price=slot.price_override if slot.price_override is not None else slot.venue.price_per_hour,
+        price=hourly_slot_price(slot.venue, slot),
         status=_v(slot.status),
     )
 

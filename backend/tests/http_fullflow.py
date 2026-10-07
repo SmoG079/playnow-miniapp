@@ -51,13 +51,17 @@ else: groups=slots
 if groups and 'slots' in groups[0]: slots=groups[0]['slots']
 else: slots=groups
 ids=[s['id'] for s in slots]
-call('GET',f'/clubs/{club}/venue-slots',params={'date':date})
+call('PUT',f'/venues/{venue}/with-club/{club}',owner,json={'price_rules':[{'type':'time_range','start_time':'08:00','end_time':'10:00','price':180}]})
+grid=call('GET',f'/clubs/{club}/venue-slots',params={'date':date})
+quoted=sum(float(cell['price']) for row in grid['rows'] for cell in row['cells'] if cell['slot_id'] in ids[:2])
+assert quoted==360
+assert float(call('GET',f'/venues/{venue}/slots',params={'date':date})[0]['slots'][0]['price'])==180
 call('PATCH',f'/venues/{venue}/slots/{ids[0]}/status',owner,json={'status':'maintenance'})
 call('POST','/bookings',member,expected=409,json={'slot_id':ids[0]})
 call('PATCH',f'/venues/{venue}/slots/{ids[0]}/status',owner,json={'status':'available'})
 call('POST','/bookings',member,expected=422,json={})
 booking=call('POST','/bookings',member,json={'slot_ids':ids[:2]})
-assert float(booking['amount'])==240
+assert float(booking['amount'])==quoted, (booking['amount'],quoted)
 bid=booking['id']
 call('POST','/bookings',other,expected=409,json={'slot_id':ids[0]})
 call('GET',f'/bookings/{bid}',member)
@@ -116,7 +120,9 @@ image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 upload=call('POST','/upload',owner,files={'file':('e2e.png',image,'image/png')})
 assert c.get(upload['url']).content==image
 call('POST','/upload',owner,expected=400,files={'file':('invalid.txt',b'test','text/plain')})
-unused=call('POST',f'/venues/with-club/{club}',owner,json={'name':'empty court','price_per_hour':80})['id']
+created=call('POST',f'/venues/with-club/{club}',owner,json={'name':'empty court','price_per_hour':80,'price_rules':[{'type':'time_range','start_time':'18:00','end_time':'22:00','price':100}]})
+assert created['price_rules'][0]['price']==100
+unused=created['id']
 call('DELETE',f'/venues/{unused}/with-club/{club}',owner)
 report={'checks':checks,'passed':len(checks),'payment_refund':'deferred','real_wechat_login_phone_geocoding':'not exercised'}
 open(os.environ.get('FULLFLOW_REPORT','/workspace/fullflow-result.json'),'w').write(json.dumps(report,indent=2))

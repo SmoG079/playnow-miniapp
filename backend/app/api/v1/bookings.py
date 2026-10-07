@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
+from app.services.pricing import slot_charge
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock, redis_client
 from app.core.rate_limit import check_rate_limit
@@ -146,9 +147,7 @@ async def create_booking(
             slot.status = SlotStatus.locked
             slot.locked_by = current_user.id
             slot.locked_at = _utc_now()
-            duration_minutes = (slot.end_time.hour * 60 + slot.end_time.minute) - (slot.start_time.hour * 60 + slot.start_time.minute)
-            base_price = slot.price_override if slot.price_override is not None else venue.price_per_hour
-            total_price += base_price * Decimal(duration_minutes) / Decimal("60")
+            total_price += slot_charge(venue, slot)
 
         # Create order
         order = BookingOrder(
