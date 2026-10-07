@@ -25,6 +25,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
 
   celery_worker:
@@ -90,3 +92,4 @@ services:
 
 volumes:
   mysql_data:
+  uploads:

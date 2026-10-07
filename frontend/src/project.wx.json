@@ -1,0 +1,25 @@
+{
+  "description": "PlayNow Wot UI 微信小程序",
+  "compileType": "miniprogram",
+  "libVersion": "3.16.0",
+  "appid": "wxfad430ba15c6c3e2",
+  "projectname": "PlayNow",
+  "packOptions": { "ignore": [], "include": [] },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": false,
+    "coverView": true,
+    "nodeModules": false,
+    "showShadowRootInWxmlPanel": true,
+    "compileHotReLoad": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "disableSWC": true
+  },
+  "condition": {},
+  "editorSetting": { "tabIndent": "insertSpaces", "tabSize": 2 }
+}

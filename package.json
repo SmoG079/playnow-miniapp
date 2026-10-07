@@ -1,5 +1,14 @@
 {
+  "scripts": {
+    "check:miniprogram": "npm run test:miniprogram && npm run build:mp-weixin --prefix frontend && node scripts/upload-miniprogram.cjs --dry-run",
+    "test:miniprogram": "npm run typecheck --prefix frontend && npm test --prefix frontend",
+    "upload:miniprogram": "node scripts/upload-miniprogram.cjs",
+    "wot": "wot",
+    "wot:lint": "wot lint",
+    "wot:agent:doctor": "wot agent doctor --client codex --scope project --pin 1.1.0 --timeout 20000"
+  },
   "devDependencies": {
+    "@wot-ui/cli": "1.1.0",
     "less": "^4.2.0",
     "miniprogram-ci": "^1.9.8"
   }

@@ -9,7 +9,7 @@ from alembic import context
 
 # Ensure the backend package is importable.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.models.models import Base
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,7 +21,11 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-target_metadata = Base.metadata
+if "target_metadata" in config.attributes:
+    target_metadata = config.attributes["target_metadata"]
+else:
+    from app.models.models import Base
+    target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
@@ -70,6 +74,11 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
+    supplied_connection = config.attributes.get("connection")
+    if supplied_connection is not None:
+        do_run_migrations(supplied_connection)
+        return
+
     connectable = create_engine(get_database_url(), poolclass=pool.NullPool)
 
     with connectable.connect() as connection:

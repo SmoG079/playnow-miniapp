@@ -8,15 +8,24 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Architecture
 
-### Frontend (`miniprogram/`)
+> 仓库仅有一套前端 `frontend/`（uni-app + Vue 3 + wot-ui）。原生的 `miniprogram/` 已废弃删除（2026-09-06）。
 
-Native WeChat Mini Program (WXML/WXSS/JS). No build step.
+### Frontend (`frontend/`)
 
-- **5-tab custom tab bar** (`custom-tab-bar/`) with a "+" center button for role-aware actions
-- **Auth flow**: `wx.login()` → backend `/auth/login` → JWT access_token(2h) + refresh_token(30d) stored in Storage. Auto-refresh on 401.
-- **Request layer**: `app.js::request()` auto-attaches `Authorization: Bearer` header, handles 401 refresh.
-- **Role system**: 3 roles — `user`, `club_admin`, `platform_admin`. `utils/permission.js` provides guards.
-- **Dev login**: Backend `/auth/login` supports `code` starting with `dev_` to bypass WeChat API. Frontend `auth.js` falls back to `dev_<timestamp>` when `wx.login()` fails.
+uni-app + Vue 3 + TypeScript，编译目标 `mp-weixin`（微信小程序 appid `wxfad430ba15c6c3e2`）。
+
+- **技术栈**: `@dcloudio/uni-app` 3.0.0-5020420260813003 + Vue 3.4.21 + `@wot-ui/ui` 2.3.2 + pinia 2.1.7 + sass
+- **组件引入**: `pages.json` 里 easycom 规则 `^wd-(.*)` → `@wot-ui/ui/components/wd-$1/wd-$1.vue`，**无需手动 import**。npm 安装，导入路径是 `@wot-ui/ui`（不是文档常见的 `@/uni_modules/wot-ui`）
+- **页面**: `src/pages.json` 注册 28 个页面，5 个 tabBar（首页 / 订场 / 发布 / 消息 / 我的）。2026-09-06 主包实测 956K（远低于 2MB），新增非首屏页面应走分包
+- **tabBar 实现**：使用**原生 tabBar + 图标图片**（不用 custom），list 每项配 `iconPath` + `selectedIconPath`。图标位于 `src/static/tabbar/`（5 形状 × 2 颜色，共 10 张 PNG，81x81，2-4KB/张）。**不要用 custom-tab-bar**：uni-app mp-weixin 的 `src/custom-tab-bar/` 是纯复制目录（只能放原生 wxml/wxss/js/json，放 .vue 会被原样复制无法识别），且官方文档明确「微信小程序自定义 tabBar 体验不佳，不太推荐使用」
+- **导航栏**: `globalStyle.navigationStyle: custom`，所有页面需自行处理状态栏与安全区适配
+- **请求层**: `src/services/api.ts` 统一封装 `uni.request`，自动附加 `Authorization: Bearer`，401 时走 `/auth/refresh` 且**并发共享同一个 refreshPromise**。`src/config.ts` 的 `API_BASE_URL = https://www.tennisplaynow.site:8443/api/v1`。发布前需在小程序后台配置 request 合法域名（含 8443 端口）
+- **Session**: `src/stores/session.ts`（pinia）持有 user/token，派生 `isClubAdmin` / `isPlatformAdmin`
+- **Auth flow**: `uni.login()` → backend `/auth/login` → JWT access_token + refresh_token 存 Storage
+- **Role system**: 3 roles — `user`, `club_admin`, `platform_admin`
+- **Dev login**: Backend `/auth/login` 支持 `dev_` 前缀的 code 绕过微信 API，用于本地联调
+- **UI 组件写法**: 涉及 `wd-*` 组件前，先读 `.agents/skills/wot-ui-v2/SKILL.md`，用 `wot info <Component>` / `wot demo <Component>` 查准确 API，不要凭记忆写 props
+- **反馈类 hook**: `useToast` / `useDialog` / `useNotify` 除调用外，还需在页面模板里显式声明对应 `wd-*` 组件实例
 
 ### Backend (`backend/`)
 
@@ -120,8 +129,20 @@ bash scripts/preflight.sh
 python backend/tests/smoke_test.py
 ```
 
-### Mini Program
-Open `miniprogram/` in WeChat Developer Tools. `baseURL` in `app.js` → `http://127.0.0.1:8000/api/v1`. Enable "不校验合法域名" in local settings.
+### Mini Program — uni-app (`frontend/`) — 主航道
+
+```bash
+cd frontend
+npm run dev:mp-weixin     # 开发模式，产出 dist/dev/mp-weixin（需 watch）
+npm run build:mp-weixin   # 生产构建，产出 dist/build/mp-weixin（已验证）
+npm run dev:h5            # H5 预览 http://127.0.0.1:5188
+npm run typecheck         # vue-tsc --noEmit，提交前必跑
+npm run test              # vitest run
+npm run wot:lint          # wot-ui 组件用法检查
+```
+
+用微信开发者工具打开 `frontend/dist/dev/mp-weixin`，勾选「不校验合法域名」。
+改 `src/config.ts` 的 `API_BASE_URL` 可切到本地后端 `http://127.0.0.1:8000/api/v1`。
 
 ## Branch Structure
 - `master` — main branch (merged PR #1)

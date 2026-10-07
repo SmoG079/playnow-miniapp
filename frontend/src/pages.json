@@ -1,0 +1,87 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^Photo$": "@/components/Photo.vue",
+      "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue"
+    }
+  },
+  "pages": [
+    { "path": "pages/home/index" },
+    { "path": "pages/booking/club-list" },
+    { "path": "pages/booking/venue-detail" },
+    { "path": "pages/booking/confirm" },
+    { "path": "pages/booking/success" },
+    { "path": "pages/publish/post-create" },
+    { "path": "pages/publish/club-create" },
+    { "path": "pages/publish/tournament-create" },
+    { "path": "pages/publish/venue-manage" },
+    { "path": "pages/publish/slot-manage" },
+    { "path": "pages/publish/post-registration-approve" },
+    { "path": "pages/chat/index" },
+    { "path": "pages/chat/conversation" },
+    { "path": "pages/profile/index" },
+    { "path": "pages/profile/edit" },
+    { "path": "pages/profile/my-bookings" },
+    { "path": "pages/profile/my-posts" },
+    { "path": "pages/profile/my-registrations" },
+    {
+      "path": "pages/profile/club-dashboard",
+      "style": { "enablePullDownRefresh": true }
+    },
+    { "path": "pages/profile/settlement-list" },
+    { "path": "pages/admin/dashboard" },
+    { "path": "pages/admin/club-manage" },
+    { "path": "pages/admin/venue-manage" },
+    { "path": "pages/admin/order-manage" },
+    { "path": "pages/common/login" },
+    { "path": "pages/common/post-detail" },
+    { "path": "pages/common/tournament-detail" },
+    { "path": "pages/common/user-profile" }
+  ],
+  "tabBar": {
+    "color": "#849188",
+    "selectedColor": "#147553",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "iconWidth": "22px",
+    "spacing": "3px",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/booking/club-list",
+        "text": "订场",
+        "iconPath": "static/tabbar/calendar.png",
+        "selectedIconPath": "static/tabbar/calendar-active.png"
+      },
+      {
+        "pagePath": "pages/publish/post-create",
+        "text": "发布",
+        "iconPath": "static/tabbar/add.png",
+        "selectedIconPath": "static/tabbar/add-active.png"
+      },
+      {
+        "pagePath": "pages/chat/index",
+        "text": "消息",
+        "iconPath": "static/tabbar/message.png",
+        "selectedIconPath": "static/tabbar/message-active.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/user.png",
+        "selectedIconPath": "static/tabbar/user-active.png"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#f5f7f6",
+    "navigationBarTitleText": "PlayNow"
+  }
+}
