@@ -32,11 +32,15 @@ class Settings(BaseSettings):
     WX_PAY_NOTIFY_URL: str = ""
     WX_PAY_CERT_DIR: str = "/app/certs"
     
-    # OSS
-    OSS_ENDPOINT: str = ""
+    # Tencent Cloud COS — 媒体资源存储，见 docs/cos-media-storage.md
+    # 生产环境必须使用 CAM 子账号密钥（只授权单个桶），不要用主账号
+    OSS_ENDPOINT: str = "cos.ap-shanghai.myqcloud.com"
     OSS_ACCESS_KEY_ID: str = ""
     OSS_ACCESS_KEY_SECRET: str = ""
     OSS_BUCKET_NAME: str = ""
+    COS_REGION: str = "ap-shanghai"
+    # 仅当使用 STS 临时凭证时需要（永久密钥留空）
+    OSS_SESSION_TOKEN: str = ""
 
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600

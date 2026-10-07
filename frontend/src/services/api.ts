@@ -134,12 +134,16 @@ export function currentRoute() {
   return page ? `/${page.route}` : "/pages/home/index";
 }
 
-export function uploadFile(filePath: string): Promise<{ url: string }> {
+export function uploadFile(
+  filePath: string,
+  fileType = "upload",
+): Promise<{ url: string }> {
   return new Promise((resolve, reject) => {
     uni.uploadFile({
       url: API_BASE_URL + "/upload",
       filePath,
       name: "file",
+      formData: { file_type: fileType },
       header: { Authorization: `Bearer ${uni.getStorageSync("access_token")}` },
       success: (response) => {
         try {

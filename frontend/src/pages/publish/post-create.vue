@@ -73,7 +73,7 @@ async function submit() {
   try {
     const urls = [];
     for (const path of images.value)
-      urls.push(path.startsWith("http") ? path : (await uploadFile(path)).url);
+      urls.push(path.startsWith("http") ? path : (await uploadFile(path, "post")).url);
     await request("/posts", {
       method: "POST",
       data: {

@@ -61,7 +61,7 @@ async function save() {
     const cover = image.value
       ? /^https?:/.test(image.value)
         ? image.value
-        : (await uploadFile(image.value)).url
+        : (await uploadFile(image.value, "post")).url
       : null;
     const t: any = await request("/tournaments", {
       method: "POST",
