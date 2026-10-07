@@ -25,10 +25,13 @@ async function load(reset = true) {
 onShow(() => load());
 onReachBottom(() => more.value && load(false));
 async function read(m: any) {
-  if (!m.is_read)
-    await request(`/users/me/notifications/${m.id}/read`, {
-      method: "PUT",
-    }).catch(() => {});
+  if (m.is_read) return;
+  try {
+    await request(`/users/me/notifications/${m.id}/read`, { method: "PUT" });
+    m.is_read = true;
+  } catch (error: any) {
+    uni.showToast({ title: error.message || "标记已读失败", icon: "none" });
+  }
 }
 </script>
 <template>
