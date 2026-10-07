@@ -141,9 +141,22 @@ OSS_ACCESS_KEY_SECRET=<子账号 SecretKey>
 COS_REGION=ap-shanghai
 ```
 
-> **部署前提**：这三项密钥未配置时，`/api/v1/upload` 会返回 502 并在日志打出 `RuntimeError: COS 未配置`。首次部署前必须先写入服务器 `.env`。
+> **部署前提**：密钥未配置时 `/api/v1/upload` 会返回 502 并在日志打出 `RuntimeError: COS 未配置`。生产服务器的 `.env` 已按下节配置完毕。
 
 `backend/requirements.txt` 已加入 `cos-python-sdk-v5==1.9.44`。`oss2==2.19.0` 目前没有任何代码引用，确认无其它用途后可移除。
+
+### 密钥与权限（已配置）
+
+| 项 | 值 |
+|---|---|
+| CAM 子用户 | `playnow-cos`（Uin 100053480422，无控制台登录权限） |
+| 自定义策略 | `playnow-cos-media`（PolicyId 288832582） |
+| 允许动作 | `cos:PutObject` / `cos:GetObject` / `cos:DeleteObject` |
+| 资源范围 | `qcs::cos:ap-shanghai:uid/1300427458:tennis-miniapp-img-1300427458/*` |
+| 密钥类型 | 永久密钥（非 STS），`OSS_SESSION_TOKEN` 留空 |
+| 存放位置 | 服务器 `/home/ubuntu/playnow-miniapp/backend/.env`（2026-10-07 写入，原文件备份为 `.env.bak.20261007163457`） |
+
+权限边界已实测：上传、匿名读取、删除均通过；列举桶对象（`cos:GetBucket`）与读取桶 ACL 均返回 `AccessDenied`。**不要在生产使用主账号密钥**。CI 部署不会覆盖服务器上的 `.env`，因此密钥只需配置一次。
 
 ### 前端
 
@@ -282,12 +295,15 @@ CDN 相关准备已就绪：加速域名证书 `static.tennisplaynow.site`（有
 | 2026-10-07 | CDN 创建加速域名 | 失败：`ResourceUnavailable.CdnHostNoIcp`（域名备案未在腾讯云侧同步） |
 | 2026-10-07 | 后端接入 COS 真实上传验证 | `avatar/<uuid>.png` 上传成功；匿名 GET 返回 HTTP 200、`Content-Type: image/png`、字节与上传一致；测试对象已删除，桶内无残留 |
 | 2026-10-07 | 前端类型检查 | `npm run typecheck`（vue-tsc --noEmit）通过 |
+| 2026-10-07 | 创建 CAM 子用户 `playnow-cos` + 单桶最小权限策略 | 子用户、策略（PolicyId 288832582）、永久密钥均创建成功 |
+| 2026-10-07 | 子账号权限边界实测 | 上传/匿名读取/删除通过；`GetBucket` 与 `GetBucketACL` 返回 `AccessDenied`，最小权限生效 |
+| 2026-10-07 | 服务器 `backend/.env` 写入 COS 配置 | 5 个键写入，原文件已备份为 `.env.bak.20261007163457` |
 
 ## 当前边界
 
-- 后端代码已切换到 COS 并通过本地真实验证；**服务器尚未配置 COS 密钥、也尚未部署**，线上仍写本地磁盘 `backend/uploads`。部署前必须先把密钥写入服务器 `backend/.env`，否则上传接口返回 502。
+- 后端代码已切换到 COS 并通过本地真实验证；服务器 `backend/.env` 已写入子账号密钥（2026-10-07），但**代码尚未部署到生产**，线上 API 仍写本地磁盘 `backend/uploads`。发布由 `master` 的 CI 流程完成（`push → master` 触发构建与部署），本次未执行。
 - 验证覆盖存储层真实读写与匿名访问；**尚未经由运行中的 API 与小程序做端到端上传验证**（本机无 MySQL/Redis，起不了完整服务）。
-- 本地验证使用的是本机 tccli 主账号凭证，**生产必须换成 CAM 子账号密钥**。
+- 生产密钥已换成 CAM 子账号 `playnow-cos`（仅单桶三动作）；本机开发联调仍可用主账号凭证。
 - 桶内当前 0 个业务对象，历史 `backend/uploads` 文件未迁移（`/uploads` 挂载保留兼容）。
 - 无 CDN 加速，外网下行按 ¥0.5/GB 计费；备案未推进，无自建资源域名、无防盗链。
 - `doc/` 前缀公开可读问题尚未处理（见注意事项 10）。
