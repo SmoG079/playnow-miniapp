@@ -19,7 +19,7 @@ spec.loader.exec_module(deployment)
 
 
 class DeploymentFlowTests(unittest.TestCase):
-    def exercise(self, *, bootstrap=False, initialized=True, fail=None, schema_changed=False):
+    def exercise(self, *, bootstrap=False, initialized=True, fail=None, schema_changed=False, image_loaded=False):
         with tempfile.TemporaryDirectory() as temp:
             project = (Path(temp) / "project").resolve();project.mkdir()
             release = project / ".releases/new";release.mkdir(parents=True)
@@ -62,6 +62,7 @@ class DeploymentFlowTests(unittest.TestCase):
 
             args = ["deploy-production.py", "--release", str(release), "--sha", "a" * 40, "--docker-config", str(release / ".registry")]
             if bootstrap: args.append("--bootstrap")
+            if image_loaded: args.append("--image-loaded")
             fake_process = SimpleNamespace(stdout=io.BytesIO(b"-- Dump completed on fixture\n"), wait=lambda: 0)
             old_mask = os.umask(0o077)
             caught = None
@@ -98,6 +99,13 @@ class DeploymentFlowTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertFalse(any("up" in c and ("mysql" in c or "redis" in c) for c in calls))
         self.assertEqual(state["sha"], "a" * 40)
+
+    def test_transferred_image_is_validated_without_server_registry_pull(self):
+        calls, error, state = self.exercise(image_loaded=True)
+        self.assertIsNone(error)
+        self.assertTrue(any(c[:3] == ["docker", "image", "inspect"] for c in calls))
+        self.assertFalse(any(c[0] == "docker" and "pull" in c for c in calls))
+        self.assertTrue(any("--check-image" in c for c in calls))
 
     def test_migration_failure_does_not_start_app_or_stamp_release(self):
         calls, error, state = self.exercise(fail="migration")

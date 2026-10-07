@@ -43,6 +43,7 @@ def main():
     parser.add_argument("--sha", required=True)
     parser.add_argument("--bootstrap", action="store_true")
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--image-loaded", action="store_true", help="Use the SHA image transferred and checksum-verified by the runner")
     parser.add_argument("--docker-config", required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or not re.fullmatch(r"[0-9a-f]{40}", args.sha):
@@ -77,7 +78,10 @@ def main():
                 raise RuntimeError(f"{phase} failed; protected log: {release / (phase + '.log')}")
             return result.stdout
 
-        run(["docker", "--config", str(registry), "pull", reference], "pull")
+        if args.image_loaded:
+            run(["docker", "image", "inspect", reference], "loaded-image")
+        else:
+            run(["docker", "--config", str(registry), "pull", reference], "pull")
         run(["python3", str(release / "scripts/validate-production.py"), "--compose", str(config),
             "--env-file", str(candidate), "--check-image"], "preflight")
         if args.check_only:
