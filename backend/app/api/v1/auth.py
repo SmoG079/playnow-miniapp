@@ -46,10 +46,12 @@ async def _get_wx_access_token():
 async def wx_login(req: WxLoginRequest, db: AsyncSession = Depends(get_db)):
     """WeChat code-for-token exchange, then issue JWT.
 
-    Supports dev mode: code starting with 'dev_' bypasses WeChat API.
+    In DEBUG mode, codes starting with 'dev_' bypass the WeChat API.
     """
     # ── Dev mode bypass ──
     if req.code and req.code.startswith("dev_"):
+        if not settings.DEBUG:
+            raise HTTPException(status_code=400, detail="Development login is disabled")
         dev_openid = f"dev_{req.code[4:]}"[:64]
         result = await db.execute(select(User).where(User.openid == dev_openid))
         user = result.scalar_one_or_none()

@@ -690,6 +690,10 @@ async def delete_post(
         raise HTTPException(status_code=403, detail="Only post owner can delete")
     # Delete related data
     await db.execute(delete(MatchRegistration).where(MatchRegistration.post_id == post_id))
+    # Replies reference their parent comment; delete them before root comments.
+    await db.execute(delete(Comment).where(
+        Comment.post_id == post_id, Comment.parent_id.is_not(None)
+    ))
     await db.execute(delete(Comment).where(Comment.post_id == post_id))
     await db.delete(post)
     return {"msg": "ok"}

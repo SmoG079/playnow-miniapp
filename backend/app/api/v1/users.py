@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, union_all, literal, cast, String
 from app.core.database import get_db
 from app.api.deps import get_current_user, _v
 from app.models.models import (
     User, ClubMember, Notification, BookingOrder, Venue, Club,
     VenueTimeSlot, OrderStatus, MatchPost, MatchRegistration,
+    Tournament, TournamentRegistration,
 )
 from app.schemas.schemas import (
     UserMeResponse, UserUpdate, PaginatedResponse, NotificationBrief,
@@ -79,7 +80,7 @@ async def my_notifications(
     )
 
 
-@router.get("/me/notifications/{notification_id}", response_model=NotificationBrief)
+@router.get("/me/notifications/{notification_id:int}", response_model=NotificationBrief)
 async def get_notification(
     notification_id: int,
     current_user: User = Depends(get_current_user),
@@ -97,7 +98,7 @@ async def get_notification(
     return NotificationBrief.model_validate(notif)
 
 
-@router.put("/me/notifications/{notification_id}/read")
+@router.put("/me/notifications/{notification_id:int}/read")
 async def mark_notification_read(
     notification_id: int,
     current_user: User = Depends(get_current_user),
@@ -264,3 +265,48 @@ async def my_posts(
             images=post.images, approval_required=post.approval_required,
         ))
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/me/registrations", response_model=PaginatedResponse)
+async def my_registrations(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated user's match and tournament registrations."""
+    matches = select(
+        MatchRegistration.id.label("id"),
+        literal("match_post").label("ref_type"),
+        MatchPost.id.label("ref_id"),
+        MatchPost.title.label("title"),
+        MatchPost.preferred_date.label("preferred_date"),
+        MatchPost.preferred_start.label("preferred_start"),
+        cast(MatchRegistration.status, String).label("status"),
+        MatchRegistration.created_at.label("created_at"),
+    ).join(MatchPost, MatchRegistration.post_id == MatchPost.id).where(
+        MatchRegistration.user_id == current_user.id
+    )
+    tournaments = select(
+        TournamentRegistration.id.label("id"),
+        literal("tournament").label("ref_type"),
+        Tournament.id.label("ref_id"),
+        Tournament.title.label("title"),
+        func.date(Tournament.start_time).label("preferred_date"),
+        func.time(Tournament.start_time).label("preferred_start"),
+        cast(TournamentRegistration.status, String).label("status"),
+        TournamentRegistration.created_at.label("created_at"),
+    ).join(Tournament, TournamentRegistration.tournament_id == Tournament.id).where(
+        TournamentRegistration.user_id == current_user.id
+    )
+    registrations = union_all(matches, tournaments).subquery()
+    total = (await db.execute(select(func.count()).select_from(registrations))).scalar() or 0
+    result = await db.execute(
+        select(registrations).order_by(
+            registrations.c.created_at.desc(), registrations.c.ref_type, registrations.c.id.desc()
+        ).offset((page - 1) * page_size).limit(page_size)
+    )
+    return PaginatedResponse(
+        items=[dict(row) for row in result.mappings().all()],
+        total=total, page=page, page_size=page_size,
+    )

@@ -67,12 +67,42 @@ jobs:
         run: |
           python -m compileall app alembic scripts -q
           python -m unittest tests/test_free_post_queries.py
+          python -m unittest tests/test_http_routes.py
           python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py -m "not deferred_booking_payments"
       - name: Empty database migration
         if: ${{ !cancelled() }}
         run: |
           python -m alembic upgrade head
           python -m alembic upgrade head
+      - name: HTTP business flow on disposable CI database
+        env:
+          DEBUG: 'true'
+          LOG_LEVEL: WARNING
+          PUBLIC_BASE_URL: http://127.0.0.1:18080
+          FULLFLOW_REPORT: fullflow-result.json
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 > /tmp/playnow-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time, urllib.request
+          for attempt in range(30):
+              try:
+                  urllib.request.urlopen("http://127.0.0.1:18080/health", timeout=1)
+                  break
+              except OSError:
+                  time.sleep(1)
+          else:
+              raise RuntimeError("CI API did not start")
+          PY
+          python tests/http_fullflow.py
+      - name: Save HTTP flow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-fullflow-${{ github.sha }}
+          path: backend/fullflow-result.json
+          if-no-files-found: ignore
       - name: Deployment script tests
         if: ${{ !cancelled() }}
         working-directory: .

@@ -18,8 +18,9 @@ const menus = computed(() => {
       1,
       0,
       ["home", "俱乐部管理", "/pages/profile/club-dashboard"],
-      ["money-circle", "分账记录", "/pages/profile/settlement-list"],
     );
+  if (s.isPlatformAdmin)
+    common.push(["money-circle", "分账记录", "/pages/profile/settlement-list"]);
   return common;
 });
 function logout() {
@@ -59,11 +60,11 @@ function logout() {
             v-for="m in menus"
             :key="m[2]"
             :title="m[1]"
-            :icon="m[0]"
+            :prefix-icon="m[0]"
             is-link
             @click="openPage(m[2])" /><wd-cell
             title="编辑个人资料"
-            icon="user"
+            prefix-icon="user"
             is-link
             @click="openPage('/pages/profile/edit')" /></view
         ><view class="publish-action"

@@ -13,10 +13,10 @@ def _v(field) -> str:
 
 
 async def get_current_user(
-    authorization: str = Header(..., description="Bearer {token}"),
+    authorization: Optional[str] = Header(None, description="Bearer {token}"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid auth header")
     token = authorization[7:]
     payload = decode_token(token)
