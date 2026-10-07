@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -87,7 +88,13 @@ def main():
         def ssh(args, input=None):
             subprocess.run(["ssh", *options, "-p", str(port), destination, shlex.join(args)], input=input, text=True, check=True)
         def scp(source, target):
-            subprocess.run(["scp", *options, "-P", str(port), str(source), destination + ":" + target], check=True, timeout=900)
+            for attempt in range(3):
+                try:
+                    subprocess.run(["scp", *options, "-P", str(port), str(source), destination + ":" + target], check=True, timeout=900)
+                    return
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    if attempt == 2: raise
+                    time.sleep(2 * (attempt + 1))
         try:
             if os.environ.get("DEPLOY_BOOTSTRAP") != "true":
                 try:
