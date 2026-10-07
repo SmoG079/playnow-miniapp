@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timedelta, date, time
+from datetime import date as date_type
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,7 +150,7 @@ async def get_slots(
 
     return [
         SlotDateGroup(
-            date=date.fromisoformat(k),
+            date=date_type.fromisoformat(k),
             slots=[_slot_to_brief(s) for s in v],
         )
         for k, v in grouped.items()
@@ -163,7 +164,7 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
         date=slot.date,
         start_time=slot.start_time,
         end_time=slot.end_time,
-        price=slot.price_override if slot.price_override is not None else Decimal("0"),
+        price=slot.price_override if slot.price_override is not None else slot.venue.price_per_hour,
         status=_v(slot.status),
     )
 

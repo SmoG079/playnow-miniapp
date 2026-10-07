@@ -1,0 +1,574 @@
+{
+  "checks": [
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/auth/refresh",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/users/me",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/users/me",
+      "expected": 422,
+      "actual": 422,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/clubs",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clubs",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clubs/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/clubs/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/clubs/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/venues/with-club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/venues/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clubs/1/venues",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/venues/1/with-club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/venues/1/with-club/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/venues/1/slots/batch",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/venues/1/slots/batch",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/venues/1/slots",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/venues/1/slots",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clubs/1/venue-slots",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/venues/1/slots/85/status",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/bookings",
+      "expected": 409,
+      "actual": 409,
+      "passed": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/venues/1/slots/85/status",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/bookings",
+      "expected": 422,
+      "actual": 422,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/bookings",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/bookings",
+      "expected": 409,
+      "actual": 409,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/bookings",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/config",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/1/refund-records",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/settlements",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/settlements",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/settlements",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/bookings/1/cancel",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/bookings/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/posts",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/posts",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/posts/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/posts/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/posts/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/posts/1/register",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/posts/1/register",
+      "expected": 409,
+      "actual": 409,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/posts/1/registrations/3",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/posts/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/posts",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/posts",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/posts/1/comments",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/posts/1/comments",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/posts/1/comments",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/posts/1/comments/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/posts/1/comments/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/notifications/unread-count",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/notifications",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/notifications/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/notifications/1",
+      "expected": 404,
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/users/me/notifications/1/read",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/users/me/notifications/read-all",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/notifications/unread-count",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/posts/1/register",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/posts/1",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/posts/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/posts/1",
+      "expected": 404,
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/tournaments",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/tournaments",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/tournaments/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "PUT",
+      "path": "/tournaments/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/tournaments/1/register",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/tournaments/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clubs/1/stats",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/upload",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/upload",
+      "expected": 400,
+      "actual": 400,
+      "passed": true
+    },
+    {
+      "method": "POST",
+      "path": "/venues/with-club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/venues/2/with-club/1",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    }
+  ],
+  "passed": 81,
+  "payment_refund": "deferred",
+  "real_wechat_login_phone_geocoding": "not exercised"
+}

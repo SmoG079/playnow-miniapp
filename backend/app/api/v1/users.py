@@ -79,7 +79,7 @@ async def my_notifications(
     )
 
 
-@router.get("/me/notifications/{notification_id}", response_model=NotificationBrief)
+@router.get("/me/notifications/{notification_id:int}", response_model=NotificationBrief)
 async def get_notification(
     notification_id: int,
     current_user: User = Depends(get_current_user),
@@ -97,7 +97,7 @@ async def get_notification(
     return NotificationBrief.model_validate(notif)
 
 
-@router.put("/me/notifications/{notification_id}/read")
+@router.put("/me/notifications/{notification_id:int}/read")
 async def mark_notification_read(
     notification_id: int,
     current_user: User = Depends(get_current_user),

@@ -210,7 +210,7 @@ async def get_booking_config():
     return {"free_cancel_hours": settings.FREE_CANCEL_HOURS}
 
 
-@router.get("/{booking_id}", response_model=BookingDetail)
+@router.get("/{booking_id:int}", response_model=BookingDetail)
 async def get_booking(
     booking_id: int,
     current_user: User = Depends(get_current_user),
@@ -284,7 +284,7 @@ async def get_booking(
     )
 
 
-@router.post("/{booking_id}/pay")
+@router.post("/{booking_id:int}/pay")
 async def pay_booking(
     booking_id: int,
     current_user: User = Depends(get_current_user),
@@ -393,7 +393,7 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     return {"code": "SUCCESS"}
 
 
-@router.post("/{booking_id}/cancel")
+@router.post("/{booking_id:int}/cancel")
 async def cancel_booking(
     booking_id: int,
     req: CancelRequest,
@@ -430,7 +430,7 @@ async def cancel_booking(
     return {"msg": "ok"}
 
 
-@router.post("/{booking_id}/refund")
+@router.post("/{booking_id:int}/refund")
 async def refund_booking(
     booking_id: int,
     req: RefundRequest,
@@ -537,7 +537,7 @@ async def refund_booking(
     return {"msg": "ok", "out_refund_no": out_refund_no, "refund_amount": str(refund_amount), "status": "refunding"}
 
 
-@router.get("/{booking_id}/refund-records")
+@router.get("/{booking_id:int}/refund-records")
 async def list_refund_records(
     booking_id: int,
     current_user: User = Depends(get_current_user),
