@@ -1,12 +1,39 @@
 #!/usr/bin/env python3
 """GitHub runner transport: verified host key, protected credentials, no raw shell inputs."""
 import os
+import gzip
+import hashlib
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import tarfile
 import tempfile
+
+
+def export_image(reference, directory, username, token):
+    """Pull on the runner and export without storing registry credentials on the host."""
+    registry = directory / "registry"
+    registry.mkdir(mode=0o700)
+    docker = ["docker", "--config", str(registry)]
+    subprocess.run(docker + ["login", "ghcr.io", "--username", username, "--password-stdin"],
+        input=token + "\n", text=True, check=True)
+    subprocess.run(docker + ["pull", reference], check=True)
+    archive = directory / "image.tar.gz"
+    process = subprocess.Popen(["docker", "save", reference], stdout=subprocess.PIPE)
+    try:
+        with gzip.open(archive, "wb", compresslevel=1) as output:
+            shutil.copyfileobj(process.stdout, output)
+    finally:
+        process.stdout.close()
+    if process.wait():
+        raise RuntimeError("Runner image export failed")
+    digest = hashlib.sha256()
+    with archive.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return archive, digest.hexdigest()
 
 
 def main():
@@ -31,23 +58,29 @@ def main():
         with tarfile.open(archive, "w:gz") as tar:
             for file in files: tar.add(root / file, arcname=file)
         destination = values["SERVER_USER"] + "@" + values["SERVER_HOST"]
-        options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=15", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + str(known)]
+        options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=15",
+            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=12", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + str(known)]
         remote = values["SERVER_PROJECT_PATH"] + "/.releases/" + values["DEPLOY_SHA"] + "-" + values["DEPLOY_RUN_ID"]
         uploaded = "/tmp/playnow-release-" + values["DEPLOY_RUN_ID"] + ".tar.gz"
+        uploaded_image = "/tmp/playnow-image-" + values["DEPLOY_RUN_ID"] + ".tar.gz"
         def ssh(args, input=None):
             subprocess.run(["ssh", *options, "-p", str(port), destination, shlex.join(args)], input=input, text=True, check=True)
         try:
+            reference = "ghcr.io/smog079/playnow-miniapp-api:" + values["DEPLOY_SHA"]
+            image, digest = export_image(reference, directory, values["GHCR_USER"], values["GHCR_TOKEN"])
             ssh(["sudo", "-n", "install", "-d", "-m", "700", remote, remote + "/.registry"])
             subprocess.run(["scp", *options, "-P", str(port), str(archive), destination + ":" + uploaded], check=True)
             ssh(["sudo", "-n", "tar", "-xzf", uploaded, "-C", remote])
-            ssh(["sudo", "-n", "docker", "--config", remote + "/.registry", "login", "ghcr.io", "--username", values["GHCR_USER"], "--password-stdin"], values["GHCR_TOKEN"] + "\n")
+            subprocess.run(["scp", *options, "-P", str(port), str(image), destination + ":" + uploaded_image], check=True)
+            ssh(["sha256sum", "--check", "--status"], digest + "  " + uploaded_image + "\n")
+            ssh(["sudo", "-n", "docker", "load", "--input", uploaded_image])
             args = ["sudo", "-n", "python3", remote + "/scripts/deploy-production.py", "--release", remote,
-                "--sha", values["DEPLOY_SHA"], "--docker-config", remote + "/.registry"]
+                "--sha", values["DEPLOY_SHA"], "--docker-config", remote + "/.registry", "--image-loaded"]
             if os.environ.get("DEPLOY_BOOTSTRAP") == "true": args.append("--bootstrap")
             ssh(args)
         finally:
             ssh(["sudo", "-n", "rm", "-rf", remote + "/.registry"])
-            ssh(["rm", "-f", uploaded])
+            ssh(["rm", "-f", uploaded, uploaded_image])
 
 
 if __name__ == "__main__":
