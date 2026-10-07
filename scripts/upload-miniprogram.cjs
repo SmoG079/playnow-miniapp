@@ -2,10 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const ci = require('miniprogram-ci');
 
 const repoRoot = path.resolve(__dirname, '..');
-const projectPath = path.join(repoRoot, 'miniprogram');
+const projectPath = path.resolve(repoRoot, process.env.WX_MINIPROGRAM_PROJECT_PATH || 'frontend/dist/build/mp-weixin');
 const projectConfigPath = path.join(projectPath, 'project.config.json');
 
 function readJson(file) {
@@ -46,6 +45,17 @@ function uploadSetting(projectConfig) {
 
 async function main() {
   const projectConfig = readJson(projectConfigPath);
+  const appConfig = readJson(path.join(projectPath, 'app.json'));
+  if (!Array.isArray(appConfig.pages) || !appConfig.pages.length) {
+    throw new Error('Missing compiled mini program pages; build the uni-app frontend first');
+  }
+  for (const page of appConfig.pages) {
+    for (const extension of ['.js', '.json', '.wxml']) {
+      if (!fs.existsSync(path.join(projectPath, page + extension))) {
+        throw new Error(`Missing compiled page: ${page}${extension}`);
+      }
+    }
+  }
   const packageJson = readJson(path.join(repoRoot, 'package.json'));
   const appid = env('WX_MINIPROGRAM_APPID', projectConfig.appid);
   const robot = Number(env('WX_MINIPROGRAM_ROBOT', '1'));
@@ -84,6 +94,7 @@ async function main() {
     return;
   }
 
+  const ci = require('miniprogram-ci');
   const project = new ci.Project({
     appid,
     type: 'miniProgram',

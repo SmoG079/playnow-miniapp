@@ -6,6 +6,7 @@ Create Date: 2025-06-12
 
 """
 from alembic import op
+from migration_support import add_column_if_missing
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
@@ -18,9 +19,9 @@ depends_on = None
 
 def upgrade() -> None:
     # Add refund fields to booking_orders
-    op.add_column('booking_orders', sa.Column('refund_id', sa.String(64), nullable=True))
-    op.add_column('booking_orders', sa.Column('refund_time', sa.DateTime(), nullable=True))
-    op.add_column('booking_orders', sa.Column('refund_status', sa.String(32), nullable=True, server_default='pending'))
+    add_column_if_missing('booking_orders', sa.Column('refund_id', sa.String(64), nullable=True))
+    add_column_if_missing('booking_orders', sa.Column('refund_time', sa.DateTime(), nullable=True))
+    add_column_if_missing('booking_orders', sa.Column('refund_status', sa.String(32), nullable=True, server_default='pending'))
     
     # Create refund_records table
     op.create_table(

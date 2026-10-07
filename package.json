@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "check:miniprogram": "npm run test:miniprogram && node scripts/upload-miniprogram.cjs --dry-run",
-    "test:miniprogram": "node --test tests/miniprogram-regression.test.cjs",
+    "check:miniprogram": "npm run test:miniprogram && npm run build:mp-weixin --prefix frontend && node scripts/upload-miniprogram.cjs --dry-run",
+    "test:miniprogram": "npm run typecheck --prefix frontend && npm test --prefix frontend",
     "upload:miniprogram": "node scripts/upload-miniprogram.cjs",
     "wot": "wot",
     "wot:lint": "wot lint",

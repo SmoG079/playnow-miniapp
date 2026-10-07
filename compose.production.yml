@@ -1,0 +1,149 @@
+# Standalone production configuration. Do not merge with docker-compose.yml.
+# Uses the host's existing Nginx and explicitly adopts existing data volumes.
+name: playnow-miniapp
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-backend: &backend
+  image: ${API_IMAGE:?Set an immutable API image reference}
+  env_file:
+    - ${APP_ENV_FILE:-./backend/.env}
+  environment: &backend-environment
+    DATABASE_URL: ${DATABASE_URL:?Set the existing internal database URL}
+    REDIS_URL: ${REDIS_URL:?Set the existing authenticated Redis URL}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the public HTTPS origin}
+    DEBUG: "false"
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    WX_PAY_CERT_DIR: /app/pay-certs
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  api:
+    <<: *backend
+    container_name: club-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - type: bind
+        source: ./backend/uploads
+        target: /app/uploads
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/logs/api
+        target: /app/logs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/certs
+        target: /app/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/pay-certs
+        target: /app/pay-certs
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python", "scripts/check_health.py"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  celery_worker:
+    <<: *backend
+    container_name: club-celery-worker
+    command: celery -A app.tasks.worker worker -l info -c 2
+    volumes:
+      - type: bind
+        source: ./backend/logs/celery-worker
+        target: /app/logs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/certs
+        target: /app/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/pay-certs
+        target: /app/pay-certs
+        bind:
+          create_host_path: false
+
+  celery_beat:
+    <<: *backend
+    container_name: club-celery-beat
+    command: celery -A app.tasks.worker beat -l info --schedule /app/celerybeat/celerybeat-schedule
+    volumes:
+      - type: bind
+        source: ./backend/logs/celery-beat
+        target: /app/logs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./backend/celerybeat
+        target: /app/celerybeat
+        bind:
+          create_host_path: false
+
+  mysql:
+    image: ${MYSQL_IMAGE:?Pin the existing MySQL image digest}
+    container_name: club-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Keep the existing database password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set the existing database name}
+      MYSQL_USER: ${MYSQL_USER:?Set the existing database user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Keep the existing database user password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_ROOT_PASSWORD}\" mysql -uroot --silent --execute='SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: ${REDIS_IMAGE:?Pin the existing Redis image digest}
+    container_name: club-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Keep the existing Redis password}
+    command: ["sh", "-ec", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  mysql_data:
+    external: true
+    name: ${MYSQL_DATA_VOLUME:?Select the existing MySQL data volume}
+  redis_data:
+    external: true
+    name: ${REDIS_DATA_VOLUME:?Select the existing Redis data volume}
+
+networks:
+  default:
+    external: true
+    name: ${APP_NETWORK:?Select the existing application network}
