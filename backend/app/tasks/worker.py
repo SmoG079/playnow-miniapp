@@ -20,6 +20,7 @@ celery_app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
     beat_schedule={
+        "maintain-tournaments": {"task": "app.tasks.tasks.maintain_tournaments", "schedule": 60.0},
         "release-expired-locks": {
             "task": "app.tasks.tasks.release_expired_locks",
             "schedule": 60.0,  # every 60 seconds

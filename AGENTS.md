@@ -13,15 +13,15 @@
 
 PlayNow 是面向网球俱乐部的微信小程序，提供场地预约、约球社交和比赛报名。当前产品聚焦网球。
 
-| 路径 | 用途 |
-| --- | --- |
-| `frontend/` | 唯一前端：uni-app、Vue 3、TypeScript、Pinia、Wot UI v2，主要构建目标为 `mp-weixin` |
-| `backend/app/` | FastAPI API、SQLAlchemy 异步模型、业务服务和 Celery 任务 |
-| `backend/alembic/` | 数据库迁移与固定结构快照 |
-| `backend/tests/` | 后端业务与迁移测试 |
-| `scripts/`、`tests/` | 部署、上传脚本及部署流程测试 |
-| `.github/workflows/deploy.yml` | 检查、后端发布和可选小程序体验版上传 |
-| `docs/` | 需求、实现记录、运维文档和验收记录 |
+| 路径                             | 用途                                                                |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `frontend/`                    | 唯一前端：uni-app、Vue 3、TypeScript、Pinia、Wot UI v2，主要构建目标为 `mp-weixin` |
+| `backend/app/`                 | FastAPI API、SQLAlchemy 异步模型、业务服务和 Celery 任务                       |
+| `backend/alembic/`             | 数据库迁移与固定结构快照                                                      |
+| `backend/tests/`               | 后端业务与迁移测试                                                         |
+| `scripts/`、`tests/`            | 部署、上传脚本及部署流程测试                                                    |
+| `.github/workflows/deploy.yml` | 检查、后端发布和可选小程序体验版上传                                                |
+| `docs/`                        | 需求、实现记录、运维文档和验收记录                                                 |
 
 - 原生 `miniprogram/` 已删除，不再作为开发或上传入口。
 - 前端依赖及版本以 `frontend/package.json` 和锁文件为准；当前 Wot UI 包为 `@wot-ui/ui` 2.3.2。根目录依赖用于 Wot CLI 和小程序上传，两处依赖需分别安装。

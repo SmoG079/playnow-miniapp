@@ -54,10 +54,6 @@ function action() {
       success: async (r) => {
         if (r.confirm) {
           await request(`/posts/${id.value}/register`, { method: "DELETE" });
-          const saved = (
-            uni.getStorageSync("registered_post_ids") || []
-          ).filter((x: number) => x !== Number(id.value));
-          uni.setStorageSync("registered_post_ids", saved);
           load();
         }
       },
@@ -79,12 +75,6 @@ function action() {
           method: "POST",
           data: { message: "" },
         });
-        const saved: number[] = uni.getStorageSync("registered_post_ids") || [];
-        if (!saved.includes(Number(id.value)))
-          uni.setStorageSync("registered_post_ids", [
-            ...saved,
-            Number(id.value),
-          ]);
         uni.showToast({
           title: post.value.approval_required ? "等待审核" : "报名成功",
           icon: "success",
@@ -227,7 +217,7 @@ function remove(c: any) {
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
         ><wd-button
-          :disabled="!owner && (full || post.status !== 'open')"
+          :disabled="!owner && !registration && (full || post.status !== 'open')"
           @click="action"
           >{{
             owner
@@ -248,7 +238,7 @@ function remove(c: any) {
             v-for="r in post.registrations"
             :key="r.user_id"
             :title="r.user_nickname || '球友'"
-            :value="r.status === 'pending' ? '待审核' : '已通过'" /><wd-empty
+            :value="r.status === 'pending' ? '待审核' : r.status === 'approved' ? '已通过' : r.status === 'cancelled' ? '已取消' : '未通过'" /><wd-empty
             v-if="!post.registrations?.length"
             tip="还没有人报名" /></view></wd-popup></template
     ><wd-loading v-else

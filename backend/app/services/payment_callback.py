@@ -35,6 +35,10 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
     if not order:
         return {"code": "FAIL", "message": "Order not found"}
 
+    if order.business_type == "tournament":
+        from app.services.tournament_lifecycle import payment_success
+        return await payment_success(db, data)
+
     # Validate callback amount matches order amount
     callback_total = data.get("amount", {}).get("total")
     expected_total = _to_cents(order.amount)
@@ -144,6 +148,12 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
 
     if not out_refund_no:
         return {"code": "FAIL", "message": "Missing out_refund_no"}
+
+    if out_trade_no:
+        business = (await db.execute(select(BookingOrder.business_type).where(BookingOrder.order_no == out_trade_no))).scalar_one_or_none()
+        if business == "tournament":
+            from app.services.tournament_lifecycle import refund_callback
+            return await refund_callback(db, data)
 
     # Find refund record
     result = await db.execute(
@@ -330,6 +340,10 @@ async def _handle_payment_closed(data: dict, db: AsyncSession):
 
     if _v(order.status) in ("cancelled", "paid", "refunding", "refunded"):
         return {"code": "SUCCESS"}
+
+    if order.business_type == "tournament":
+        from app.services.tournament_lifecycle import payment_closed
+        return await payment_closed(db, data)
 
     order.status = OrderStatus.cancelled
 

@@ -4,7 +4,7 @@ import os
 from sqlalchemy import create_engine,text
 from sqlalchemy.engine import make_url
 url=make_url(os.environ['DATABASE_URL'])
-assert url.database.startswith('playnow_e2e_') or url.database=='test_db', 'Isolated database required'
+assert url.database.startswith(('playnow_e2e_', 'playnow_migration_')) or url.database=='test_db', 'Isolated database required'
 c=httpx.Client(base_url='http://127.0.0.1:18080/api/v1',timeout=20)
 checks=[]
 def call(method,path,token=None,expected=200,**kw):
@@ -75,7 +75,7 @@ assert call('GET','/bookings/settlements',admin)['total']==0
 call('GET','/bookings/settlements',member,expected=403)
 call('POST',f'/bookings/{bid}/cancel',member,json={'reason':'isolated test'})
 assert call('GET',f'/bookings/{bid}',member)['status']=='cancelled'
-post=call('POST','/posts',owner,json={'title':'E2E approval post','price':0,'players_needed':2,'approval_required':True})['id']
+post=call('POST','/posts',owner,json={'title':'E2E approval post','preferred_date':date,'preferred_start':'09:00','preferred_end':'11:00','price':0,'players_needed':2,'approval_required':True})['id']
 call('GET','/posts');call('GET',f'/posts/{post}')
 call('PUT',f'/posts/{post}',owner,json={'notes':'updated'})
 call('PUT',f'/posts/{post}',other,expected=403,json={'title':'unauthorized'})
@@ -102,15 +102,16 @@ call('PUT',f'/users/me/notifications/{nid}/read',owner)
 call('PUT','/users/me/notifications/read-all',owner)
 assert call('GET','/users/me/notifications/unread-count',owner)['count']==0
 call('DELETE',f'/posts/{post}/register',member)
-assert call('GET','/users/me/registrations',member)['total']==0
+cancelled=call('GET','/users/me/registrations',member)
+assert cancelled['total']==1 and cancelled['items'][0]['status']=='cancelled'
 call('DELETE',f'/posts/{post}',other,expected=403)
 call('DELETE',f'/posts/{post}',owner)
 call('GET',f'/posts/{post}',expected=404)
 start=date+'T14:00:00';end=date+'T16:00:00'
-tournament=call('POST','/tournaments',owner,json={'club_id':club,'title':'E2E free tournament','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4})['id']
+tournament=call('POST','/tournaments',owner,json={'club_id':club,'address':'E2E tennis court','title':'E2E free tournament','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4})['id']
 call('GET','/tournaments');call('GET',f'/tournaments/{tournament}')
-call('PUT',f'/tournaments/{tournament}',owner,json={'description':'updated'})
-assert call('POST',f'/tournaments/{tournament}/register',member)['order'] is None
+call('PUT',f'/tournaments/{tournament}',owner,json={'club_id':club,'title':'E2E free tournament','address':'E2E tennis court','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4,'description':'updated'})
+assert call('POST',f'/tournaments/{tournament}/register',member,json={}).get('order_id') is None
 assert call('GET',f'/tournaments/{tournament}')['current_participants']==1
 registrations=call('GET','/users/me/registrations',member)
 assert registrations['total']==1 and registrations['items'][0]['ref_type']=='tournament'

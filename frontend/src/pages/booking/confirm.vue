@@ -57,6 +57,7 @@ async function pay() {
     if (["post", "tournament"].includes(q.value.return_mode)) {
       uni.setStorageSync("booking_return", {
         booking_id: booking.value.id,
+        club_id: booking.value.club_id || venue.value?.club_id,
         venue_id: q.value.venue_id,
         venue_name: q.value.venue_name || venue.value?.name,
         slot_date: q.value.date,

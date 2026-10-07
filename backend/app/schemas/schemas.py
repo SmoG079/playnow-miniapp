@@ -1,6 +1,6 @@
 from datetime import datetime, date, time
 from typing import Optional, Any, List, Annotated
-from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator
 from decimal import Decimal
 
 
@@ -328,10 +328,10 @@ class PostCreate(BaseModel):
     club_id: Optional[int] = None
     title: str = Field(..., min_length=1, max_length=256)
     sport_type: Optional[str] = None
-    preferred_date: Optional[date] = None
-    preferred_start: Optional[time] = None
-    preferred_end: Optional[time] = None
-    players_needed: int = Field(default=1, ge=1)
+    preferred_date: date
+    preferred_start: time
+    preferred_end: time
+    players_needed: int = Field(..., ge=1)
     price: Decimal = Field(..., ge=Decimal("0.00"))
     level_required: Optional[str] = None
     notes: Optional[str] = None
@@ -341,6 +341,15 @@ class PostCreate(BaseModel):
     booking_id: Optional[int] = None
     approval_required: bool = False
     images: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def required_information(self):
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("请填写活动名称")
+        if self.preferred_end <= self.preferred_start:
+            raise ValueError("结束时间必须晚于开始时间")
+        return self
 
 class PostUpdate(BaseModel):
     title: Optional[str] = None
@@ -359,7 +368,23 @@ class PostUpdate(BaseModel):
     booking_id: Optional[int] = None
     approval_required: Optional[bool] = None
 
+    @model_validator(mode="after")
+    def preserve_required_information(self):
+        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "players_needed"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError("活动名称、时间和人数不可清空")
+        if self.title is not None:
+            self.title = self.title.strip()
+            if not self.title:
+                raise ValueError("请填写活动名称")
+        return self
+
 class PostBrief(BaseModel):
+    @computed_field
+    @property
+    def activity_id(self) -> int:
+        return self.id
+
     notes: Optional[str] = None
     id: int
     club_id: Optional[int] = None
@@ -387,6 +412,23 @@ class PostBrief(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MyPostRegistration(BaseModel):
+    id: int
+    activity_id: int
+    post_id: int
+    user_id: int
+    status: str
+    message: Optional[str] = None
+    created_at: datetime
+    post_title: str
+    post_status: str
+    preferred_date: Optional[date] = None
+    preferred_start: Optional[time] = None
+    preferred_end: Optional[time] = None
+    club_id: Optional[int] = None
+    club_name: Optional[str] = None
+
 
 class PostDetail(PostBrief):
     notes: Optional[str]

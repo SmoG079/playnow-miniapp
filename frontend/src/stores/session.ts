@@ -18,18 +18,32 @@ export const useSession = defineStore("session", () => {
   const loading = ref(false);
   const accessToken = ref("");
   const refreshToken = ref("");
+  let generation = 0;
   const loggedIn = computed(() => !!accessToken.value);
   const isClubAdmin = computed(() =>
     ["club_admin", "platform_admin"].includes(user.value?.role || ""),
   );
   const isPlatformAdmin = computed(() => user.value?.role === "platform_admin");
+  const canPublishTournament = computed(
+    () =>
+      loggedIn.value &&
+      (isPlatformAdmin.value ||
+        (user.value?.role === "club_admin" &&
+          !!user.value.managed_club_ids?.length)),
+  );
 
   function syncTokens() {
     accessToken.value = String(uni.getStorageSync("access_token") || "");
     refreshToken.value = String(uni.getStorageSync("refresh_token") || "");
+    if (!accessToken.value) user.value = null;
   }
 
   function setTokens(access: string, refresh: string) {
+    generation++;
+    loading.value = false;
+    user.value = null;
+    uni.removeStorageSync("registered_post_ids");
+    uni.removeStorageSync("booking_return");
     accessToken.value = access;
     refreshToken.value = refresh;
     uni.setStorageSync("access_token", access);
@@ -45,15 +59,18 @@ export const useSession = defineStore("session", () => {
       return null;
     }
     loading.value = true;
+    const currentGeneration = generation;
     try {
-      user.value = await request<User>("/users/me");
+      const fetched = await request<User>("/users/me");
+      if (currentGeneration !== generation || !uni.getStorageSync("access_token"))
+        return null;
+      user.value = fetched;
       return user.value;
     } catch (error) {
-      syncTokens();
-      if (!loggedIn.value) user.value = null;
+      if (currentGeneration === generation) syncTokens();
       throw error;
     } finally {
-      loading.value = false;
+      if (currentGeneration === generation) loading.value = false;
     }
   }
   function requireLogin(redirect?: string) {
@@ -66,12 +83,11 @@ export const useSession = defineStore("session", () => {
   }
   async function requireClubAdmin(redirect?: string) {
     if (!requireLogin(redirect)) return false;
-    if (!user.value) {
-      try {
-        await fetchUser();
-      } catch {
-        return false;
-      }
+    try {
+      await fetchUser();
+    } catch {
+      user.value = null;
+      return false;
     }
     if (isClubAdmin.value) return true;
     uni.showToast({ title: "需要俱乐部管理员权限", icon: "none" });
@@ -81,11 +97,14 @@ export const useSession = defineStore("session", () => {
   function canManageClub(clubId: number) {
     return (
       isPlatformAdmin.value ||
-      (user.value?.managed_club_ids || []).includes(clubId)
+      (user.value?.role === "club_admin" &&
+        (user.value.managed_club_ids || []).includes(clubId))
     );
   }
 
   function logout() {
+    generation++;
+    loading.value = false;
     clearTokens();
     accessToken.value = "";
     refreshToken.value = "";
@@ -98,6 +117,7 @@ export const useSession = defineStore("session", () => {
     loggedIn,
     isClubAdmin,
     isPlatformAdmin,
+    canPublishTournament,
     setTokens,
     syncTokens,
     fetchUser,

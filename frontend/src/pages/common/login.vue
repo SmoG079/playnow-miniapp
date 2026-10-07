@@ -5,6 +5,7 @@ import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
+import { assertWeChatAppId } from "../../services/wechat-login";
 const agreed = ref(false),
   loading = ref(false),
   redirect = ref("");
@@ -35,10 +36,14 @@ function getWeChatCode() {
 }
 
 async function login() {
+  if (loading.value) return;
   if (!agreed.value)
     return uni.showToast({ title: "请先同意用户协议", icon: "none" });
   loading.value = true;
   try {
+    // #ifdef MP-WEIXIN
+    assertWeChatAppId(uni.getAccountInfoSync().miniProgram.appId);
+    // #endif
     const code = await getWeChatCode();
     const tokens: any = await request("/auth/login", {
       method: "POST",

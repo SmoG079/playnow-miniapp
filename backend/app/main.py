@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.database import engine
 from app.core.logger import setup_logging, RequestLogMiddleware, get_logger
 from app.api.deps import get_current_user
-from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments
+from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments, activities
 from app.services import storage
 
 settings = get_settings()
@@ -50,6 +50,7 @@ app.include_router(venues.router, prefix=api_prefix)
 app.include_router(bookings.router, prefix=api_prefix)
 app.include_router(posts.router, prefix=api_prefix)
 app.include_router(tournaments.router, prefix=api_prefix)
+app.include_router(activities.router, prefix=api_prefix)
 
 
 @app.get("/health")

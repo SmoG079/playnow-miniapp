@@ -3,8 +3,10 @@ from datetime import datetime, time
 from sqlalchemy import (
     Column, BigInteger, String, Text, Integer, DateTime, Date, Time,
     Enum, Boolean, DECIMAL, UniqueConstraint, Index, ForeignKey, JSON,
+    CheckConstraint, ForeignKeyConstraint,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects import mysql
 from app.core.database import Base
 
 
@@ -32,7 +34,7 @@ class User(Base):
     bookings = relationship("BookingOrder", back_populates="user")
     match_posts = relationship("MatchPost", back_populates="user")
     match_registrations = relationship("MatchRegistration", back_populates="user")
-    tournament_registrations = relationship("TournamentRegistration", back_populates="user")
+    tournament_registrations = relationship("TournamentRegistration", back_populates="user", foreign_keys="TournamentRegistration.user_id")
     managed_clubs = relationship("ClubMember", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     comments = relationship("Comment", back_populates="user")
@@ -174,9 +176,11 @@ class BookingOrder(Base):
     __tablename__ = "booking_orders"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=True, index=True)
+    business_type = Column(String(16), default="booking", server_default="booking", nullable=False)
     order_no = Column(String(32), nullable=False, unique=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
-    venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=False)
+    venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=True)
     slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=True)
     slot_ids = Column(JSON, comment='选中的所有连续时段 ID 列表 [id1, id2, ...]')
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
@@ -236,6 +240,21 @@ class SettlementRecord(Base):
     )
 
 
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), nullable=False)
+    legacy_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("id", "kind", name="uq_activity_id_kind"),
+        UniqueConstraint("kind", "legacy_id", name="uq_activity_legacy"),
+        CheckConstraint("kind IN ('post', 'tournament')", name="ck_activity_kind"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 class MatchPostStatus(str, enum.Enum):
     open = "open"
     closed = "closed"
@@ -245,7 +264,8 @@ class MatchPostStatus(str, enum.Enum):
 class MatchPost(Base):
     __tablename__ = "match_posts"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=False)
+    activity_kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), default="post", server_default="post", nullable=False)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     title = Column(String(256), nullable=False)
@@ -267,7 +287,12 @@ class MatchPost(Base):
     status = Column(Enum(MatchPostStatus), default=MatchPostStatus.open, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    __table_args__ = (Index("idx_club_status", "club_id", "status"),)
+    __table_args__ = (
+        Index("idx_club_status", "club_id", "status"),
+        ForeignKeyConstraint(["id", "activity_kind"], ["activities.id", "activities.kind"],
+                             name="fk_post_activity"),
+        CheckConstraint("activity_kind = 'post'", name="ck_post_activity_kind"),
+    )
 
     club = relationship("Club", back_populates="match_posts")
     user = relationship("User", back_populates="match_posts")
@@ -279,6 +304,7 @@ class RegistrationStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
+    cancelled = "cancelled"
 
 
 class MatchRegistration(Base):
@@ -291,7 +317,8 @@ class MatchRegistration(Base):
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user"),)
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user"),
+                     Index("idx_post_registration_user_created", "user_id", "created_at", "id"))
 
     post = relationship("MatchPost", back_populates="registrations")
     user = relationship("User", back_populates="match_registrations")
@@ -326,7 +353,8 @@ class TournamentStatus(str, enum.Enum):
 class Tournament(Base):
     __tablename__ = "tournaments"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=False)
+    activity_kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), default="tournament", server_default="tournament", nullable=False)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
     title = Column(String(256), nullable=False)
     description = Column(Text)
@@ -341,11 +369,27 @@ class Tournament(Base):
     prize = Column(String(256))
     images = Column(JSON)
     cover_image = Column(String(512))
+    config = Column(JSON, nullable=True)
+    address = Column(String(256))
+    contact_name = Column(String(64))
+    contact_phone = Column(String(20))
+    auto_title = Column(Boolean, default=False, nullable=False)
+    registration_deadline = Column(DateTime)
+    cancellation_deadline = Column(DateTime)
+    registration_closed = Column(Boolean, default=False, nullable=False)
+    roster_frozen = Column(Boolean, default=False, nullable=False)
+    draw_version = Column(Integer, default=0, nullable=False)
+    published_version = Column(Integer, default=0, nullable=False)
     group_chat_id = Column(String(64))
     status = Column(Enum(TournamentStatus), default=TournamentStatus.open, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    __table_args__ = (Index("idx_status_time", "status", "start_time"),)
+    __table_args__ = (
+        Index("idx_status_time", "status", "start_time"),
+        ForeignKeyConstraint(["id", "activity_kind"], ["activities.id", "activities.kind"],
+                             name="fk_tournament_activity"),
+        CheckConstraint("activity_kind = 'tournament'", name="ck_tournament_activity_kind"),
+    )
 
     club = relationship("Club", back_populates="tournaments")
     venue = relationship("Venue", back_populates="tournaments")
@@ -366,12 +410,23 @@ class TournamentRegistration(Base):
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     order_id = Column(BigInteger, ForeignKey("booking_orders.id"))
     status = Column(Enum(TournamentRegStatus), default=TournamentRegStatus.registered, nullable=False)
+    approval = Column(String(16), default="approved", nullable=False)
+    payment = Column(String(16), default="none", nullable=False)
+    admission = Column(String(16), default="active", nullable=False)
+    gender = Column(String(16))
+    requested_group = Column(Integer, default=0, server_default="0", nullable=False)
+    pairing = Column(String(16), default="random", nullable=False)
+    partner_user_id = Column(BigInteger, ForeignKey("users.id"))
+    invite_token = Column(String(64), unique=True)
+    seat_expires_at = Column(DateTime)
+    review_reason = Column(String(256))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    __table_args__ = (UniqueConstraint("tournament_id", "user_id", name="uq_tournament_user"),)
+    __table_args__ = (UniqueConstraint("tournament_id", "user_id", name="uq_tournament_user"),
+                     Index("idx_tournament_registration_user_created", "user_id", "created_at", "id"))
 
     tournament = relationship("Tournament", back_populates="registrations")
-    user = relationship("User", back_populates="tournament_registrations")
+    user = relationship("User", back_populates="tournament_registrations", foreign_keys=[user_id])
 
 
 class NotificationType(str, enum.Enum):
@@ -435,3 +490,73 @@ class PaymentLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (Index("idx_payment_order", "order_id"),)
+
+
+class TournamentDraw(Base):
+    __tablename__ = "tournament_draws"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    stage = Column(String(16), nullable=False)
+    idempotency_key = Column(String(64), nullable=False)
+    seed = Column(String(64), nullable=False)
+    snapshot = Column(JSON, nullable=False)
+    created_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    reason = Column(String(256))
+    published_at = Column(DateTime)
+    tie_orders = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("tournament_id", "version", name="uq_tournament_draw_version"),
+                     UniqueConstraint("tournament_id", "idempotency_key", name="uq_tournament_draw_key"))
+
+
+class TournamentTeam(Base):
+    __tablename__ = "tournament_teams"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    draw_id = Column(BigInteger, ForeignKey("tournament_draws.id"), nullable=False, index=True)
+    group_no = Column(Integer, nullable=False)
+    name = Column(String(128), nullable=False)
+    origin_group = Column(Integer)
+
+
+class TournamentTeamMember(Base):
+    __tablename__ = "tournament_team_members"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    draw_id = Column(BigInteger, ForeignKey("tournament_draws.id"), nullable=False)
+    team_id = Column(BigInteger, ForeignKey("tournament_teams.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    __table_args__ = (UniqueConstraint("draw_id", "user_id", name="uq_draw_member"),)
+
+
+class TournamentMatch(Base):
+    __tablename__ = "tournament_matches"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    draw_id = Column(BigInteger, ForeignKey("tournament_draws.id"), nullable=False, index=True)
+    group_no = Column(Integer, nullable=False)
+    round_no = Column(Integer, nullable=False)
+    position = Column(Integer, nullable=False)
+    kind = Column(String(16), nullable=False)
+    team_a_id = Column(BigInteger, ForeignKey("tournament_teams.id"))
+    team_b_id = Column(BigInteger, ForeignKey("tournament_teams.id"))
+    source_a_id = Column(BigInteger, ForeignKey("tournament_matches.id"))
+    source_b_id = Column(BigInteger, ForeignKey("tournament_matches.id"))
+    source_outcome = Column(String(16), default="winner", nullable=False)
+    winner_id = Column(BigInteger, ForeignKey("tournament_teams.id"))
+    score = Column(String(128))
+    is_draw = Column(Boolean, default=False, nullable=False)
+    walkover = Column(Boolean, default=False, nullable=False)
+    status = Column(String(16), default="pending", nullable=False)
+    court = Column(String(64))
+    scheduled_at = Column(DateTime)
+    scheduled_end = Column(DateTime)
+    __table_args__ = (UniqueConstraint("draw_id", "group_no", "round_no", "position", "kind", name="uq_draw_match"),)
+
+
+class TournamentAudit(Base):
+    __tablename__ = "tournament_audits"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=False, index=True)
+    actor_id = Column(BigInteger, ForeignKey("users.id"))
+    action = Column(String(32), nullable=False)
+    detail = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

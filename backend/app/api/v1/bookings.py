@@ -1,7 +1,7 @@
 import json
 import uuid
 import httpx
-import time
+import time as unix_time
 import logging
 from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
@@ -219,7 +219,7 @@ async def get_booking(
         select(BookingOrder, Venue, Club)
         .join(Venue, BookingOrder.venue_id == Venue.id)
         .join(Club, BookingOrder.club_id == Club.id)
-        .where(BookingOrder.id == booking_id)
+        .where(BookingOrder.id == booking_id, BookingOrder.business_type == "booking")
     )
     row = result.one_or_none()
     if not row:
@@ -297,6 +297,9 @@ async def pay_booking(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
+    if order.business_type == "tournament":
+        raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
+
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
     if _v(order.status) == "paid":
@@ -340,6 +343,8 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         headers_dict = dict(request.headers)
         decrypted = wxpay.decrypt_callback(headers_dict, body)
         data = json.loads(decrypted)
+        envelope = json.loads(body)
+        event_type = envelope.get("event_type") or data.get("event_type", "")
     except Exception as e:
         logger.error("Callback verify/decrypt failed: %s", e)
         raise HTTPException(status_code=400, detail="Invalid callback")
@@ -347,7 +352,7 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     # P0-6: Timestamp and nonce replay protection (after successful verification)
     timestamp = request.headers.get("Wechatpay-Timestamp")
     nonce = request.headers.get("Wechatpay-Nonce")
-    now = int(time.time())
+    now = int(unix_time.time())
     try:
         ts = int(timestamp)
     except (ValueError, TypeError):
@@ -360,6 +365,32 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         logger.warning("Callback missing nonce")
         raise HTTPException(status_code=400, detail="Callback nonce missing")
 
+    # Tournament callbacks perform their short, idempotent database transition
+    # before acknowledging. Refund I/O remains in the durable maintenance task.
+    order = (await db.execute(select(BookingOrder).where(
+        BookingOrder.order_no == data.get("out_trade_no")
+    ))).scalar_one_or_none()
+    if order and order.business_type == "tournament":
+        from app.services import tournament_lifecycle as life
+        handlers = {"TRANSACTION.SUCCESS": life.payment_success,
+                    "TRANSACTION.CLOSED": life.payment_closed,
+                    "REFUND.SUCCESS": life.refund_callback,
+                    "REFUND.ABNORMAL": life.refund_callback,
+                    "REFUND.CLOSED": life.refund_callback}
+        handler = handlers.get(event_type)
+        if not handler:
+            raise HTTPException(400, "Unsupported tournament callback")
+        if event_type == "TRANSACTION.CLOSED" and (
+            data.get("mchid") != get_settings().WX_MCH_ID
+            or data.get("appid") != get_settings().WX_APP_ID
+        ):
+            raise HTTPException(400, "Callback merchant or app mismatch")
+        result = await handler(db, data)
+        db.add(PaymentLog(order_id=order.id, type="callback", event_type=event_type,
+                          raw_data={"event_type": event_type, "out_trade_no": order.order_no}))
+        await db.commit()
+        return result
+
     redis = redis_client
     nonce_key = f"wx:callback:nonce:{nonce}"
     # SET NX EX atomically; if key exists, SET returns None
@@ -368,7 +399,6 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         logger.warning("Duplicate WeChat callback nonce: %s", nonce)
         return {"code": "SUCCESS"}
 
-    event_type = data.get("event_type", "")
     out_trade_no = data.get("out_trade_no")
 
     # Log all callbacks
@@ -380,14 +410,19 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
         order_id=order.id if order else None,
         type="callback",
         event_type=event_type,
-        raw_data={"headers": dict(request.headers), "decrypted": data},
+        raw_data={"event_type": event_type, "out_trade_no": out_trade_no},
     )
     db.add(log)
     await db.commit()
 
     # P0-5: Acknowledge SUCCESS immediately, queue heavy work to Celery
     from app.tasks.tasks import process_wx_callback
-    process_wx_callback.delay(event_type, data)
+    try:
+        process_wx_callback.delay(event_type, data)
+    except Exception:
+        await redis.delete(nonce_key)
+        logger.error("Callback dispatch failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Retry callback")
 
     return {"code": "SUCCESS"}
 
@@ -403,6 +438,9 @@ async def cancel_booking(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
+
+    if order.business_type == "tournament":
+        raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
@@ -448,6 +486,9 @@ async def refund_booking(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
+
+    if order.business_type == "tournament":
+        raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     # Authorization: club admin for this club or platform admin only
     role = _v(current_user.role)
@@ -601,9 +642,9 @@ async def club_orders(
 ):
     query = select(BookingOrder, Venue.name) \
         .join(Venue, BookingOrder.venue_id == Venue.id) \
-        .where(BookingOrder.club_id == club_id)
+        .where(BookingOrder.club_id == club_id, BookingOrder.business_type == "booking")
 
-    count_query = select(func.count(BookingOrder.id)).where(BookingOrder.club_id == club_id)
+    count_query = select(func.count(BookingOrder.id)).where(BookingOrder.club_id == club_id, BookingOrder.business_type == "booking")
 
     if status:
         try:

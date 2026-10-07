@@ -1,6 +1,7 @@
 import { request } from "./api";
 export async function requestPayment(params: any) {
-  if (!params?.timeStamp) return;
+  if (!params?.timeStamp || !params?.paySign)
+    throw new Error("未获取到有效微信支付参数");
   await uni.requestPayment({
     provider: "wxpay",
     timeStamp: params.timeStamp,

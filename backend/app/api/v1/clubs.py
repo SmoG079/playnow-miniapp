@@ -28,8 +28,7 @@ def _parse_time(val):
     if not val:
         return None
     try:
-        h, m = map(int, val.split(':'))
-        return time(h, m)
+        return time.fromisoformat(val)
     except (ValueError, TypeError):
         return None
 
@@ -139,16 +138,43 @@ async def list_clubs(
     )
 
 
+@router.get("/managed", response_model=PaginatedResponse)
+async def managed_clubs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    role = _v(current_user.role)
+    if role not in ("club_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="Requires club admin permission")
+    query = select(Club)
+    if role != "platform_admin":
+        query = query.where(Club.id.in_(
+            select(ClubMember.club_id).where(ClubMember.user_id == current_user.id)
+        ))
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    clubs = (await db.execute(query.order_by(Club.id.desc())
+        .offset((page - 1) * page_size).limit(page_size))).scalars().all()
+    return PaginatedResponse(items=[ClubBrief.model_validate(c) for c in clubs],
+                             total=total, page=page, page_size=page_size)
+
+
 @router.post("", response_model=ClubDetail)
 async def create_club(
     req: ClubCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    opening = _parse_time(req.opening_time)
+    closing = _parse_time(req.closing_time)
+    if opening is None or closing is None or closing <= opening:
+        raise HTTPException(status_code=422, detail="营业结束时间需晚于开始时间")
     club = Club(
         name=req.name,
         sport_types=req.sport_types,
         description=req.description,
+        rules=req.rules,
         cover_image=req.cover_image or (req.images[0] if req.images else None),
         images=req.images,
         documents=req.documents,
@@ -156,8 +182,8 @@ async def create_club(
         latitude=req.latitude,
         longitude=req.longitude,
         contact_phone=req.contact_phone,
-        opening_time=_parse_time(req.opening_time),
-        closing_time=_parse_time(req.closing_time),
+        opening_time=opening,
+        closing_time=closing,
     )
     db.add(club)
     await db.flush()
@@ -181,7 +207,6 @@ async def get_club(club_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Club).where(Club.id == club_id))
     club = result.scalar_one_or_none()
     if not club:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Club not found")
 
     club.view_count += 1
@@ -200,10 +225,19 @@ async def update_club(
     result = await db.execute(select(Club).where(Club.id == club_id))
     club = result.scalar_one_or_none()
     if not club:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Club not found")
 
     update_data = req.model_dump(exclude_unset=True)
+    for key in ("opening_time", "closing_time"):
+        if key in update_data:
+            parsed = _parse_time(update_data[key])
+            if parsed is None:
+                raise HTTPException(status_code=422, detail="请填写有效的营业时间")
+            update_data[key] = parsed
+    opening = update_data.get("opening_time", club.opening_time)
+    closing = update_data.get("closing_time", club.closing_time)
+    if closing <= opening:
+        raise HTTPException(status_code=422, detail="营业结束时间需晚于开始时间")
     for key, value in update_data.items():
         setattr(club, key, value)
 
@@ -226,6 +260,10 @@ def _club_to_detail(club: Club) -> ClubDetail:
         images=club.images,
         documents=club.documents,
         contact_phone=club.contact_phone,
+        opening_time=club.opening_time,
+        closing_time=club.closing_time,
+        view_count=club.view_count,
+        exposure_count=club.exposure_count,
         venues=[],
         created_at=club.created_at,
     )

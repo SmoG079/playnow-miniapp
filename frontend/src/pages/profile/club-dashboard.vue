@@ -2,18 +2,18 @@
 import { ref } from "vue";
 import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
-import { request } from "../../services/api";
+import { request, listAll } from "../../services/api";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   clubs = ref<any[]>([]),
   index = ref(0),
   club = ref<any>(null),
   stats = ref<any>(null),
-  loading = ref(false),
-  initialized = ref(false);
+  loading = ref(false);
 async function load() {
   const id = clubs.value[index.value]?.id;
   if (!id) return;
+  club.value = stats.value = null;
   loading.value = true;
   try {
     [club.value, stats.value] = await Promise.all([
@@ -26,17 +26,25 @@ async function load() {
     loading.value = false;
   }
 }
-onLoad(async (q) => {
-  if (!(await s.requireClubAdmin("/pages/profile/club-dashboard"))) return;
-  const ids = s.user?.managed_club_ids || [];
-  clubs.value = await Promise.all(ids.map((id) => request(`/clubs/${id}`)));
-  const i = clubs.value.findIndex((c) => c.id === Number(q?.club_id));
-  index.value = i < 0 ? 0 : i;
-  initialized.value = true;
-  await load();
-});
-onShow(() => initialized.value && clubs.value.length && load());
-onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
+let requestedClubId = 0;
+onLoad((q) => { requestedClubId = Number(q?.club_id || 0); });
+async function refreshClubs() {
+  const selected = clubs.value[index.value]?.id || requestedClubId;
+  clubs.value = [];
+  stats.value = null;
+  club.value = null;
+  try {
+    if (!(await s.requireClubAdmin("/pages/profile/club-dashboard"))) return;
+    clubs.value = await listAll("/clubs/managed");
+    const i = clubs.value.findIndex((c) => c.id === selected);
+    index.value = i < 0 ? 0 : i;
+    await load();
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "俱乐部加载失败，请重试", icon: "none" });
+  }
+}
+onShow(refreshClubs);
+onPullDownRefresh(() => refreshClubs().finally(() => uni.stopPullDownRefresh()));
 const go = (p: string) =>
   uni.navigateTo({ url: `${p}?club_id=${clubs.value[index.value]?.id}` });
 function callClub() {
@@ -124,7 +132,7 @@ function callClub() {
             @click="
               uni.navigateTo({ url: '/pages/publish/tournament-create' })
             " /></view></template
-      ><wd-empty v-else-if="initialized" tip="您还没有管理的俱乐部"
+      ><wd-empty v-else-if="!loading" tip="您还没有管理的俱乐部"
         ><wd-button
           @click="uni.navigateTo({ url: '/pages/publish/club-create' })"
           >创建俱乐部</wd-button

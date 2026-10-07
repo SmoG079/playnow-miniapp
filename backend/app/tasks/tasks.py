@@ -223,6 +223,13 @@ async def _update_order_after_refund(session, order_id: int, status: str, refund
     if not order:
         return
 
+    if order.business_type == "tournament":
+        order.refund_status = status
+        if status == "success":
+            order.status = OrderStatus.refunded
+            order.refund_time = datetime.utcnow()
+        return
+
     if status == "success":
         order.status = OrderStatus.refunded
         slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
@@ -272,6 +279,7 @@ async def _retry_failed_refunds_impl():
             select(RefundRecord)
             .where(
                 RefundRecord.status.in_(["pending", "failed"]),
+                RefundRecord.order_id.in_(select(BookingOrder.id).where(BookingOrder.business_type != "tournament")),
                 RefundRecord.scheduled_at <= now,
                 RefundRecord.retry_count < settings.REFUND_MAX_RETRIES,
             )
@@ -369,6 +377,7 @@ async def _poll_processing_refunds_impl():
             select(RefundRecord)
             .where(
                 RefundRecord.status == "processing",
+                RefundRecord.order_id.in_(select(BookingOrder.id).where(BookingOrder.business_type != "tournament")),
                 RefundRecord.updated_at <= one_min_ago,
             )
             .limit(100)
@@ -423,6 +432,12 @@ async def _process_wx_callback_impl(event_type: str, data: dict):
             raise
 
 
-@celery_app.task(name="app.tasks.tasks.process_wx_callback")
+@celery_app.task(name="app.tasks.tasks.process_wx_callback", acks_late=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def process_wx_callback(event_type: str, data: dict):
     return async_to_sync(_process_wx_callback_impl)(event_type, data)
+
+
+@celery_app.task(name="app.tasks.tasks.maintain_tournaments")
+def maintain_tournaments():
+    from app.services.tournament_maintenance import maintain
+    return async_to_sync(maintain)()

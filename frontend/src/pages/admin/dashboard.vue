@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { onLoad } from "@dcloudio/uni-app";
+import { onLoad, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
-import { request } from "../../services/api";
+import { request, listAll } from "../../services/api";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   clubs = ref<any[]>([]),
@@ -12,6 +12,7 @@ const s = useSession(),
 async function load() {
   const id = clubs.value[index.value]?.id;
   if (!id) return;
+  stats.value = null;
   loading.value = true;
   try {
     stats.value = await request(`/clubs/${id}/stats`);
@@ -21,15 +22,23 @@ async function load() {
     loading.value = false;
   }
 }
-onLoad(async (q) => {
-  if (!(await s.requireClubAdmin("/pages/admin/dashboard"))) return;
-  clubs.value = await Promise.all(
-    (s.user?.managed_club_ids || []).map((id) => request(`/clubs/${id}`)),
-  );
-  const i = clubs.value.findIndex((club) => club.id === Number(q?.club_id));
-  index.value = i < 0 ? 0 : i;
-  await load();
-});
+let requestedClubId = 0;
+onLoad((q) => { requestedClubId = Number(q?.club_id || 0); });
+async function refreshClubs() {
+  const selected = clubs.value[index.value]?.id || requestedClubId;
+  clubs.value = [];
+  stats.value = null;
+  try {
+    if (!(await s.requireClubAdmin("/pages/admin/dashboard"))) return;
+    clubs.value = await listAll("/clubs/managed");
+    const i = clubs.value.findIndex((c) => c.id === selected);
+    index.value = i < 0 ? 0 : i;
+    await load();
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "俱乐部加载失败，请重试", icon: "none" });
+  }
+}
+onShow(refreshClubs);
 </script>
 <template>
   <AppShell back title="经营统计"

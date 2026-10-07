@@ -5,9 +5,10 @@ from sqlalchemy import select, func, case, delete
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
 from app.api.deps import get_current_user, _v
+from app.services.activity_ids import allocate_activity, resolve_activity_id
 from app.models.models import (
     User, Club, ClubMember, Venue, MatchPost, MatchRegistration, MatchPostStatus,
-    RegistrationStatus, Notification, NotificationType, Comment,
+    RegistrationStatus, Notification, NotificationType, Comment, BookingOrder,
 )
 from app.schemas.schemas import (
     PostCreate, PostUpdate, PostBrief, PostDetail, PostListParams, PaginatedResponse,
@@ -16,6 +17,25 @@ from app.schemas.schemas import (
 )
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+
+async def _post_booking(db, user_id, booking_id, venue_id, club_id=None):
+    """A booked post is available to any user, but only for their own paid booking."""
+    if not booking_id:
+        raise HTTPException(status_code=422, detail="定场约球请先完成订场")
+    booking = (await db.execute(
+        select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
+    )).scalar_one_or_none()
+    if not booking or booking.user_id != user_id:
+        raise HTTPException(status_code=403, detail="只能关联本人预订的场地")
+    if booking.business_type != "booking" or _v(booking.status) != "paid":
+        raise HTTPException(status_code=422, detail="请关联已完成订场且未取消的预约")
+    venue = await db.get(Venue, booking.venue_id) if booking.venue_id else None
+    if (not venue or venue.club_id != booking.club_id
+            or (venue_id is not None and venue_id != venue.id)
+            or (club_id is not None and club_id != booking.club_id)):
+        raise HTTPException(status_code=422, detail="预约与所选俱乐部或场地不一致")
+    return booking, venue
 
 
 def _parse_ntrp_level(level_str: str) -> float:
@@ -194,9 +214,13 @@ async def create_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 权限校验：只有俱乐部管理员或平台管理员才能发布
-    # 定场约球 requires club admin; 自由约球 allows any user
-    if req.club_id:
+    if req.booking_id or req.venue_id:
+        booking, venue = await _post_booking(
+            db, current_user.id, req.booking_id, req.venue_id, req.club_id
+        )
+        req.club_id, req.venue_id = booking.club_id, venue.id
+    elif req.club_id:
+        # Retain the existing club-only publishing path for administrators.
         if _v(current_user.role) not in ("club_admin", "platform_admin"):
             raise HTTPException(status_code=403, detail="只有俱乐部管理员才能发布约球帖")
         member_result = await db.execute(
@@ -219,6 +243,7 @@ async def create_post(
             sport_type = venue.sport_type
 
     post = MatchPost(
+        id=await allocate_activity(db, "post"),
         club_id=req.club_id,
         user_id=current_user.id,
         title=req.title,
@@ -265,6 +290,7 @@ async def create_post(
         registration_count=0,
         pending_count=0,
         price=post.price,
+        venue_id=post.venue_id, booking_id=post.booking_id,
     )
 
 
@@ -275,6 +301,7 @@ async def update_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    post_id = await resolve_activity_id(db, post_id, "post")
     result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = result.scalar_one_or_none()
     if not post:
@@ -283,6 +310,14 @@ async def update_post(
         raise HTTPException(status_code=403, detail="Only post owner can update")
 
     update_data = req.model_dump(exclude_unset=True)
+    if "booking_id" in update_data or "venue_id" in update_data:
+        booking_id = update_data.get("booking_id", post.booking_id)
+        venue_id = update_data.get("venue_id", post.venue_id)
+        if booking_id or venue_id:
+            booking, venue = await _post_booking(db, post.user_id, booking_id, venue_id)
+            update_data.update(club_id=booking.club_id, venue_id=venue.id)
+        else:
+            update_data["club_id"] = None
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -311,11 +346,13 @@ async def update_post(
         registration_count=0,
         price=post.price,
         images=post.images,
+        venue_id=post.venue_id, booking_id=post.booking_id,
     )
 
 
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
+    post_id = await resolve_activity_id(db, post_id, "post")
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
@@ -419,7 +456,8 @@ async def register_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
+    post_id = await resolve_activity_id(db, post_id, "post")
+    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -432,16 +470,15 @@ async def register_post(
             MatchRegistration.user_id == current_user.id,
         )
     )
-    if existing.scalar_one_or_none():
+    reg = existing.scalar_one_or_none()
+    if reg and _v(reg.status) != "cancelled":
         raise HTTPException(status_code=409, detail="Already registered")
 
-    reg = MatchRegistration(
-        post_id=post_id,
-        user_id=current_user.id,
-        message=req.message,
-        status=RegistrationStatus.pending if post.approval_required else RegistrationStatus.approved,
-    )
-    db.add(reg)
+    if reg is None:
+        reg = MatchRegistration(post_id=post_id, user_id=current_user.id)
+        db.add(reg)
+    reg.message = req.message
+    reg.status = RegistrationStatus.pending if post.approval_required else RegistrationStatus.approved
 
     # Notify post owner
     action_text = "报名了你的约球帖" if not post.approval_required else "报名了你的约球帖，等待审核"
@@ -476,6 +513,9 @@ async def cancel_register(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    post_id = await resolve_activity_id(db, post_id, "post")
+    post = (await db.execute(select(MatchPost).where(MatchPost.id == post_id)
+                            .with_for_update())).scalar_one_or_none()
     result = await db.execute(
         select(MatchRegistration).where(
             MatchRegistration.post_id == post_id,
@@ -485,7 +525,15 @@ async def cancel_register(
     reg = result.scalar_one_or_none()
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
-    await db.delete(reg)
+    reg.status = RegistrationStatus.cancelled
+    await db.flush()
+    if post and _v(post.status) == "full":
+        count = await db.scalar(select(func.count(MatchRegistration.id)).where(
+            MatchRegistration.post_id == post_id,
+            MatchRegistration.status == RegistrationStatus.approved,
+        )) or 0
+        if count < post.players_needed:
+            post.status = MatchPostStatus.open
     return {"msg": "ok"}
 
 
@@ -497,7 +545,8 @@ async def review_registration(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
+    post_id = await resolve_activity_id(db, post_id, "post")
+    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -514,7 +563,18 @@ async def review_registration(
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
 
+    if _v(reg.status) == "cancelled":
+        raise HTTPException(status_code=409, detail="报名已取消，不能审核")
+    if req.status not in ("approved", "rejected"):
+        raise HTTPException(status_code=422, detail="审核状态无效")
     new_status = RegistrationStatus(req.status)
+    if new_status == RegistrationStatus.approved and _v(reg.status) != "approved":
+        count = await db.scalar(select(func.count(MatchRegistration.id)).where(
+            MatchRegistration.post_id == post_id,
+            MatchRegistration.status == RegistrationStatus.approved,
+        )) or 0
+        if _v(post.status) not in ("open", "full") or count >= post.players_needed:
+            raise HTTPException(status_code=409, detail="活动已关闭或报名已满")
     reg.status = new_status
 
     # Notify registrant about approval/rejection
@@ -548,6 +608,13 @@ async def review_registration(
         approved_count = approved_count_result.scalar() or 0
         if approved_count >= post.players_needed:
             post.status = MatchPostStatus.full
+    elif _v(post.status) == "full":
+        count = await db.scalar(select(func.count(MatchRegistration.id)).where(
+            MatchRegistration.post_id == post_id,
+            MatchRegistration.status == RegistrationStatus.approved,
+        )) or 0
+        if count < post.players_needed:
+            post.status = MatchPostStatus.open
 
     return {"msg": "ok"}
 
@@ -560,6 +627,7 @@ async def list_comments(
     db: AsyncSession = Depends(get_db),
 ):
     # Verify post exists
+    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     if not post_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Post not found")
@@ -618,6 +686,7 @@ async def create_comment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = post_result.scalar_one_or_none()
     if not post:
@@ -682,6 +751,7 @@ async def delete_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    post_id = await resolve_activity_id(db, post_id, "post")
     result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = result.scalar_one_or_none()
     if not post:
@@ -699,6 +769,23 @@ async def delete_post(
     return {"msg": "ok"}
 
 
+@router.post("/{post_id}/close")
+async def close_post(
+    post_id: int, current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post_id = await resolve_activity_id(db, post_id, "post")
+    post = (await db.execute(select(MatchPost).where(MatchPost.id == post_id)
+                            .with_for_update())).scalar_one_or_none()
+    if not post:
+        raise HTTPException(404, "活动不存在")
+    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
+        raise HTTPException(403, "只有发起人可以关闭活动")
+    post.status = MatchPostStatus.closed
+    await db.flush()
+    return {"msg": "ok"}
+
+
 @router.delete("/{post_id}/comments/{comment_id}")
 async def delete_comment(
     post_id: int,
@@ -706,6 +793,7 @@ async def delete_comment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = post_result.scalar_one_or_none()
     if not post:

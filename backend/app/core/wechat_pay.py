@@ -60,5 +60,5 @@ def get_wxpay() -> WeChatPay:
         apiv3_key=settings.WX_MCH_API_V3_KEY,
         notify_url=settings.WX_PAY_NOTIFY_URL or None,
         cert_dir=settings.WX_PAY_CERT_DIR or None,
-        logger=logger,
+        logger=None,  # SDK debug output contains full sensitive callback resources.
     )

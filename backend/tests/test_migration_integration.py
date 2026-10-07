@@ -35,19 +35,39 @@ def run_cli(engine, *args):
     return subprocess.run([sys.executable, *args], cwd=BACKEND, env=env, text=True, capture_output=True)
 
 
-def data_hash(connection):
+def data_hash(connection, columns=None):
     """Hash all legacy values, normalizing only the reviewed NTRP conversion."""
     result = {}
+    tables = sa.inspect(connection).get_table_names()
+    aliases = {"post": {}, "tournament": {}}
+    if "activities" in tables:
+        for row in connection.execute(sa.text("SELECT id, kind, legacy_id FROM activities WHERE legacy_id IS NOT NULL")).mappings():
+            aliases[row["kind"]][row["id"]] = row["legacy_id"]
     for name in sa.inspect(connection).get_table_names():
-        if name == "alembic_version":
+        if name == "alembic_version" or (columns is not None and name not in columns):
             continue
         rows = []
         for row in connection.execute(sa.text(f"SELECT * FROM `{name}` ORDER BY id")).mappings():
             row = dict(row)
+            # The reviewed global-ID migration changes IDs and their references,
+            # but every other historical value must retain the same hash.
+            if name in ("match_posts", "tournaments"):
+                kind = "post" if name == "match_posts" else "tournament"
+                row["id"] = aliases[kind].get(row["id"], row["id"])
+            if name in ("match_registrations", "comments"):
+                row["post_id"] = aliases["post"].get(row["post_id"], row["post_id"])
+            if name in ("booking_orders", "tournament_registrations", "tournament_draws", "tournament_audits") and "tournament_id" in row:
+                row["tournament_id"] = aliases["tournament"].get(row["tournament_id"], row["tournament_id"])
+            if name == "notifications":
+                kind = {"match_post": "post", "tournament": "tournament"}.get(row["ref_type"])
+                if kind:
+                    row["ref_id"] = aliases[kind].get(row["ref_id"], row["ref_id"])
+            if columns is not None:
+                row = {key: value for key, value in row.items() if key in columns[name]}
             if name == "users" and row["ntrp_level"] is not None:
                 row["ntrp_level"] = str(Decimal(str(row["ntrp_level"])).normalize())
             rows.append(row)
-        result[name] = rows
+        result[name] = sorted(rows, key=lambda row: row["id"])
     return hashlib.sha256(json.dumps(result, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -61,13 +81,15 @@ class MigrationIntegrationTests(unittest.TestCase):
             actual = {c["name"]: c for c in inspector.get_columns(name)}
             for column in table.columns:
                 self.assertIn(column.name, actual, f"{name}.{column.name}")
-                expected = str(column.type.compile(dialect=connection.dialect)).lower().replace(" ", "")
+                expected = str(column.type.compile(dialect=connection.dialect)).lower().replace(" ", "").split("characterset", 1)[0].split("collate", 1)[0]
                 observed = str(actual[column.name]["type"].compile(dialect=connection.dialect)).lower().replace(" ", "").split("characterset", 1)[0].split("collate", 1)[0]
                 if expected in ("bool", "boolean"):
                     self.assertIn(observed, ("bool", "boolean", "tinyint(1)"))
                 else:
                     self.assertEqual(expected, observed, f"{name}.{column.name}")
                 self.assertEqual(column.nullable, actual[column.name]["nullable"], f"{name}.{column.name}")
+                if (name == "activities" and column.name == "kind") or column.name == "activity_kind":
+                    self.assertEqual(actual[column.name]["type"].collation, "ascii_bin")
             indexes = inspector.get_indexes(name)
             for index in table.indexes:
                 self.assertTrue(any(i["column_names"] == [c.name for c in index.columns] and bool(i["unique"]) == index.unique for i in indexes), f"{name}.{index.name}")
@@ -81,8 +103,12 @@ class MigrationIntegrationTests(unittest.TestCase):
                     target = constraint.elements[0].column.table.name
                     dest = [e.column.name for e in constraint.elements]
                     self.assertTrue(any(f["constrained_columns"] == columns and f["referred_table"] == target and f["referred_columns"] == dest for f in fks), f"{name} FK {columns}")
-        self.assertFalse(plan_alignment(connection))
-        self.assertEqual(connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one(), REVISION)
+                elif isinstance(constraint, sa.CheckConstraint):
+                    self.assertTrue(any(c["name"] == constraint.name for c in inspector.get_check_constraints(name)), f"{name} check {constraint.name}")
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        head = ScriptDirectory.from_config(Config(str(BACKEND / "alembic.ini"))).get_current_head()
+        self.assertEqual(connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one(), head)
 
     def test_empty_database_upgrades_and_repeats(self):
         engine = engine_for("EMPTY")
@@ -100,17 +126,18 @@ class MigrationIntegrationTests(unittest.TestCase):
         engine = engine_for("LEGACY")
         try:
             with engine.connect() as connection:
-                before = data_hash(connection)
+                columns = {name: {c["name"] for c in sa.inspect(connection).get_columns(name)} for name in sa.inspect(connection).get_table_names()}
+                before = data_hash(connection, columns)
                 self.assertNotIn("alembic_version", sa.inspect(connection).get_table_names())
             check = run_cli(engine, "scripts/adopt_legacy_database.py")
             self.assertEqual(check.returncode, 0, check.stderr)
             with engine.connect() as connection:
-                self.assertEqual(before, data_hash(connection))
+                self.assertEqual(before, data_hash(connection, columns))
                 self.assertNotIn("alembic_version", sa.inspect(connection).get_table_names())
             result = run_cli(engine, "scripts/adopt_legacy_database.py", "--apply")
             self.assertEqual(result.returncode, 0, result.stderr)
             with engine.connect() as connection:
-                self.assertEqual(before, data_hash(connection))
+                self.assertEqual(before, data_hash(connection, columns))
                 self.assert_model_schema(connection)
                 extra = {c["name"] for c in sa.inspect(connection).get_columns("venues")}
                 self.assertTrue({"open_time", "close_time", "opening_time", "closing_time", "slot_interval_minutes"}.issubset(extra))

@@ -2,18 +2,17 @@
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
-import { request } from "../../services/api";
+import { listAll } from "../../services/api";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   clubs = ref<any[]>([]),
   loading = ref(false);
 onShow(async () => {
+  clubs.value = [];
   if (!(await s.requireClubAdmin("/pages/admin/club-manage"))) return;
   loading.value = true;
   try {
-    clubs.value = await Promise.all(
-      (s.user?.managed_club_ids || []).map((id) => request(`/clubs/${id}`)),
-    );
+    clubs.value = await listAll("/clubs/managed");
   } catch (error: any) {
     uni.showToast({ title: error.message || "加载失败", icon: "none" });
   } finally {

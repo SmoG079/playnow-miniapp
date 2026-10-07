@@ -20,6 +20,8 @@ function detailMessage(data: any) {
 export function clearTokens() {
   uni.removeStorageSync("access_token");
   uni.removeStorageSync("refresh_token");
+  uni.removeStorageSync("registered_post_ids");
+  uni.removeStorageSync("booking_return");
 }
 
 async function refreshTokens() {
@@ -31,6 +33,8 @@ async function refreshTokens() {
     { refresh_token: refreshToken },
     true,
   );
+  if (uni.getStorageSync("refresh_token") !== refreshToken)
+    throw new Error("登录会话已变化，请重新加载");
   uni.setStorageSync("access_token", tokens.access_token);
   uni.setStorageSync("refresh_token", tokens.refresh_token);
 }

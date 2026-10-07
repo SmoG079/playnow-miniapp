@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # 仅当使用 STS 临时凭证时需要（永久密钥留空）
     OSS_SESSION_TOKEN: str = ""
 
+    TOURNAMENT_PREPAY_ENABLED: bool = False
+    TOURNAMENT_SEAT_TTL_SECONDS: int = 600
+
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
     PREPAY_ID_TTL_SECONDS: int = 300

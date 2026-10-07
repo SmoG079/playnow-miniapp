@@ -48,7 +48,11 @@ def main():
             config.attributes["target_metadata"] = METADATA
             command.stamp(config, REVISION)
             connection.commit()
-            print(f"Schema verified and revision recorded: {REVISION}")
+            print(f"Baseline verified and revision recorded: {REVISION}")
+            # Apply later, separately frozen revisions after verified legacy adoption.
+            command.upgrade(config, "head")
+            connection.commit()
+            print("Subsequent migrations completed")
     finally:
         engine.dispose()
 
