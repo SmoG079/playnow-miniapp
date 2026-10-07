@@ -133,12 +133,12 @@ async function save() {
     }
     const urls = [];
     for (const p of images.value)
-      urls.push(/^https?:/.test(p) ? p : (await uploadFile(p)).url);
+      urls.push(/^https?:/.test(p) ? p : (await uploadFile(p, "post")).url);
     const uploadedDocuments = [];
     for (const doc of documents.value) {
       if (doc.url) uploadedDocuments.push(doc);
       else {
-        const uploaded = await uploadFile(doc.path);
+        const uploaded = await uploadFile(doc.path, "doc");
         uploadedDocuments.push({
           name: doc.name,
           url: uploaded.url,

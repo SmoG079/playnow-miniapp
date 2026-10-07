@@ -1,13 +1,14 @@
 import os
-import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.logger import setup_logging, RequestLogMiddleware, get_logger
 from app.api.deps import get_current_user
 from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments
+from app.services import storage
 
 settings = get_settings()
 setup_logging(settings)
@@ -19,6 +20,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     # Database schema is managed by Alembic migrations.
     # Run: docker-compose exec api alembic upgrade head
+    logger.info("media storage backend: %s", storage.active_backend())
     yield
     await engine.dispose()
 
@@ -58,9 +60,14 @@ async def health():
 @app.post("/api/v1/upload")
 async def upload_file(
     file: UploadFile = File(...),
+    file_type: str = Form("upload"),
     _=Depends(get_current_user),
 ):
-    """Upload an image file. Returns {url, filename} with a client-reachable URL."""
+    """Upload an image to COS. Returns {url, filename} with a client-reachable URL.
+
+    file_type selects the object prefix: avatar / court / post / video (其他回落 upload)。
+    COS 未配置时回退本地磁盘（见 app/services/storage.py 与 docs/cos-media-storage.md）。
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="缺少文件名")
     ext = os.path.splitext(file.filename)[1].lower()
@@ -72,19 +79,21 @@ async def upload_file(
         raise HTTPException(
             status_code=413, detail=f"图片不能超过 {settings.UPLOAD_MAX_MB}MB"
         )
-    upload_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}{ext}"
-    filepath = os.path.join(upload_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(content)
-    base = f"{settings.PUBLIC_BASE_URL}/uploads/{filename}"
-    logger.info("upload saved: %s (%d bytes)", filename, len(content))
-    return {"url": base, "filename": filename}
+    key = storage.build_key(file_type, ext)
+    try:
+        url = await run_in_threadpool(storage.put_object, key, content, ext)
+    except Exception:
+        logger.error("media upload failed: key=%s", key, exc_info=True)
+        raise HTTPException(status_code=502, detail="图片上传失败，请稍后重试")
+    logger.info(
+        "media upload: %s -> %s (%d bytes)", key, storage.active_backend(), len(content)
+    )
+    return {"url": url, "filename": key}
 
 
-# Serve uploaded files
+# Serve legacy uploaded files. 2026-10-07 起新上传走 COS，此挂载仅为兼容
+# 数据库中已存在的 /uploads/<uuid> 历史链接（storage.py 未配置 COS 时也复用它）。
 from fastapi.staticfiles import StaticFiles
-uploads_path = os.path.join(os.path.dirname(__file__), "..", "uploads")
-os.makedirs(uploads_path, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
+
+os.makedirs(storage.LOCAL_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=storage.LOCAL_DIR), name="uploads")

@@ -63,7 +63,7 @@ async function save() {
   loading.value = true;
   try {
     if (form.avatar_url && !/^https?:/.test(form.avatar_url))
-      form.avatar_url = (await uploadFile(form.avatar_url)).url;
+      form.avatar_url = (await uploadFile(form.avatar_url, "avatar")).url;
     await request("/users/me", {
       method: "PUT",
       data: {

@@ -39,7 +39,7 @@ async function save() {
   loading.value = true;
   try {
     if (form.cover_image && !/^https?:/.test(form.cover_image))
-      form.cover_image = (await uploadFile(form.cover_image)).url;
+      form.cover_image = (await uploadFile(form.cover_image, "court")).url;
     await request(
       id.value
         ? `/venues/${id.value}/with-club/${clubId.value}`
