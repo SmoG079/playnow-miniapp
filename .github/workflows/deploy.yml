@@ -69,10 +69,12 @@ jobs:
           python -m unittest tests/test_free_post_queries.py
           python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py
       - name: Empty database migration
+        if: ${{ !cancelled() }}
         run: |
           python -m alembic upgrade head
           python -m alembic upgrade head
       - name: Deployment script tests
+        if: ${{ !cancelled() }}
         working-directory: .
         run: python -m unittest discover -s tests -p 'test_deployment*.py' -v
 
@@ -126,7 +128,7 @@ jobs:
   backend-image-check:
     name: Backend image build check
     needs: backend-test
-    if: github.event_name == 'pull_request'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
