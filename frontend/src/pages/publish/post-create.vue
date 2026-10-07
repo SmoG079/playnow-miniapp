@@ -2,10 +2,12 @@
 import { computed, reactive, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
+import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import { listAll, request, uploadFile } from "../../services/api";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   loading = ref(false),
+  coverUploading = ref(false),
   statusBarHeight = ref(0),
   editingPost = ref(false),
   showPostComparison = ref(false),
@@ -87,7 +89,7 @@ function pickImages() {
   });
 }
 async function submit() {
-  if (loading.value) return;
+  if (loading.value || coverUploading.value) return;
   if (!form.title.trim())
     return uni.showToast({ title: "请输入标题", icon: "none" });
   if (!form.preferred_date || !form.preferred_start || !form.preferred_end)
@@ -193,6 +195,7 @@ function goBook() {
         <wd-button variant="text" @click="editingPost = false"
           >返回发布入口</wd-button
         >
+        <ActivityCoverUpload v-model="images" :disabled="loading" @busy="coverUploading = $event" />
         <text class="form-title">发布约球</text>
         <text class="muted">场地可选，未关联即为自由约球。</text>
         <view class="comparison-help"
@@ -283,7 +286,7 @@ function goBook() {
           v-model="form.description"
           show-word-limit
           :maxlength="1000"
-        /><text class="field-label">活动图片</text
+        /><text class="field-label">活动图片 · 首张为封面</text
         ><view class="image-grid"
           ><Photo
             v-for="(img, i) in images"
@@ -299,7 +302,7 @@ function goBook() {
         ><wd-cell title="报名需要审核"
           ><wd-switch v-model="form.approval_required" /></wd-cell
         ><view class="publish-action"
-          ><wd-button block :loading="loading" @click="submit"
+          ><wd-button block :loading="loading || coverUploading" @click="submit"
             >发布约球</wd-button
           ></view
         ></view

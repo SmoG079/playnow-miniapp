@@ -43,6 +43,10 @@ LOCAL_DIR = os.path.abspath(
 _client: Optional[CosS3Client] = None
 
 
+class StorageUnavailable(RuntimeError):
+    """Activity media must never silently become local server files."""
+
+
 def is_configured() -> bool:
     """COS 密钥是否齐备。缺任一项即视为未配置，走本地磁盘回退。"""
     return bool(
@@ -95,8 +99,10 @@ def _local_path(key: str) -> str:
 
 
 def put_object(key: str, content: bytes, ext: str = "") -> str:
-    """上传对象并返回客户端可达的 URL。未配置 COS 时写入本地磁盘。"""
+    """上传对象并返回 URL；活动图片强制 COS，其余类型兼容本地回退。"""
     if not is_configured():
+        if key.startswith("post/"):
+            raise StorageUnavailable("活动图片存储暂不可用，请稍后重试")
         logger.warning(
             "COS 未配置，上传落本地磁盘（非生产预期）：key=%s 目录=%s",
             key,

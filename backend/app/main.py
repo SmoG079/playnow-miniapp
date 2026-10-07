@@ -67,7 +67,7 @@ async def upload_file(
     """Upload an image to COS. Returns {url, filename} with a client-reachable URL.
 
     file_type selects the object prefix: avatar / court / post / video (其他回落 upload)。
-    COS 未配置时回退本地磁盘（见 app/services/storage.py 与 docs/cos-media-storage.md）。
+    活动图片（post）强制 COS；其他类型在未配置时兼容本地回退。
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="缺少文件名")
@@ -83,6 +83,8 @@ async def upload_file(
     key = storage.build_key(file_type, ext)
     try:
         url = await run_in_threadpool(storage.put_object, key, content, ext)
+    except storage.StorageUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception:
         logger.error("media upload failed: key=%s", key, exc_info=True)
         raise HTTPException(status_code=502, detail="图片上传失败，请稍后重试")

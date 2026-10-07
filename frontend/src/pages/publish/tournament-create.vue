@@ -2,6 +2,7 @@
 import { reactive, ref, computed } from "vue";
 import { onLoad, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
+import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import TournamentSchedulePreview from "../../components/TournamentSchedulePreview.vue";
 import { listAll, request, uploadFile } from "../../services/api";
 import { useSession } from "../../stores/session";
@@ -18,6 +19,7 @@ const session = useSession(),
   clubs = ref<any[]>([]),
   clubIndex = ref(0),
   loading = ref(false),
+  coverUploading = ref(false),
   editId = ref(0),
   panels = ref<string[]>([]),
   images = ref<string[]>([]),
@@ -227,7 +229,7 @@ function pick() {
 }
 async function save() {
   const data = payload();
-  if (!data || loading.value) return;
+  if (!data || loading.value || coverUploading.value) return;
   loading.value = true;
   try {
     for (const img of images.value)
@@ -247,6 +249,7 @@ async function save() {
 <template>
   <AppShell back :title="editId ? '编辑赛事' : '创建赛事'"
     ><view class="content publish-content">
+      <ActivityCoverUpload v-model="images" :disabled="loading" @busy="coverUploading = $event" />
       <view id="basic"
         ><text class="section-title">基本信息</text
         ><text class="field-label">主办俱乐部</text
@@ -448,12 +451,12 @@ async function save() {
         ><wd-button
           block
           variant="plain"
-          :loading="loading"
+          :loading="loading || coverUploading"
           @click="showPreview"
           >预览赛程</wd-button
         ><wd-button
           block
-          :loading="loading"
+          :loading="loading || coverUploading"
           :disabled="!clubs.length"
           @click="save"
           >{{ editId ? "保存赛事" : "发布赛事" }}</wd-button
