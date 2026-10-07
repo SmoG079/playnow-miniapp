@@ -4,7 +4,7 @@ import os
 from sqlalchemy import create_engine,text
 from sqlalchemy.engine import make_url
 url=make_url(os.environ['DATABASE_URL'])
-assert url.database.startswith('playnow_e2e_') or url.database=='test_db', 'Use a disposable playnow_e2e_* database or the CI test_db only'
+assert url.database.startswith('playnow_e2e_') or url.database=='test_db', 'Isolated database required'
 c=httpx.Client(base_url='http://127.0.0.1:18080/api/v1',timeout=20)
 checks=[]
 def call(method,path,token=None,expected=200,**kw):
@@ -79,7 +79,11 @@ call('POST',f'/posts/{post}/register',member,json={'message':'join'})
 call('POST',f'/posts/{post}/register',member,expected=409,json={})
 call('PUT',f'/posts/{post}/registrations/{member_id}',owner,json={'status':'approved'})
 assert call('GET',f'/posts/{post}')['registrations'][0]['status']=='approved'
-call('GET','/users/me/posts',owner);call('GET','/users/me/posts',member,params={'type':'registered'})
+call('GET','/users/me/posts',owner)
+registrations=call('GET','/users/me/registrations',member)
+assert registrations['total']==1 and registrations['items'][0]['ref_id']==post
+assert registrations['items'][0]['status']=='approved'
+assert call('GET','/users/me/registrations',other)['total']==0
 comment=call('POST',f'/posts/{post}/comments',member,json={'content':'hello'})['id']
 reply=call('POST',f'/posts/{post}/comments',owner,json={'content':'reply','parent_id':comment})
 assert call('GET',f'/posts/{post}/comments')['items'][0]['reply_count']==1
@@ -94,6 +98,7 @@ call('PUT',f'/users/me/notifications/{nid}/read',owner)
 call('PUT','/users/me/notifications/read-all',owner)
 assert call('GET','/users/me/notifications/unread-count',owner)['count']==0
 call('DELETE',f'/posts/{post}/register',member)
+assert call('GET','/users/me/registrations',member)['total']==0
 call('DELETE',f'/posts/{post}',other,expected=403)
 call('DELETE',f'/posts/{post}',owner)
 call('GET',f'/posts/{post}',expected=404)
@@ -103,6 +108,9 @@ call('GET','/tournaments');call('GET',f'/tournaments/{tournament}')
 call('PUT',f'/tournaments/{tournament}',owner,json={'description':'updated'})
 assert call('POST',f'/tournaments/{tournament}/register',member)['order'] is None
 assert call('GET',f'/tournaments/{tournament}')['current_participants']==1
+registrations=call('GET','/users/me/registrations',member)
+assert registrations['total']==1 and registrations['items'][0]['ref_type']=='tournament'
+assert registrations['items'][0]['status']=='confirmed'
 call('GET',f'/clubs/{club}/stats',owner)
 image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jMZkAAAAASUVORK5CYII=')
 upload=call('POST','/upload',owner,files={'file':('e2e.png',image,'image/png')})

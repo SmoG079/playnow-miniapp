@@ -373,7 +373,14 @@
     },
     {
       "method": "GET",
-      "path": "/users/me/posts",
+      "path": "/users/me/registrations",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
+      "path": "/users/me/registrations",
       "expected": 200,
       "actual": 200,
       "passed": true
@@ -470,6 +477,13 @@
       "passed": true
     },
     {
+      "method": "GET",
+      "path": "/users/me/registrations",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
       "method": "DELETE",
       "path": "/posts/1",
       "expected": 403,
@@ -534,6 +548,13 @@
     },
     {
       "method": "GET",
+      "path": "/users/me/registrations",
+      "expected": 200,
+      "actual": 200,
+      "passed": true
+    },
+    {
+      "method": "GET",
       "path": "/clubs/1/stats",
       "expected": 200,
       "actual": 200,
@@ -568,7 +589,7 @@
       "passed": true
     }
   ],
-  "passed": 81,
+  "passed": 84,
   "payment_refund": "deferred",
   "real_wechat_login_phone_geocoding": "not exercised"
 }
