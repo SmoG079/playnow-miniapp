@@ -10,7 +10,7 @@ import httpx
 import logging
 from app.core.database import get_db
 from app.services.tencent_map import GEOCODER_URL, geocoder_params
-from app.services.discovery import distance_expr
+from app.services.discovery import distance_expr, city_name
 from app.services.pricing import slot_charge
 from app.core.config import get_settings
 from app.api.deps import get_current_user, get_club_admin, _v
@@ -86,6 +86,7 @@ async def geocode_address(
 
 @router.get("", response_model=PaginatedResponse)
 async def list_clubs(
+    city: Optional[str] = None,
     lat: float = Query(None),
     lng: float = Query(None),
     sport: str = Query(None),
@@ -96,6 +97,12 @@ async def list_clubs(
 ):
     query = select(Club).where(Club.status == "active")
     count_query = select(func.count(Club.id)).where(Club.status == "active")
+
+    if city is not None:
+        selected_city = city_name(city)
+        in_city = select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active, Venue.city == selected_city).correlate(Club).exists() if selected_city else False
+        query = query.where(in_city)
+        count_query = count_query.where(in_city)
 
     if keyword:
         query = query.where(Club.name.ilike(f"%{keyword}%"))
@@ -111,6 +118,8 @@ async def list_clubs(
     has_location = lat is not None and lng is not None
     venue_distance = distance_expr(lat, lng, Venue.latitude, Venue.longitude) if has_location else None
     nearest = select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active)
+    if city is not None:
+        nearest = nearest.where(Venue.city == city_name(city))
     if has_location:
         nearest = nearest.order_by(venue_distance.is_(None), venue_distance, Venue.id)
     else:

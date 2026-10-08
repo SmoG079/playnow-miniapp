@@ -237,8 +237,8 @@ function mine(id?: number | null) {
   box-sizing: border-box;
   width: 210px;
   height: 132px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
+  border: 1px solid var(--playnow-card-border);
+  border-radius: var(--playnow-card-radius);
   background: white;
   overflow: hidden;
   z-index: 1;

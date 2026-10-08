@@ -1,63 +1,69 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { onReachBottom, onShow } from "@dcloudio/uni-app";
+import MainHeader from "../../components/MainHeader.vue";
+import DiscoveryCityButton from "../../components/DiscoveryCityButton.vue";
+import { useDiscovery } from "../../stores/discovery";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
 import { openPage } from "../../utils/navigation";
+const location = useDiscovery();
+let loadVersion = 0;
 const clubs = ref<any[]>([]),
   keyword = ref(""),
   sort = ref("default"),
   page = ref(1),
   more = ref(true),
-  loading = ref(false),
-  location = ref<any>(null);
-async function locate() {
-  try {
-    location.value = await uni.getLocation({ type: "gcj02" });
-  } catch {
-    location.value = null;
-  }
-}
+  loading = ref(false);
 async function load(append = false) {
-  if (loading.value) return;
+  if (append && loading.value) return;
+  const version = ++loadVersion;
+  if (!append) clubs.value = [];
+  if (!location.city) { loading.value = false; return; }
   loading.value = true;
   try {
     const p = append ? page.value + 1 : 1;
-    let url = `/clubs?page=${p}&page_size=20`;
+    let url = `/clubs?page=${p}&page_size=20&city=${encodeURIComponent(location.city)}`;
     if (keyword.value) url += `&keyword=${encodeURIComponent(keyword.value)}`;
-    if (sort.value === "distance" && location.value)
-      url += `&lat=${location.value.latitude}&lng=${location.value.longitude}&sort_by=distance`;
+    if (sort.value === "distance" && location.latitude !== null)
+      url += `&lat=${location.latitude}&lng=${location.longitude}&sort_by=distance`;
     const r = await request<PageResult<any>>(url);
+    if (version !== loadVersion) return;
     clubs.value = append ? [...clubs.value, ...r.items] : r.items;
     page.value = p;
     more.value = r.items.length === 20;
   } catch (e: any) {
-    uni.showToast({ title: e.message, icon: "none" });
+    if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
 }
 async function setSort(v: string) {
-  if (v === "distance" && !location.value) await locate();
-  sort.value = location.value || v === "default" ? v : "default";
-  load();
+  if (v === "distance") {
+    try { await location.coordinates(); }
+    catch { uni.showToast({ title: "距离排序需要开启定位", icon: "none" }); return; }
+  }
+  sort.value = v; await load();
 }
-onShow(() => {
-  locate();
-  load();
+onShow(async () => {
+  if (!location.city && !location.attempted) {
+    try { await location.locate(); }
+    catch { uni.showToast({ title: "请手动选择城市", icon: "none" }); }
+  }
+  await load();
 });
 onReachBottom(() => more.value && load(true));
 </script>
 <template>
   <AppShell active="clubs"
-    ><view class="content"
-      ><view class="page-heading"><text class="page-title">找球场</text></view
-      ><wd-search
+    ><MainHeader title="找球场" /><view class="content main-content"
+      ><view class="city-header"><DiscoveryCityButton @change="load()" /></view
+      ><view class="search-card"><wd-search
         v-model="keyword"
         placeholder="搜索俱乐部"
         cancel-txt="搜索"
         @search="load()"
-        @cancel="load()" /><view class="filter-row"
+        @cancel="load()" /></view><view class="filter-row"
         ><wd-button
           size="small"
           :type="sort === 'default' ? 'primary' : 'info'"
@@ -75,7 +81,7 @@ onReachBottom(() => more.value && load(true));
         v-for="c in clubs"
         :key="c.id"
         class="venue-card"
-        @click="openPage('/pages/booking/venue-detail?id=' + c.id)"
+        @click="openPage('/pages/booking/venue-detail?id=' + c.id + '&city=' + encodeURIComponent(location.city))"
         ><view class="venue-photo"
           ><Photo
             width="100%"
@@ -91,7 +97,7 @@ onReachBottom(() => more.value && load(true));
           ><text class="muted">{{ c.nearest_venue_name ? c.nearest_venue_name + " · " : "" }}{{ c.venue_address || "球场位置待补充" }}</text
           ><view><text class="tag">网球</text></view></view
         ></view
-      ><wd-empty v-if="!loading && !clubs.length" tip="暂未找到俱乐部"
+      ><wd-empty v-if="!loading && !clubs.length" :tip="location.city ? '当前城市暂无球场' : '请先选择城市'"
         ><wd-button size="small" @click="openPage('/pages/publish/club-create')"
           >创建俱乐部</wd-button
         ></wd-empty

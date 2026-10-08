@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import MainHeader from "../../components/MainHeader.vue";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { openPage } from "../../utils/navigation";
@@ -20,8 +21,7 @@ function openSystem() {
 </script>
 <template>
   <AppShell active="chat"
-    ><view class="content"
-      ><view class="page-heading"><text class="page-title">消息</text></view
+    ><MainHeader title="消息" /><view class="content main-content"
       ><view class="conv-item" @click="openSystem"
         ><view class="conv-avatar system"
           ><wd-icon name="notification" size="24px" color="#ffffff" /></view
@@ -52,8 +52,7 @@ function openSystem() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 4px;
-  border-bottom: 1px solid #eef1ef;
+  padding: 16px;
 }
 .conv-avatar {
   flex: none;
@@ -77,7 +76,7 @@ function openSystem() {
 .unread-badge {
   position: absolute;
   top: 10px;
-  right: 2px;
+  right: 12px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;

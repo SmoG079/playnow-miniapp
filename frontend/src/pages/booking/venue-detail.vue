@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+const selectedCity = ref("");
 const clubId = ref(""),
   club = ref<any>(null),
   venues = ref<any[]>([]),
@@ -48,8 +49,10 @@ async function load() {
       request<any>(`/clubs/${clubId.value}/venue-slots?date=${date.value}`),
     ]);
     club.value = c;
-    venues.value = r.venues || c.venues || [];
-    rows.value = r.rows || [];
+    const allVenues = r.venues || c.venues || [];
+    venues.value = selectedCity.value ? allVenues.filter((v: any) => v.city === selectedCity.value) : allVenues;
+    const ids = new Set(venues.value.map(v => v.id));
+    rows.value = (r.rows || []).map((row: any) => ({ ...row, cells: row.cells.filter((cell: any) => ids.has(cell.venue_id)) }));
   } catch (e: any) {
     uni.showToast({ title: e.message, icon: "none" });
   } finally {
@@ -57,6 +60,7 @@ async function load() {
   }
 }
 onLoad((q) => {
+  selectedCity.value = String(q?.city || "");
   clubId.value = String(q?.id || q?.club_id || "");
   returnMode.value = String(q?.return_mode || "");
   init();

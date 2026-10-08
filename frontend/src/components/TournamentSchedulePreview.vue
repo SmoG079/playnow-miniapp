@@ -77,7 +77,8 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
 .statistics view {
   flex: 1;
   background: #f5f5f3;
-  border-radius: 12px;
+  border-radius: var(--playnow-card-radius);
+  border: 1px solid var(--playnow-card-border);
   text-align: center;
   padding: 16px 4px;
 }

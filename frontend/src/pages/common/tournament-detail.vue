@@ -1034,8 +1034,8 @@ function tie() {
 .list-card {
   padding: 16px;
   background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border: 1px solid var(--playnow-card-border);
+  border-radius: var(--playnow-card-radius);
   margin: 12px 0;
 }
 .choices {

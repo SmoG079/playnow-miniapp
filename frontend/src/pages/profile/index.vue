@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import MainHeader from "../../components/MainHeader.vue";
 import AppShell from "../../components/AppShell.vue";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 const s = useSession();
+const identity = computed(() => s.user?.role === "platform_admin" ? "系统管理员" : s.user?.role === "club_admin" ? "俱乐部管理员" : "用户");
 onShow(() => s.fetchUser().catch(() => {}));
 const menus = computed(() => {
   const common = [
@@ -33,41 +35,38 @@ function logout() {
 </script>
 <template>
   <AppShell active="profile"
-    ><view class="content"
-      ><view class="page-heading"
-        ><text class="brand"
-          >PlayNow<text class="brand-dot">.</text></text
-        ></view
+    ><MainHeader title="我的" /><view class="content main-content"
       ><template v-if="s.loggedIn"
         ><view class="profile-header" @click="openPage('/pages/profile/edit')"
           ><Photo
             round
-            width="75px"
-            height="75px"
+            width="64px"
+            height="64px"
             :src="s.user?.avatar_url"
             fallback="/static/tennis.jpg"
-          /><view
+          /><view class="profile-info"
             ><text class="page-title compact">{{
               s.user?.nickname || "网球爱好者"
             }}</text
             ><text class="muted">{{ s.user?.city || "未设置城市" }}</text
-            ><text v-if="s.user?.ntrp_level" class="tag yellow"
-              >NTRP {{ s.user.ntrp_level }}</text
-            ></view
+            ><view class="identity-tags">
+              <text v-if="s.user" class="tag identity-tag">{{ identity }}</text>
+              <text v-if="s.user?.ntrp_level" class="tag yellow">NTRP {{ s.user.ntrp_level }}</text>
+            </view></view
           ></view
-        ><view class="menu-list"
-          ><wd-cell
-            v-for="m in menus"
-            :key="m[2]"
-            :title="m[1]"
-            :prefix-icon="m[0]"
-            is-link
-            @click="openPage(m[2])" /><wd-cell
-            title="编辑个人资料"
-            prefix-icon="user"
-            is-link
-            @click="openPage('/pages/profile/edit')" /></view
-        ><view class="publish-action"
+        ><view class="profile-menu-list">
+          <view v-for="m in menus" :key="m[2]" class="profile-menu-card">
+            <wd-cell :title="m[1]" :prefix-icon="m[0]" icon-size="22px"
+              title-width="calc(100% - 40px)" center is-link :border="false"
+              custom-style="min-height:60px" @click="openPage(m[2])" />
+          </view>
+          <view class="profile-menu-card">
+            <wd-cell title="编辑个人资料" prefix-icon="user" icon-size="22px"
+              title-width="calc(100% - 40px)" center is-link :border="false"
+              custom-style="min-height:60px" @click="openPage('/pages/profile/edit')" />
+          </view>
+        </view>
+        <view class="publish-action"
           ><wd-button block variant="plain" type="danger" @click="logout"
             >退出登录</wd-button
           ></view
@@ -84,3 +83,33 @@ function logout() {
     ></AppShell
   >
 </template>
+
+<style scoped>
+.profile-info { flex:1; min-width:0; }
+.profile-info .page-title { font-size:20px; font-weight:650; }
+.profile-info > .muted { font-size:12px; }
+.identity-tags .yellow { background:#f2f3e5; color:#70744c; }
+.profile-info > .muted { display:block; }
+.identity-tags { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
+.identity-tags .tag { font-size:12px; line-height:16px; padding:4px 8px; border-radius:6px; }
+.identity-tag { background:#edf3ef; color:#496756; font-weight:500; }
+.profile-menu-list {
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  --wot-cell-title-font-size:17px;
+  --wot-cell-title-line-height:24px;
+  --wot-cell-padding:18px;
+  --wot-cell-icon-spacing-right:12px;
+  --wot-cell-icon-color:#647d70;
+  --wot-cell-arrow-size:16px;
+  --wot-cell-arrow-color:#a0ada5;
+  --wot-cell-title-color:#304238;
+}
+.profile-menu-card {
+  background:#fff;
+  border:1px solid var(--playnow-card-border);
+  border-radius:var(--playnow-card-radius);
+  overflow:hidden;
+}
+</style>

@@ -15,6 +15,8 @@ body,
   --wot-button-medium-height: 46px;
   --wot-input-bg: #f0f3f1;
   --wot-input-border-color: #e2e8e4;
+  --playnow-card-radius: 16px;
+  --playnow-card-border: #e4ebe6;
   color: #1d2d25;
   background: #e8eeea;
   font-family:
@@ -1060,3 +1062,24 @@ image {
 .slot-table .slot-row {
   grid-template-columns: 54px repeat(var(--cols), 92px);
 }
+
+/* Shared main-page spacing and card surfaces. */
+.main-header { margin-bottom: 20px; }
+.main-header .page-title { margin: 6px 0; }
+.city-header { display:flex; align-items:center; margin-bottom:16px; }
+.city-pill { margin:0; display:flex; align-items:center; justify-content:center; gap:2px; width:68px; background:#123b2c; color:#fff; padding:7px 4px; border-radius:20px; font-size:11px; font-weight:600; line-height:16px; }
+.city-pill text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.city-options { padding:30px 20px; display:flex; flex-direction:column; gap:16px; }
+.filter-pill { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border:1px solid var(--playnow-card-border); border-radius:12px; font-size:13px; background:#fff; color:#283e32; }
+.activity-card, .venue-card, .record-card, .summary-card, .message-card, .list-card, .profile-header, .menu-list, .conv-item, .stats-grid > view {
+  background:#fff;
+  border:1px solid var(--playnow-card-border);
+  border-radius:var(--playnow-card-radius);
+  overflow:hidden;
+}
+.profile-header { padding:20px 16px; margin-bottom:16px; }
+.menu-list { margin-bottom:20px; }
+.message-empty { padding-top:64px; }
+
+.city-pill::after { border:0; }
+.search-card { border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); background:#fff; overflow:hidden; margin-bottom:12px; }

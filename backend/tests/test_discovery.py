@@ -149,3 +149,24 @@ def test_court_coordinates_and_blank_location_are_validated(schema):
     args=dict(name='球场',price_per_hour=10) if schema=='create' else {}
     for location in (dict(city=' '),dict(address=' '),dict(latitude=32),dict(latitude=100,longitude=119)):
         with pytest.raises(ValidationError): kind(**args,**location)
+
+@pytest.mark.asyncio
+async def test_booking_city_uses_court_location_for_filter_count_and_nearest(db):
+    from app.api.v1 import clubs
+    from app.models.models import Venue, VenueStatus
+    a = await db.get(Club,1); a.status='active'; a.city='错误城市'
+    b = await db.get(Club,2); b.status='active'; b.city='扬州市'
+    db.add_all([
+        Venue(id=101,club_id=1,name='南京球场',city='南京市',latitude=32.06,longitude=118.76,price_per_hour=10,sport_type='tennis',status=VenueStatus.active),
+        Venue(id=102,club_id=1,name='扬州球场',city='扬州市',latitude=32.4,longitude=119.4,price_per_hour=10,sport_type='tennis',status=VenueStatus.active),
+        Venue(id=103,club_id=2,name='南京球场二',city='南京市',price_per_hour=10,sport_type='tennis',status=VenueStatus.active),
+        Venue(id=104,club_id=2,name='停用球场',city='扬州市',price_per_hour=10,sport_type='tennis',status=VenueStatus.maintenance),
+    ])
+    await db.flush()
+    args=dict(lat=32.06,lng=118.76,sport=None,keyword=None,page=1,page_size=1,db=db)
+    result=await clubs.list_clubs(city='扬州市',**args)
+    assert result.total==1 and result.items[0].id==1
+    assert result.items[0].nearest_venue_id==102 and result.items[0].venue_city=='扬州市'
+    assert (await clubs.list_clubs(city='南京市',**args)).total==2
+    assert (await clubs.list_clubs(city='不存在市',**args)).total==0
+    assert (await clubs.list_clubs(city=' ',**args)).total==0

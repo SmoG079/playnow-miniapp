@@ -65,8 +65,8 @@ async function read(m: any) {
 .bubble {
   max-width: 82%;
   padding: 11px 13px;
-  border-radius: 14px;
-  border-top-left-radius: 4px;
+  border-radius: var(--playnow-card-radius);
+  border: 1px solid var(--playnow-card-border);
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(20, 117, 83, 0.06);
   display: flex;
