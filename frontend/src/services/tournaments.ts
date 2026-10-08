@@ -45,7 +45,7 @@ export interface Team {
   id: number;
   name: string;
   group_no: number;
-  user_ids?: number[];
+  user_ids?: string[];
   origin_group?: number;
 }
 export interface Match {
@@ -72,7 +72,7 @@ export interface Match {
 export interface Registration {
   requested_group?: number;
   id: number;
-  user_id: number;
+  user_id: string;
   user_nickname?: string;
   user_avatar?: string;
   status: string;
@@ -81,7 +81,7 @@ export interface Registration {
   payment?: string;
   pairing?: string;
   gender?: string;
-  partner_user_id?: number;
+  partner_user_id?: string;
   invite_token?: string;
   review_reason?: string;
   seat_expires_at?: string;
@@ -171,7 +171,7 @@ export function teamName(
   return (
     t?.user_ids
       ?.map(
-        (u) => regs.find((r) => r.user_id === u)?.user_nickname || `选手${u}`,
+        (u) => regs.find((r) => r.user_id === u)?.user_nickname || "未设置昵称",
       )
       .join(" / ") ||
     t?.name ||

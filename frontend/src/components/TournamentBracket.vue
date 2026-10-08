@@ -17,7 +17,7 @@ const props = withDefaults(
     teams: Team[];
     matches: Match[];
     registrations?: Registration[];
-    myUserId?: number;
+    myUserId?: string;
     allGroups?: boolean;
   }>(),
   { registrations: () => [], allGroups: false },
@@ -51,7 +51,7 @@ function name(id?: number | null) {
 function mine(id?: number | null) {
   return props.teams
     .find((t) => t.id === id)
-    ?.user_ids?.includes(props.myUserId || 0);
+    ?.user_ids?.includes(props.myUserId || "");
 }
 </script>
 <template>

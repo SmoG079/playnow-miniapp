@@ -216,8 +216,8 @@ export function buildSchedulePreview(
   };
 }
 
-export function personalDraw(teams: Team[], matches: Match[], userId?: number) {
-  const team = teams.find((t) => t.user_ids?.includes(userId || 0));
+export function personalDraw(teams: Team[], matches: Match[], userId?: string) {
+  const team = teams.find((t) => t.user_ids?.includes(userId || ""));
   if (!team) return null;
   const group = matches.filter((m) => m.group_no === team.group_no);
   const first = group.find(

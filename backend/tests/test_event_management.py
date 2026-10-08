@@ -27,7 +27,7 @@ async def test_management_list_includes_created_and_closed_events_and_is_scoped(
     tid, admin = await event(db)
     creator = await db.get(User, 2)
     creator.role = UserRole.club_admin
-    db.add(ClubMember(club_id=1,user_id=2))
+    db.add(ClubMember(club_id=1,user_id='2'))
     await db.flush()
     created = await tournaments.create_tournament(TournamentCreate(**TOURNAMENT),creator,db)
     result = await users.managed_tournaments(1,20,creator,db)
@@ -47,7 +47,7 @@ async def test_cancel_with_legacy_paid_order_does_not_block_or_send_real_refund(
     await register(db,tid,2)
     from sqlalchemy import select
     reg = (await db.execute(select(TournamentRegistration).where(TournamentRegistration.tournament_id==tid))).scalar_one()
-    order = BookingOrder(order_no="legacy-cancel",business_type="tournament",tournament_id=tid,club_id=1,user_id=2,amount=50,status=OrderStatus.paid,wx_transaction_id="dev_old")
+    order = BookingOrder(order_no="legacy-cancel",business_type="tournament",tournament_id=tid,club_id=1,user_id='2',amount=50,status=OrderStatus.paid,wx_transaction_id="dev_old")
     db.add(order); await db.flush(); reg.order_id=order.id
     from app.services import tournament_lifecycle as life
     async def forbidden(*args): raise AssertionError("Legacy payment cannot request real refund")

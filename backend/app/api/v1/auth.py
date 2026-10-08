@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.api.deps import get_current_user
 from app.models.models import User
+from sqlalchemy.exc import IntegrityError
 from app.schemas.schemas import WxLoginRequest, TokenResponse, RefreshRequest, PhoneRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -18,7 +19,7 @@ async def _get_wx_access_token():
     import redis.asyncio as redis
     r = redis.from_url(settings.REDIS_URL, decode_responses=True)
     try:
-        key = "wx:access_token"
+        key = f"wx:access_token:{settings.WX_APP_ID}"
         token = await r.get(key)
         if token:
             return token
@@ -83,16 +84,20 @@ async def wx_login(req: WxLoginRequest, db: AsyncSession = Depends(get_db)):
 
     session_key = data.get("session_key")
 
-    # Find or create user
-    result = await db.execute(select(User).where(User.openid == openid))
-    user = result.scalar_one_or_none()
-    if not user:
-        user = User(openid=openid, unionid=data.get("unionid"), session_key=session_key)
+    user = await db.get(User, openid)
+    if user is None:
+        user = User(id=openid, openid=openid, unionid=data.get("unionid"), session_key=session_key)
         db.add(user)
-        await db.flush()
-    else:
-        user.session_key = session_key
-
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            user = await db.get(User, openid)
+            if user is None:
+                raise HTTPException(status_code=409, detail="登录处理中，请重试")
+    user.session_key = session_key
+    if data.get("unionid"):
+        user.unionid = data["unionid"]
     await db.commit()
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
@@ -100,11 +105,13 @@ async def wx_login(req: WxLoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(req: RefreshRequest):
+async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db)):
     payload = decode_token(req.refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     user_id = payload["sub"]
+    if not isinstance(user_id, str) or not await db.get(User, user_id):
+        raise HTTPException(status_code=401, detail="登录已失效，请重新微信登录")
     access_token = create_access_token(user_id)
     new_refresh = create_refresh_token(user_id)
     return TokenResponse(access_token=access_token, refresh_token=new_refresh)
@@ -119,6 +126,8 @@ async def get_phone(
     """Get phone number via WeChat server-side API using mini-program access token."""
     # Dev mode: accept mock phone
     if req.code and req.code.startswith("dev_"):
+        if not settings.DEBUG:
+            raise HTTPException(status_code=400, detail="Development phone authorization is disabled")
         current_user.phone = "13800138000"
         await db.commit()
         return {"msg": "ok", "phone": current_user.phone}

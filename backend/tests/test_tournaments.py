@@ -46,7 +46,7 @@ async def db(monkeypatch):
         for i in range(1, 18):
             s.add(
                 User(
-                    id=i,
+                    id=str(i),
                     openid=f"wx{i}",
                     nickname=f"选手{i}",
                     role=UserRole.platform_admin if i == 1 else UserRole.user,
@@ -149,7 +149,7 @@ async def test_pair_invitation_and_partner_cancel(db):
     t = await life.locked_event(db, tid)
     r = await api.own(db, t, u2)
     partner = await api.own(db, t, u3)
-    assert partner.partner_user_id == 2
+    assert partner.partner_user_id == "2"
     await api.cancel_registration(tid, r.id, ReasonCommand(reason="退出"), u2, db)
     assert (
         partner.partner_user_id is None
@@ -628,7 +628,7 @@ async def test_selected_groups_survive_live_redraw_and_personal_records(db):
     )
     original = await api.get_tournament(tid, admin, db)
     for team in original["teams"]:
-        assert team["group_no"] == (1 if team["user_ids"][0] < 6 else 2)
+        assert team["group_no"] == (1 if int(team["user_ids"][0]) < 6 else 2)
     m = original["matches"][0]
     await api.record_result(
         tid,
@@ -731,9 +731,9 @@ async def test_auto_players_fill_selected_mixed_groups(db):
     )
     detail = await api.get_tournament(tid, admin, db)
     for team in detail["teams"]:
-        if 2 in team["user_ids"] or 3 in team["user_ids"]:
+        if "2" in team["user_ids"] or "3" in team["user_ids"]:
             assert team["group_no"] == 1
-        if 4 in team["user_ids"] or 5 in team["user_ids"]:
+        if "4" in team["user_ids"] or "5" in team["user_ids"]:
             assert team["group_no"] == 2
     assert len(detail["teams"]) == 4
 
@@ -749,12 +749,7 @@ async def test_provisional_real_opponents_are_not_formal_draws(db):
     detail = await api.get_tournament(tid, await db.get(User, 2), db)
     provisional = detail["participant_preview"]
     assert provisional and detail["published_version"] == 0 and detail["matches"] == []
-    assert set(uid for team in provisional["teams"] for uid in team["user_ids"]) == {
-        2,
-        3,
-        4,
-        5,
-    }
+    assert set(uid for team in provisional["teams"] for uid in team["user_ids"]) == {"2", "3", "4", "5"}
     assert (
         not (
             await db.execute(

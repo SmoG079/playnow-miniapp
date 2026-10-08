@@ -19,8 +19,8 @@ class UserRole(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    openid = Column(String(64), nullable=False, unique=True)
+    id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), primary_key=True, default=lambda context: context.get_current_parameters()["openid"])
+    openid = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), nullable=False, unique=True)
     unionid = Column(String(64))
     nickname = Column(String(64))
     avatar_url = Column(String(512))
@@ -88,7 +88,7 @@ class ClubMember(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     role = Column(Enum(ClubMemberRole), default=ClubMemberRole.admin, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("club_id", "user_id", name="uq_club_user"),)
@@ -146,7 +146,7 @@ class VenueTimeSlot(Base):
     end_time = Column(Time, nullable=False)
     price_override = Column(DECIMAL(10, 2))
     status = Column(Enum(SlotStatus), default=SlotStatus.available, nullable=False)
-    locked_by = Column(BigInteger, ForeignKey("users.id"))
+    locked_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     locked_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -184,7 +184,7 @@ class BookingOrder(Base):
     tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=True, index=True)
     business_type = Column(String(16), default="booking", server_default="booking", nullable=False)
     order_no = Column(String(32), nullable=False, unique=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
     venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=True)
     slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=True)
     slot_ids = Column(JSON, comment='选中的所有连续时段 ID 列表 [id1, id2, ...]')
@@ -272,7 +272,7 @@ class MatchPost(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=False)
     activity_kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), default="post", server_default="post", nullable=False)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     city = Column(String(64), nullable=True, index=True)
     latitude = Column(DECIMAL(10, 7))
     longitude = Column(DECIMAL(10, 7))
@@ -320,7 +320,7 @@ class MatchRegistration(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     message = Column(String(256))
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -337,7 +337,7 @@ class Comment(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=False, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     parent_id = Column(BigInteger, ForeignKey("comments.id"), nullable=True)
     content = Column(String(512), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
@@ -418,7 +418,7 @@ class TournamentRegistration(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     order_id = Column(BigInteger, ForeignKey("booking_orders.id"))
     status = Column(Enum(TournamentRegStatus), default=TournamentRegStatus.registered, nullable=False)
     approval = Column(String(16), default="approved", nullable=False)
@@ -427,7 +427,7 @@ class TournamentRegistration(Base):
     gender = Column(String(16))
     requested_group = Column(Integer, default=0, server_default="0", nullable=False)
     pairing = Column(String(16), default="random", nullable=False)
-    partner_user_id = Column(BigInteger, ForeignKey("users.id"))
+    partner_user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     invite_token = Column(String(64), unique=True)
     seat_expires_at = Column(DateTime)
     review_reason = Column(String(256))
@@ -451,7 +451,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
     type = Column(Enum(NotificationType), nullable=False)
     title = Column(String(128))
     content = Column(String(512))
@@ -512,7 +512,7 @@ class TournamentDraw(Base):
     idempotency_key = Column(String(64), nullable=False)
     seed = Column(String(64), nullable=False)
     snapshot = Column(JSON, nullable=False)
-    created_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    created_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     reason = Column(String(256))
     published_at = Column(DateTime)
     tie_orders = Column(JSON, nullable=True)
@@ -535,7 +535,7 @@ class TournamentTeamMember(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     draw_id = Column(BigInteger, ForeignKey("tournament_draws.id"), nullable=False)
     team_id = Column(BigInteger, ForeignKey("tournament_teams.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     __table_args__ = (UniqueConstraint("draw_id", "user_id", name="uq_draw_member"),)
 
 
@@ -567,7 +567,13 @@ class TournamentAudit(Base):
     __tablename__ = "tournament_audits"
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=False, index=True)
-    actor_id = Column(BigInteger, ForeignKey("users.id"))
+    actor_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     action = Column(String(32), nullable=False)
     detail = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserIDMigration(Base):
+    __tablename__ = "user_id_migrations"
+    legacy_id = Column(BigInteger, primary_key=True, autoincrement=False)
+    openid = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)

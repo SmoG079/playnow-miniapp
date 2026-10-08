@@ -39,7 +39,7 @@ class PhoneRequest(BaseModel):
 # ── User ──
 
 class UserProfile(BaseModel):
-    id: int
+    id: str
     nickname: Optional[str]
     avatar_url: Optional[str]
     phone: Optional[str]
@@ -311,7 +311,7 @@ class BookingCreateRequest(BaseModel):
 class BookingDetail(BaseModel):
     id: int
     order_no: str
-    user_id: int
+    user_id: str
     venue_id: int
     slot_id: int
     slot_ids: Optional[list[int]] = None
@@ -465,7 +465,7 @@ class PostBrief(BaseModel):
     notes: Optional[str] = None
     id: int
     club_id: Optional[int] = None
-    user_id: int
+    user_id: str
     title: str
     sport_type: Optional[str]
     preferred_date: Optional[date]
@@ -494,7 +494,7 @@ class MyPostRegistration(BaseModel):
     id: int
     activity_id: int
     post_id: int
-    user_id: int
+    user_id: str
     status: str
     message: Optional[str] = None
     created_at: datetime
@@ -526,7 +526,7 @@ class PostDetail(PostBrief):
 
 class RegistrationBrief(BaseModel):
     id: int
-    user_id: int
+    user_id: str
     message: Optional[str]
     status: str
     user_nickname: Optional[str] = None
@@ -561,7 +561,7 @@ class CommentCreate(BaseModel):
 class CommentBrief(BaseModel):
     id: int
     post_id: int
-    user_id: int
+    user_id: str
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None
     content: str
@@ -636,7 +636,7 @@ class TournamentDetail(TournamentBrief):
 
 class TournamentRegBrief(BaseModel):
     id: int
-    user_id: int
+    user_id: str
     status: str
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None

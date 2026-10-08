@@ -24,12 +24,12 @@ async def test_personal_records_paginate_and_isolate_accounts_without_local_stat
     db.add_all([Activity(id=i, kind="post") for i in range(1, 54)])
     await db.flush()
     for i in range(1, 54):
-        db.add(MatchPost(id=i, user_id=2, title=f"约球{i}", club_id=1 if i % 2 else None,
+        db.add(MatchPost(id=i, user_id='2', title=f"约球{i}", club_id=1 if i % 2 else None,
                          price=0, status=MatchPostStatus.closed if i == 1 else MatchPostStatus.open))
-        db.add(MatchRegistration(id=i, post_id=i, user_id=1,
+        db.add(MatchRegistration(id=i, post_id=i, user_id='1',
             status=list(RegistrationStatus)[i % len(RegistrationStatus)],
             message="本人的留言", created_at=datetime(2026, 10, 7)))
-    db.add(MatchRegistration(id=54, post_id=1, user_id=2, message="其他账号的留言"))
+    db.add(MatchRegistration(id=54, post_id=1, user_id='2', message="其他账号的留言"))
     await db.commit()
     async with async_sessionmaker(db.bind, expire_on_commit=False)() as fresh:
         user = await fresh.get(User, 1)
@@ -38,7 +38,7 @@ async def test_personal_records_paginate_and_isolate_accounts_without_local_stat
         assert first.total == last.total == 53
         assert len(first.items) == 50 and len(last.items) == 3
         assert [r.id for r in first.items + last.items] == list(range(53, 0, -1))
-        assert all(r.user_id == 1 for r in first.items + last.items)
+        assert all(r.user_id == "1" for r in first.items + last.items)
         assert any(r.club_id is None for r in first.items)
         assert last.items[-1].post_status == "closed"
         other = await users.my_post_registrations(1, 50, await fresh.get(User, 2), fresh)
@@ -50,7 +50,7 @@ async def test_cancel_keeps_record_reopens_capacity_and_can_register_again(db):
     user = await db.get(User, 1)
     db.add(Activity(id=1, kind="post"))
     await db.flush()
-    db.add(MatchPost(id=1, user_id=2, title="约球", price=0, players_needed=1))
+    db.add(MatchPost(id=1, user_id='2', title="约球", price=0, players_needed=1))
     await db.flush()
     await posts.register_post(1, RegisterPostRequest(message="报名"), user, db)
     assert (await db.get(MatchPost, 1)).status == MatchPostStatus.full
@@ -116,7 +116,7 @@ async def test_club_data_round_trip_and_edit_preserves_other_fields(db):
 async def test_http_club_scope_cannot_be_spoofed_and_role_changes_are_immediate(db):
     user = await db.get(User, 1)
     user.role = UserRole.club_admin
-    db.add(ClubMember(user_id=1, club_id=1))
+    db.add(ClubMember(user_id='1', club_id=1))
     (await db.get(Club, 1)).status = ClubStatus.inactive
     await db.commit()
     app = FastAPI()

@@ -18,6 +18,17 @@ describe("session token state", () => {
     setActivePinia(createPinia());
   });
 
+  it("旧版或不同 AppID 的缓存不能冒充当前微信登录", async () => {
+    storage.set("access_token", "legacy-token"); storage.set("refresh_token", "legacy-refresh");
+    const { useSession } = await import("../src/stores/session");
+    const session = useSession();
+    expect(session.loggedIn).toBe(false);
+    session.setTokens("current", "refresh");
+    session.syncTokens(); expect(session.loggedIn).toBe(true);
+    (uni as any).getAccountInfoSync = () => ({ miniProgram: { appId: "different-app" } });
+    session.syncTokens(); expect(session.loggedIn).toBe(false);
+    expect(storage.has("refresh_token")).toBe(false);
+  });
   it("登录写入令牌后立即更新登录状态", async () => {
     const { useSession } = await import("../src/stores/session");
     const session = useSession();
@@ -44,7 +55,7 @@ describe("session token state", () => {
   it("登录和退出时清理旧账号的业务暂存及用户权限", async () => {
     const { useSession } = await import("../src/stores/session");
     const session = useSession();
-    session.user = { id: 1, role: "platform_admin" };
+    session.user = { id: "wx1", role: "platform_admin" };
     storage.set("registered_post_ids", "旧列表");
     storage.set("booking_return", "旧预约");
     session.setTokens("new-access", "new-refresh");
@@ -63,7 +74,7 @@ describe("session token state", () => {
     session.setTokens("access", "refresh");
     const pending = session.fetchUser();
     session.logout();
-    respond({ statusCode: 200, data: { id: 1, role: "platform_admin" } });
+    respond({ statusCode: 200, data: { id: "wx1", role: "platform_admin" } });
     await pending;
     expect(session.user).toBeNull();
     expect(session.loggedIn).toBe(false);
@@ -99,7 +110,7 @@ describe("session token state", () => {
       const session = useSession();
       session.setTokens("access", "refresh");
       session.user = {
-        id: 1,
+        id: "wx1",
         role: String(role),
         managed_club_ids: ids as number[],
       };

@@ -58,12 +58,12 @@ def test_round_robin_every_pair_once_and_no_overlap(count):
 
 def test_fixed_and_random_mixed_pairing():
     p = [
-        dict(user_id=1, gender="male", pairing="fixed", partner_user_id=2),
-        dict(user_id=2, gender="female", pairing="fixed", partner_user_id=1),
-        dict(user_id=3, gender="male"),
-        dict(user_id=4, gender="female"),
+        dict(user_id='1', gender="male", pairing="fixed", partner_user_id='2'),
+        dict(user_id='2', gender="female", pairing="fixed", partner_user_id='1'),
+        dict(user_id='3', gender="male"),
+        dict(user_id='4', gender="female"),
     ]
-    assert e.pair_players(p, "mixed", "s") == [[1, 2], [3, 4]]
+    assert e.pair_players(p, "mixed", "s") == [["1", "2"], ["3", "4"]]
     with pytest.raises(ValueError):
         e.pair_players(p[:-1], "mixed", "s")
     p[0]["partner_user_id"] = None

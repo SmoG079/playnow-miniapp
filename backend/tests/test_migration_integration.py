@@ -40,6 +40,21 @@ def data_hash(connection, columns=None):
     result = {}
     tables = sa.inspect(connection).get_table_names()
     aliases = {"post": {}, "tournament": {}}
+    user_ids = {}
+    user_refs = {}
+    if "user_id_migrations" in tables:
+        for legacy_id, openid in connection.execute(sa.text("SELECT legacy_id,openid FROM user_id_migrations")):
+            user_ids[openid] = legacy_id
+        for table in tables:
+            user_refs[table] = [fk["constrained_columns"][0] for fk in sa.inspect(connection).get_foreign_keys(table) if fk["referred_table"] == "users"]
+    def restore_user_json(value, key=None):
+        if isinstance(value, dict): return {k: restore_user_json(v, k) for k,v in value.items()}
+        if key in ("user_id", "partner_user_id", "actor_id", "created_by", "locked_by"):
+            return user_ids.get(value, value)
+        if isinstance(value, list):
+            if key in ("users", "user_ids"): return [user_ids.get(v,v) for v in value]
+            return [restore_user_json(v) for v in value]
+        return value
     if "activities" in tables:
         for row in connection.execute(sa.text("SELECT id, kind, legacy_id FROM activities WHERE legacy_id IS NOT NULL")).mappings():
             aliases[row["kind"]][row["id"]] = row["legacy_id"]
@@ -47,8 +62,14 @@ def data_hash(connection, columns=None):
         if name == "alembic_version" or (columns is not None and name not in columns):
             continue
         rows = []
-        for row in connection.execute(sa.text(f"SELECT * FROM `{name}` ORDER BY id")).mappings():
+        for row in connection.execute(sa.text(f"SELECT * FROM `{name}` ORDER BY {'legacy_id' if name == 'user_id_migrations' else 'id'}")).mappings():
             row = dict(row)
+            if name == "users": row["id"] = user_ids.get(row["id"], row["id"])
+            for field in user_refs.get(name, []): row[field] = user_ids.get(row[field], row[field])
+            if name in ("tournament_draws", "tournament_audits"):
+                field = "snapshot" if name == "tournament_draws" else "detail"
+                value = json.loads(row[field]) if isinstance(row[field], str) else row[field]
+                row[field] = restore_user_json(value)
             # The reviewed global-ID migration changes IDs and their references,
             # but every other historical value must retain the same hash.
             if name in ("match_posts", "tournaments"):
@@ -67,7 +88,7 @@ def data_hash(connection, columns=None):
             if name == "users" and row["ntrp_level"] is not None:
                 row["ntrp_level"] = str(Decimal(str(row["ntrp_level"])).normalize())
             rows.append(row)
-        result[name] = sorted(rows, key=lambda row: row["id"])
+        result[name] = sorted(rows, key=lambda row: row.get("id", row.get("legacy_id")))
     return hashlib.sha256(json.dumps(result, sort_keys=True, default=str).encode()).hexdigest()
 
 

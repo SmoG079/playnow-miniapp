@@ -551,7 +551,7 @@ function tie() {
                     width="32px"
                     height="32px"
                     round
-                  /><text>{{ r.user_nickname || "选手" + r.user_id }}</text
+                  /><text>{{ r.user_nickname || "未设置昵称" }}</text
                   ><text v-if="r.admission" class="muted"
                     >{{ stateNames[r.admission] }} ·
                     {{ stateNames[r.approval || ""] }} ·
@@ -687,7 +687,7 @@ function tie() {
             "
             ><text class="muted">{{
               mine.partner_user_id
-                ? "搭档已确认：选手" + mine.partner_user_id
+                ? "搭档已确认"
                 : mine.pairing === "fixed"
                   ? "待确认搭档"
                   : "随机搭档，抽签时配对"
@@ -839,7 +839,7 @@ function tie() {
           >
           <view v-for="r in t.registrations" :key="r.id" class="list-card"
             ><text
-              >{{ r.user_nickname || "选手" + r.user_id }} ·
+              >{{ r.user_nickname || "未设置昵称" }} ·
               {{ stateNames[r.admission || ""] }}</text
             ><text class="muted"
               >{{ stateNames[r.approval || ""] }} ·

@@ -86,7 +86,7 @@ class FakeSession:
 @pytest.fixture
 def user():
     return User(
-        id=1,
+        id='1',
         openid="openid_123",
         nickname="Test",
         role=UserRole.user,
@@ -636,7 +636,7 @@ async def test_get_booking_club_admin_other_club_forbidden(user, venue, club):
     order = BookingOrder(
         id=1,
         order_no="ORD001",
-        user_id=999,
+        user_id='999',
         venue_id=venue.id,
         slot_id=slot.id,
         club_id=club.id,
@@ -677,7 +677,7 @@ async def test_get_booking_club_admin_authorized(user, venue, club):
     order = BookingOrder(
         id=1,
         order_no="ORD001",
-        user_id=999,
+        user_id='999',
         venue_id=venue.id,
         slot_id=slot.id,
         club_id=club.id,

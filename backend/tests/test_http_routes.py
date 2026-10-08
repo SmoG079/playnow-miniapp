@@ -66,6 +66,13 @@ class StaticRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400, response.text)
         self.db.execute.assert_not_awaited()
 
+    def test_production_refuses_mock_phone_authorization(self):
+        self.db.commit = AsyncMock()
+        with patch.object(auth.settings, "DEBUG", False):
+            response = self.client.post("/api/v1/auth/phone", json={"code": "dev_fixture"})
+        self.assertEqual(response.status_code, 400, response.text)
+        self.db.commit.assert_not_awaited()
+
     def test_slot_date_range_and_default_venue_price(self):
         slot = SimpleNamespace(id=7, venue_id=9, date=date(2026, 10, 14),
             start_time=time(8), end_time=time(9), price_override=None,

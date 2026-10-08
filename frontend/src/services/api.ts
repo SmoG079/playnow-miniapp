@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config";
+import { SESSION_CONTEXT_KEY } from "./session-context";
 
 export interface PageResult<T> {
   items: T[];
@@ -18,6 +19,7 @@ function detailMessage(data: any) {
 }
 
 export function clearTokens() {
+  uni.removeStorageSync(SESSION_CONTEXT_KEY);
   uni.removeStorageSync("access_token");
   uni.removeStorageSync("refresh_token");
   uni.removeStorageSync("registered_post_ids");
@@ -77,42 +79,30 @@ function rawRequest<T>(
   });
 }
 
+async function authenticated<T>(operation: () => Promise<T>, skipAuth = false): Promise<T> {
+  try { return await operation(); }
+  catch (error: any) {
+    if (error.statusCode !== 401 || skipAuth) throw error;
+    try {
+      if (!refreshPromise)
+        refreshPromise = refreshTokens().finally(() => { refreshPromise = null; });
+      await refreshPromise;
+      return await operation();
+    } catch (refreshError: any) {
+      if (refreshError.statusCode === 401 || refreshError.message === "登录已失效") {
+        clearTokens();
+        uni.reLaunch({ url: `/pages/common/login?redirect=${encodeURIComponent(currentRoute())}` });
+      }
+      throw refreshError;
+    }
+  }
+}
+
 export async function request<T = any>(
   url: string,
   options: { method?: Method; data?: any; skipAuth?: boolean } = {},
 ): Promise<T> {
-  const method = options.method || "GET";
-  try {
-    return await rawRequest<T>(
-      url,
-      method,
-      options.data || {},
-      !!options.skipAuth,
-    );
-  } catch (error: any) {
-    if (error.statusCode === 401 && !options.skipAuth) {
-      try {
-        if (!refreshPromise)
-          refreshPromise = refreshTokens().finally(() => {
-            refreshPromise = null;
-          });
-        await refreshPromise;
-        return await rawRequest<T>(url, method, options.data || {});
-      } catch (refreshError: any) {
-        if (
-          refreshError.statusCode === 401 ||
-          refreshError.message === "登录已失效"
-        ) {
-          clearTokens();
-          uni.reLaunch({
-            url: `/pages/common/login?redirect=${encodeURIComponent(currentRoute())}`,
-          });
-        }
-        throw refreshError;
-      }
-    }
-    throw error;
-  }
+  return authenticated(() => rawRequest<T>(url, options.method || "GET", options.data || {}, !!options.skipAuth), !!options.skipAuth);
 }
 
 export async function listAll<T = any>(url: string): Promise<T[]> {
@@ -138,31 +128,29 @@ export function currentRoute() {
   return page ? `/${page.route}` : "/pages/home/index";
 }
 
-export function uploadFile(
-  filePath: string,
-  fileType = "upload",
-): Promise<{ url: string }> {
-  return new Promise((resolve, reject) => {
+export function uploadFile(filePath: string, fileType = "upload"): Promise<{ url: string }> {
+  return authenticated(() => new Promise((resolve, reject) => {
     uni.uploadFile({
       url: API_BASE_URL + "/upload",
       filePath,
       name: "file",
       formData: { file_type: fileType },
-      header: { Authorization: `Bearer ${uni.getStorageSync("access_token")}` },
+      timeout: 60000,
+      header: { Authorization: `Bearer ${uni.getStorageSync("access_token") || ""}` },
       success: (response) => {
-        try {
-          const body = JSON.parse(response.data);
-          if (response.statusCode !== 200 || !body.url)
-            throw new Error(body.detail || "上传失败");
-          resolve(body);
-        } catch (error) {
-          reject(error);
-        }
+        let body: any;
+        try { body = JSON.parse(response.data); } catch { body = null; }
+        if (response.statusCode >= 200 && response.statusCode < 300 && body?.url)
+          return resolve(body);
+        reject(Object.assign(new Error(body ? detailMessage(body) : "图片上传服务返回异常，请稍后重试"), { statusCode: response.statusCode }));
       },
-      fail: (err) => {
-        uni.showToast({ title: "图片上传失败，请重试", icon: "none" });
-        reject(err);
+      fail: (error) => {
+        const detail = error.errMsg || "";
+        const message = /domain|url not in|合法域名/i.test(detail)
+          ? "上传域名未配置，请联系管理员"
+          : /timeout/i.test(detail) ? "图片上传超时，请重试" : "图片上传连接失败，请重试";
+        reject(Object.assign(new Error(message), { cause: error }));
       },
     });
-  });
+  }));
 }

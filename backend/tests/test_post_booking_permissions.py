@@ -30,12 +30,12 @@ async def db(monkeypatch):
         await conn.run_sync(Base.metadata.create_all)
     async with async_sessionmaker(engine, expire_on_commit=False)() as session:
         session.add_all([
-            User(id=1, openid="post-user", nickname="用户", role=UserRole.user),
-            User(id=2, openid="other-user", role=UserRole.user),
+            User(id='1', openid="post-user", nickname="用户", role=UserRole.user),
+            User(id='2', openid="other-user", role=UserRole.user),
             Club(id=1, name="俱乐部"), Club(id=2, name="其他俱乐部"),
             Venue(id=1, club_id=1, name="场地", sport_type="tennis", price_per_hour=100),
             Venue(id=2, club_id=2, name="其他场地", sport_type="tennis", price_per_hour=100),
-            BookingOrder(id=1, order_no="post-booking", user_id=1, club_id=1,
+            BookingOrder(id=1, order_no="post-booking", user_id='1', club_id=1,
                          venue_id=1, amount=100, status=OrderStatus.paid),
         ])
         await session.commit()
@@ -53,7 +53,7 @@ async def test_all_roles_can_publish_own_booked_post_without_club_membership(db,
     user = await db.get(User, 1)
     user.role = role
     post = await create_post(request(booking_id=1, venue_id=1, club_id=1), user, db)
-    assert (post.user_id, post.club_id, post.booking_id, post.venue_id) == (1, 1, 1, 1)
+    assert (post.user_id, post.club_id, post.booking_id, post.venue_id) == ("1", 1, 1, 1)
 
 
 @pytest.mark.asyncio

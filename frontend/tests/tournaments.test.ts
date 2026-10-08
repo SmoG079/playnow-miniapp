@@ -26,9 +26,9 @@ describe("tournament configuration and display", () => {
   });
   it("displays partner names and unresolved seats", () => {
     expect(
-      teamName([{ id: 1, name: "一队", group_no: 1, user_ids: [2, 3] }], 1, [
-        { id: 1, user_id: 2, user_nickname: "甲", status: "confirmed" },
-        { id: 2, user_id: 3, user_nickname: "乙", status: "confirmed" },
+      teamName([{ id: 1, name: "一队", group_no: 1, user_ids: ["2", "3"] }], 1, [
+        { id: 1, user_id: "2", user_nickname: "甲", status: "confirmed" },
+        { id: 2, user_id: "3", user_nickname: "乙", status: "confirmed" },
       ]),
     ).toBe("甲 / 乙");
     expect(teamName([], null)).toBe("待定");
@@ -96,13 +96,13 @@ describe("local schedule preview and personal bracket", () => {
   });
   it("locates lower half and removes winner route after elimination", () => {
     const p = buildSchedulePreview(defaultConfig(), 8, start, end);
-    p.teams[3].user_ids = [91];
-    const me = personalDraw(p.teams, p.matches, 91)!;
+    p.teams[3].user_ids = ["91"];
+    const me = personalDraw(p.teams, p.matches, "91")!;
     expect(me.half).toBe("下半区");
     expect(me.matches.length).toBe(3);
     const first = me.matches[0];
     first.status = "completed";
     first.winner_id = first.team_b_id;
-    expect(personalDraw(p.teams, p.matches, 91)?.matches.length).toBe(1);
+    expect(personalDraw(p.teams, p.matches, "91")?.matches.length).toBe(1);
   });
 });

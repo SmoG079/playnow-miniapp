@@ -1,9 +1,10 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { request, clearTokens } from "../services/api";
+import { SESSION_CONTEXT_KEY, sessionContext } from "../services/session-context";
 
 export interface User {
-  id: number;
+  id: string;
   nickname?: string;
   avatar_url?: string;
   phone?: string;
@@ -27,6 +28,10 @@ export const useSession = defineStore("session", () => {
   const canPublishTournament = computed(() => loggedIn.value);
 
   function syncTokens() {
+    if (uni.getStorageSync("access_token") && uni.getStorageSync(SESSION_CONTEXT_KEY) !== sessionContext()) {
+      generation++;
+      clearTokens();
+    }
     accessToken.value = String(uni.getStorageSync("access_token") || "");
     refreshToken.value = String(uni.getStorageSync("refresh_token") || "");
     if (!accessToken.value) user.value = null;
@@ -40,6 +45,7 @@ export const useSession = defineStore("session", () => {
     uni.removeStorageSync("booking_return");
     accessToken.value = access;
     refreshToken.value = refresh;
+    uni.setStorageSync(SESSION_CONTEXT_KEY, sessionContext());
     uni.setStorageSync("access_token", access);
     uni.setStorageSync("refresh_token", refresh);
   }

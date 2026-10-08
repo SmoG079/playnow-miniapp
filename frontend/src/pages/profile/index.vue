@@ -36,7 +36,7 @@ function logout() {
 <template>
   <AppShell active="profile"
     ><MainHeader title="我的" /><view class="content main-content"
-      ><template v-if="s.loggedIn"
+      ><template v-if="s.loggedIn && s.user"
         ><view class="profile-header" @click="openPage('/pages/profile/edit')"
           ><Photo
             round
@@ -71,6 +71,7 @@ function logout() {
             >退出登录</wd-button
           ></view
         ></template
+      ><view v-else-if="s.loggedIn" class="empty-state"><text class="muted">{{ s.loading ? "正在确认登录信息" : "登录信息暂不可用" }}</text><wd-button size="small" @click="s.fetchUser().catch(() => {})">重试</wd-button></view
       ><view v-else class="empty-state"
         ><wd-icon name="user" size="52px" color="#147553" /><text
           class="section-title"

@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261008_discovery_city (head)"
+    assert result.stdout.strip() == "20261008_user_openid (head)"
 
 
 @pytest_asyncio.fixture
@@ -44,8 +44,8 @@ async def database(tmp_path, monkeypatch):
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as db:
-        db.add(User(id=1, openid="global-admin", role=UserRole.platform_admin))
-        db.add(User(id=2, openid="global-user"))
+        db.add(User(id='1', openid="global-admin", role=UserRole.platform_admin))
+        db.add(User(id='2', openid="global-user"))
         db.add(Club(id=1, name="测试俱乐部"))
         await db.commit()
     semaphore = asyncio.Lock()
@@ -96,9 +96,9 @@ async def test_database_refuses_invalid_global_identity(database, case):
         ident = await create(db, "post")
         await db.commit()
         if case == "missing_parent":
-            db.add(MatchPost(id=999, user_id=1, title="无主编号"))
+            db.add(MatchPost(id=999, user_id='1', title="无主编号"))
         elif case == "duplicate_child":
-            db.add(MatchPost(id=ident, user_id=1, title="重复"))
+            db.add(MatchPost(id=ident, user_id='1', title="重复"))
         else:
             db.add(Tournament(id=ident, activity_kind="post" if case == "forged_kind" else "tournament",
                               club_id=1, title="错误类型", start_time=datetime.utcnow(), end_time=datetime.utcnow()))

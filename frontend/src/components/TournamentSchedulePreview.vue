@@ -2,7 +2,7 @@
 import TournamentBracket from "./TournamentBracket.vue";
 import { formatNames, type TournamentConfig, type Registration } from "../services/tournaments";
 import type { SchedulePreview } from "../services/tournament-preview";
-defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?: Registration[]; myUserId?: number }>();
+defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?: Registration[]; myUserId?: string }>();
 </script>
 <template>
   <view class="preview-content"

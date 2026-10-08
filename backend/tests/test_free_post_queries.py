@@ -82,9 +82,9 @@ class FreePostQueriesTest(unittest.TestCase):
         self.engine = create_engine('sqlite:///:memory:')
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
-        self.session.add_all([User(id=1, nickname='Player'), Club(id=1, name='Court'),
-                              MatchPost(id=1, user_id=1, club_id=1, created_at=datetime(2026, 1, 1)),
-                              MatchPost(id=2, user_id=1, club_id=None, created_at=datetime(2026, 1, 2))])
+        self.session.add_all([User(id='1', nickname='Player'), Club(id=1, name='Court'),
+                              MatchPost(id=1, user_id='1', club_id=1, created_at=datetime(2026, 1, 1)),
+                              MatchPost(id=2, user_id='1', club_id=None, created_at=datetime(2026, 1, 2))])
         self.session.commit()
 
     def tearDown(self):

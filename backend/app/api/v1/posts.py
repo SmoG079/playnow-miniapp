@@ -85,10 +85,10 @@ def _level_matches(selected_levels: list[str], level_required: str | None) -> bo
         return any(abs(sel - req_value) < 1e-6 for sel in selected_values)
 
 
-def _fallback_nickname(user_id: int, phone: str | None) -> str:
+def _fallback_nickname(user_id: str, phone: str | None) -> str:
     if phone and len(phone) >= 11:
         return phone[:3] + '****' + phone[7:]
-    return f'用户{user_id}'
+    return '网球用户'
 
 
 def haversine(lat1, lng1, lat2, lng2):
@@ -570,7 +570,7 @@ async def cancel_register(
 @router.put("/{post_id}/registrations/{user_id}")
 async def review_registration(
     post_id: int,
-    user_id: int,
+    user_id: str,
     req: ReviewRegistrationRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

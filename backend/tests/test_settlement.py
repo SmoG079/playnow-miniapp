@@ -46,7 +46,7 @@ def base_entities():
     order = BookingOrder(
         id=1,
         order_no="ORD001",
-        user_id=1,
+        user_id='1',
         venue_id=1,
         slot_id=1,
         club_id=1,
@@ -300,7 +300,7 @@ async def test_adjusted_receiver_cents_synced_to_settlement_fields(mock_wxpay, m
     order = BookingOrder(
         id=1,
         order_no="ORD001",
-        user_id=1,
+        user_id='1',
         venue_id=1,
         slot_id=1,
         club_id=1,
@@ -362,7 +362,7 @@ async def test_adjusted_platform_receiver_cents_synced(mock_wxpay, mock_settings
     order = BookingOrder(
         id=2,
         order_no="ORD002",
-        user_id=1,
+        user_id='1',
         venue_id=1,
         slot_id=1,
         club_id=1,
@@ -412,7 +412,7 @@ async def test_no_adjustment_when_sum_matches(mock_wxpay, mock_settings):
     order = BookingOrder(
         id=3,
         order_no="ORD003",
-        user_id=1,
+        user_id='1',
         venue_id=1,
         slot_id=1,
         club_id=1,
@@ -457,7 +457,7 @@ async def test_only_club_receiver_adjusted(mock_wxpay, mock_settings):
     order = BookingOrder(
         id=4,
         order_no="ORD004",
-        user_id=1,
+        user_id='1',
         venue_id=1,
         slot_id=1,
         club_id=1,
