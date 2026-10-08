@@ -27,13 +27,13 @@ describe("authenticated uploads", () => {
     expect(await Promise.all([a,b])).toHaveLength(2);
     expect(uni.uploadFile).toHaveBeenCalledTimes(4);
   });
-  it("expired refresh sends the user to login instead of hiding the 401", async () => {
+  it("expired upload authentication reports failure without leaving the form", async () => {
     (uni as any).uploadFile = vi.fn((o: any) => o.success({ statusCode: 401, data: '{"detail":"expired"}' }));
     (uni as any).request = vi.fn((o: any) => o.success({ statusCode: 401, data: { detail: "expired refresh" } }));
     const { uploadFile } = await import("../src/services/api");
-    await expect(uploadFile("wxfile://tmp/a.jpg")).rejects.toThrow("expired refresh");
-    expect(storage.has("access_token")).toBe(false);
-    expect(uni.reLaunch).toHaveBeenCalledOnce();
+    await expect(uploadFile("wxfile://tmp/a.jpg")).rejects.toThrow("登录已过期");
+    expect(storage.has("access_token")).toBe(true);
+    expect(uni.reLaunch).not.toHaveBeenCalled();
   });
   it("reports WeChat upload-domain restrictions separately from server rejection", async () => {
     (uni as any).uploadFile = vi.fn((o: any) => o.fail({ errMsg: "uploadFile:fail url not in domain list" }));

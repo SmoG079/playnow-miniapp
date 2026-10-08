@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261008_user_openid (head)"
+    assert result.stdout.strip() == "20261008_optional_host (head)"
 
 
 @pytest_asyncio.fixture
@@ -116,10 +116,13 @@ async def test_unified_personal_records_and_old_links_resolve_by_type(database):
         await posts.register_post(post, RegisterPostRequest(), user, db)
         await tournaments.register_tournament(tournament, RegistrationCommand(), user, db)
         await db.commit()
-        result = await users.my_activities(1, 50, user, db)
-        assert {r["activity_id"] for r in result.items} == {post, tournament}
-        assert {r["kind"] for r in result.items} == {"post", "tournament"}
-        assert (await users.my_activities(1, 50, await db.get(User, 1), db)).total == 0
+        items = []
+        for kind in ("post", "tournament"):
+            result = await users.my_activities(kind, "joined", "all", "", 1, 50, user, db)
+            items.extend(result.items)
+            assert (await users.my_activities(kind, "joined", "all", "", 1, 50, await db.get(User, 1), db)).total == 0
+        assert {r["activity_id"] for r in items} == {post, tournament}
+        assert {r["kind"] for r in items} == {"post", "tournament"}
         assert (await activities.get_activity(post, user, db))["kind"] == "post"
         assert (await activities.get_activity(tournament, user, db))["kind"] == "tournament"
         (await db.get(Activity, post)).legacy_id = 100

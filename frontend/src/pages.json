@@ -24,6 +24,8 @@
     { "path": "pages/profile/edit" },
     { "path": "pages/profile/my-bookings" },
     { "path": "pages/profile/my-posts" },
+    { "path": "pages/profile/my-activities" },
+    { "path": "pages/profile/applications" },
     { "path": "pages/profile/my-registrations" },
     {
       "path": "pages/profile/club-dashboard",

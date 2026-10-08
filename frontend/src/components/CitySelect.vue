@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { regionCity } from "../stores/discovery";
+import { useDiscovery } from "../stores/discovery";
 const props = defineProps<{ modelValue: string; label?: string }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: string): void }>();
-function change(e: any) { emit("update:modelValue", regionCity(e.detail.value)); }
+const discovery = useDiscovery();
+function change(e: any) { discovery.selectRegion(e.detail.value); emit("update:modelValue", discovery.city); }
 </script>
 <template>
   <view class="city-field">
     <text class="field-label">{{ label || "活动城市 *" }}</text>
-    <picker mode="region" @change="change">
+    <picker mode="region" :value="discovery.region" @change="change">
       <view class="picker-field">{{ props.modelValue || "请选择活动所在城市" }}<wd-icon name="arrow-down" size="14px" /></view>
     </picker>
   </view>

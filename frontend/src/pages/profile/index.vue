@@ -4,15 +4,16 @@ import { onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
 import AppShell from "../../components/AppShell.vue";
 import { useSession } from "../../stores/session";
+import { identityLabels } from "../../domain/my-activities";
 import { openPage } from "../../utils/navigation";
 const s = useSession();
-const identity = computed(() => s.user?.role === "platform_admin" ? "系统管理员" : s.user?.role === "club_admin" ? "俱乐部管理员" : "用户");
+const identities = computed(() => identityLabels(s.user));
 onShow(() => s.fetchUser().catch(() => {}));
 const menus = computed(() => {
   const common = [
     ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
-    ["user", "我的报名", "/pages/profile/my-registrations"],
-    ["edit", "活动管理", "/pages/profile/my-posts"],
+    ["user", "我的活动", "/pages/profile/my-activities"],
+    ["check", "申请处理", "/pages/profile/applications"],
     ["notification", "系统通知", "/pages/chat/conversation?peer=system"],
   ];
   if (s.isClubAdmin && s.user?.managed_club_ids?.length)
@@ -48,9 +49,8 @@ function logout() {
             ><text class="page-title compact">{{
               s.user?.nickname || "网球爱好者"
             }}</text
-            ><text class="muted">{{ s.user?.city || "未设置城市" }}</text
             ><view class="identity-tags">
-              <text v-if="s.user" class="tag identity-tag">{{ identity }}</text>
+              <text v-for="identity in identities" :key="identity" class="tag identity-tag">{{ identity }}</text>
               <text v-if="s.user?.ntrp_level" class="tag yellow">NTRP {{ s.user.ntrp_level }}</text>
             </view></view
           ></view
@@ -83,9 +83,7 @@ function logout() {
 <style scoped>
 .profile-info { flex:1; min-width:0; }
 .profile-info .page-title { font-size:20px; font-weight:650; }
-.profile-info > .muted { font-size:12px; }
 .identity-tags .yellow { background:#f2f3e5; color:#70744c; }
-.profile-info > .muted { display:block; }
 .identity-tags { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
 .identity-tags .tag { font-size:12px; line-height:16px; padding:4px 8px; border-radius:6px; }
 .identity-tag { background:#edf3ef; color:#496756; font-weight:500; }

@@ -68,6 +68,13 @@ class Club(Base):
     view_count = Column(BigInteger, default=0, nullable=False)
     exposure_count = Column(BigInteger, default=0, nullable=False)
     status = Column(Enum(ClubStatus), default=ClubStatus.active, nullable=False)
+    approval_status = Column(String(16), default="approved", server_default="approved", nullable=False)
+    created_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=True)
+    review_reason = Column(String(256), nullable=True)
+    reviewed_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    __table_args__ = (Index("idx_club_approval_created", "approval_status", "created_at", "id"),
+                     Index("idx_club_creator_created", "created_by", "created_at", "id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -188,7 +195,7 @@ class BookingOrder(Base):
     venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=True)
     slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=True)
     slot_ids = Column(JSON, comment='选中的所有连续时段 ID 列表 [id1, id2, ...]')
-    club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
+    club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True, index=True)
     amount = Column(DECIMAL(10, 2), nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.pending, index=True, nullable=False)
     payment_time = Column(DateTime)
@@ -274,6 +281,7 @@ class MatchPost(Base):
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True)
     user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     city = Column(String(64), nullable=True, index=True)
+    address = Column(String(256), nullable=True)
     latitude = Column(DECIMAL(10, 7))
     longitude = Column(DECIMAL(10, 7))
     title = Column(String(256), nullable=False)
@@ -322,11 +330,13 @@ class MatchRegistration(Base):
     post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=False)
     user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
     message = Column(String(256))
+    review_reason = Column(String(256), nullable=True)
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_user"),
-                     Index("idx_post_registration_user_created", "user_id", "created_at", "id"))
+                     Index("idx_post_registration_user_created", "user_id", "created_at", "id"),
+                     Index("idx_post_review", "post_id", "status"))
 
     post = relationship("MatchPost", back_populates="registrations")
     user = relationship("User", back_populates="match_registrations")
@@ -363,7 +373,7 @@ class Tournament(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=False)
     activity_kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), default="tournament", server_default="tournament", nullable=False)
-    club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False, index=True)
+    club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True, index=True)
     city = Column(String(64), nullable=True, index=True)
     latitude = Column(DECIMAL(10, 7))
     longitude = Column(DECIMAL(10, 7))
@@ -434,7 +444,8 @@ class TournamentRegistration(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("tournament_id", "user_id", name="uq_tournament_user"),
-                     Index("idx_tournament_registration_user_created", "user_id", "created_at", "id"))
+                     Index("idx_tournament_registration_user_created", "user_id", "created_at", "id"),
+                     Index("idx_tournament_review", "tournament_id", "approval", "admission"))
 
     tournament = relationship("Tournament", back_populates="registrations")
     user = relationship("User", back_populates="tournament_registrations", foreign_keys=[user_id])

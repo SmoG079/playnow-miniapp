@@ -22,6 +22,7 @@ from app.models.models import (
     User,
     Venue,
     TournamentStatus,
+    Notification, NotificationType,
 )
 from app.schemas.tournament import (
     TournamentCreate,
@@ -70,8 +71,10 @@ async def admin(db, t, user):
 
 
 async def require_host_club(db, club_id):
-    if not await db.get(Club, club_id):
-        raise HTTPException(422, "主办俱乐部不存在")
+    if club_id is None: return
+    club = await db.get(Club, club_id)
+    if not club or club.approval_status != "approved" or _v(club.status) != "active":
+        raise HTTPException(422, "请选择已审核通过的主办俱乐部")
 
 
 async def is_admin(db, t, user):
@@ -256,7 +259,7 @@ async def list_tournaments(
 ):
     venue_lat=case((Tournament.venue_id.is_not(None),Venue.latitude),else_=Tournament.latitude)
     venue_lng=case((Tournament.venue_id.is_not(None),Venue.longitude),else_=Tournament.longitude)
-    query = select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).join(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
+    query = select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).outerjoin(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
     selected_city=city_name(city)
     effective_city=case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)
     query=query.where(effective_city==selected_city) if selected_city else query.where(False)
@@ -332,8 +335,8 @@ async def preview(
 async def apply_request(db, t, req):
     if req.venue_id:
         v = await db.get(Venue, req.venue_id)
-        if not v or v.club_id != req.club_id:
-            raise HTTPException(422, "场地不属于主办俱乐部")
+        if not v:
+            raise HTTPException(422, "场地不存在")
     if req.lock_venue:
         raise HTTPException(
             422, "请先通过订场流程预订场地；赛事排场不会自动锁定预约时段"
@@ -391,6 +394,8 @@ async def update_tournament(
         or req.max_participants < (t.max_participants or req.max_participants)
     ):
         raise HTTPException(409, "已有报名时不能修改费用、赛制或减少名额")
+    if t.venue_id and req.venue_id != t.venue_id:
+        raise HTTPException(409, "已关联球场的比赛不能变更地点")
     await apply_request(db, t, req)
     life.audit(db, t, user, "updated", {})
     await db.flush()
@@ -408,6 +413,9 @@ async def get_tournament(
     if not t:
         raise HTTPException(404, "赛事不存在")
     manage = await is_admin(db, t, user)
+    can_review = bool(user and await db.scalar(select(TournamentAudit.id).where(
+        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created",
+        TournamentAudit.actor_id == user.id).limit(1)))
     d = await draw_for(db, t, t.draw_version if manage else t.published_version)
     rows = (
         await db.execute(
@@ -470,7 +478,7 @@ async def get_tournament(
                     requested_group=r.requested_group,
                 )
             )
-    club = await db.get(Club, t.club_id)
+    club = await db.get(Club, t.club_id) if t.club_id else None
     data = dict(
         **brief(t),
         club_name=club.name if club else None,
@@ -501,6 +509,7 @@ async def get_tournament(
         registrations=regs,
         my_registration=mine,
         can_manage=manage,
+        can_review=can_review,
         can_register=not closed and _v(t.status) == "open",
         draw_version=t.draw_version if manage else t.published_version,
         published_version=t.published_version,
@@ -567,6 +576,7 @@ async def get_tournament(
                 )
             engine.schedule(preview_matches, cfg, t.start_time)
             data["participant_preview"] = dict(
+                my_draw=engine.personal_position(preview_teams, preview_matches, user.id) if user else None,
                 teams=preview_teams,
                 matches=preview_matches,
                 note="临时对阵预览，随报名变化，正式签表以主办方发布为准",
@@ -684,7 +694,11 @@ async def review(
 ):
     ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
-    await admin(db, t, user)
+    creator = await db.scalar(select(TournamentAudit.id).where(
+        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created",
+        TournamentAudit.actor_id == user.id).limit(1))
+    if creator is None:
+        raise HTTPException(403, "只有比赛发起者可以审核报名")
     await life.refresh_admissions(db, t)
     if t.roster_frozen:
         raise HTTPException(409, "名单已冻结")
@@ -705,6 +719,10 @@ async def review(
         "reviewed",
         {"registration_id": r.id, "approved": req.approved, "reason": req.reason},
     )
+    db.add(Notification(user_id=r.user_id, type=NotificationType.tournament,
+        title="比赛报名已通过" if req.approved else "比赛报名未通过",
+        content=f"《{t.title}》" + ("报名已通过。" if req.approved else f"报名未通过：{req.reason}"),
+        ref_id=t.id, ref_type="tournament"))
     return {"msg": "ok"}
 
 

@@ -56,6 +56,7 @@ class UserUpdate(BaseModel):
     ntrp_level: Optional[Decimal] = Field(None, ge=1.0, le=7.0)
 
 class UserMeResponse(UserProfile):
+    roles: list[str] = Field(default_factory=list)
     managed_club_ids: list[int] = []
     ntrp_level: Optional[Decimal] = None
 
@@ -113,6 +114,9 @@ class ClubUpdate(BaseModel):
 
 
 class ClubBrief(BaseModel):
+    approval_status: str = "approved"
+    review_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     id: int
     name: str
@@ -373,6 +377,7 @@ class PaginatedResponse(BaseModel):
 # ── Match Post ──
 
 class PostCreate(BaseModel):
+    address: Optional[str] = Field(None, max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -414,6 +419,7 @@ class PostCreate(BaseModel):
 
 
 class PostUpdate(BaseModel):
+    address: Optional[str] = Field(None, max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -454,6 +460,7 @@ class PostUpdate(BaseModel):
 
 
 class PostBrief(BaseModel):
+    address: Optional[str] = Field(None, max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -508,6 +515,7 @@ class MyPostRegistration(BaseModel):
 
 
 class PostDetail(PostBrief):
+    venue_name: Optional[str] = None
     notes: Optional[str]
     description: Optional[str] = None
     documents: Optional[list[dict]] = None
@@ -549,6 +557,7 @@ class RegisterPostRequest(BaseModel):
     message: Optional[str] = None
 
 class ReviewRegistrationRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=256)
     status: str  # approved / rejected
 
 

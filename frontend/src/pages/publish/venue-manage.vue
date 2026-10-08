@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
-import CitySelect from "../../components/CitySelect.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
 import AppShell from "../../components/AppShell.vue";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import { request } from "../../services/api";
+import { useDiscovery } from "../../stores/discovery";
 import { useSession } from "../../stores/session";
+const discovery = useDiscovery();
 const s = useSession(),
   clubId = ref(0),
   id = ref(0),
@@ -15,7 +16,7 @@ const s = useSession(),
   locationSelecting = ref(false),
   form = reactive<any>({
     name: "",
-    city: "", address: "", latitude: null, longitude: null,
+    city: discovery.city, address: "", latitude: null, longitude: null,
     sport_type: "tennis",
     price_per_hour: "",
     max_capacity: 4,
@@ -27,21 +28,27 @@ onLoad(async (q) => {
   clubId.value = Number(q?.club_id);
   id.value = Number(q?.venue_id || 0);
   if (!s.requireLogin()) return;
+  if (!id.value) { await discovery.ensureCity().catch(() => {}); form.city = discovery.city; }
   if (id.value) {
     const vs: any[] = await request(`/clubs/${clubId.value}/venues`);
     Object.assign(form, vs.find((v) => v.id === id.value) || {});
   }
 });
+watch(() => discovery.city, value => {
+  if (!id.value && form.city !== value) {
+    form.city = value; form.address = ""; form.latitude = null; form.longitude = null;
+  }
+}, { flush: "sync" });
 async function image() {
   if (loading.value || imageUploading.value) return;
   imageUploading.value = true;
   try { await chooseUploadedImages(1, "court", url => { form.cover_image = url; }); }
-  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  catch (error: any) { uni.showToast({ title: error.message || "图片上传失败，请重试", icon: "none" }); }
   finally { imageUploading.value = false; }
 }
 async function save() {
   if (locationSelecting.value || loading.value || imageUploading.value) return;
-  if (!form.city || !form.address.trim()) return uni.showToast({ title: "请填写球场城市和地址", icon: "none" });
+  if (!form.city || !form.address.trim() || form.latitude == null || form.longitude == null) return uni.showToast({ title: "请在地图中选择球场位置", icon: "none" });
   if (!form.name || !(Number(form.price_per_hour) > 0))
     return uni.showToast({ title: "请填写名称和有效价格", icon: "none" });
   loading.value = true;
@@ -70,8 +77,8 @@ async function save() {
 <template>
   <AppShell back :title="id ? '编辑场地' : '新增场地'"
     ><view class="content publish-content"
-      ><CitySelect v-model="form.city" @update:model-value="form.latitude = null; form.longitude = null" />
-      <text class="field-label">球场地址 *</text><wd-input v-model="form.address" @input="form.latitude = null; form.longitude = null" placeholder="填写这片球场的实际地址" />
+      >
+      <text class="field-label">球场位置 *</text><view class="picker-field">{{ form.address || "请通过地图选择球场位置" }}</view><text v-if="form.city" class="muted small">{{ form.city }} · 城市随地图位置自动填写</text>
       <ActivityLocationSelect label="球场位置" hint="用于导航和距离排序，每片球场独立设置" :city="form.city" :selected="form.latitude !== null" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
       <text class="field-label">场地名称 *</text
       ><wd-input v-model="form.name" placeholder="例如 1 号室外硬地" /><text

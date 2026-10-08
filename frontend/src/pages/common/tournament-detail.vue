@@ -851,7 +851,7 @@ function tie() {
                 variant="plain"
                 @click="verifyLegacy(r)"
                 >核验历史报名</wd-button
-              ><template v-if="r.approval === 'pending'"
+              ><template v-if="t.can_review && r.approval === 'pending'"
                 ><wd-button size="small" @click="review(r, true)"
                   >通过</wd-button
                 ><wd-button

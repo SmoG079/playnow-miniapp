@@ -18,6 +18,7 @@ from app.models.models import (
     BookingOrder,
     OrderStatus,
     TournamentRegistration,
+    Tournament,
     RefundRecord,
 )
 from app.schemas.tournament import *
@@ -767,3 +768,44 @@ async def test_provisional_real_opponents_are_not_formal_draws(db):
     )
     records = await my_tournaments(1, 20, await db.get(User, 2), db)
     assert not records.items[0]["provisional"] and records.items[0]["draw_version"] == 1
+
+@pytest.mark.asyncio
+async def test_personal_tournament_without_club_supports_listing_management_and_payment_order(db, monkeypatch):
+    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
+    creator = await db.get(User, '2')
+    req = TournamentCreate(title='个人地图比赛', address='地图选点球场', city='南京市', latitude=32.06, longitude=118.76,
+        start_time=datetime.utcnow()+timedelta(days=2), end_time=datetime.utcnow()+timedelta(days=3),
+        max_participants=4, entry_fee=10, config=TournamentConfig())
+    await api.preview(req, creator, db)
+    row = await api.create_tournament(req, creator, db)
+    assert row['club_id'] is None
+    detail = await api.get_tournament(row['id'], creator, db)
+    assert detail['club_name'] is None and detail['can_manage']
+    await api.admin(db, await db.get(Tournament, row['id']), creator)
+    with pytest.raises(HTTPException) as denied:
+        await api.admin(db, await db.get(Tournament, row['id']), await db.get(User, '3'))
+    assert denied.value.status_code == 403
+    result = await api.list_tournaments(city='南京市', sort_by='created', lat=None, lng=None, page=1, page_size=20, db=db)
+    assert row['id'] in [r['id'] for r in result['items']]
+    await register(db, row['id'], '3')
+    registration = await db.scalar(select(TournamentRegistration).where(TournamentRegistration.tournament_id==row['id']))
+    order = await db.get(BookingOrder, registration.order_id)
+    assert order.club_id is None and order.business_type == 'tournament' and order.amount == 10
+
+@pytest.mark.asyncio
+async def test_linked_tournament_location_is_authoritative_and_cannot_be_removed(db):
+    from app.models.models import Venue
+    creator = await db.get(User, '2')
+    db.add(Venue(id=100, club_id=1, name='预订球场', sport_type='tennis', price_per_hour=10,
+        address='球场真实位置', city='南京市', latitude=32, longitude=118));await db.flush()
+    req = TournamentCreate(title='关联球场比赛', venue_id=100, start_time=datetime.utcnow()+timedelta(days=2),
+        end_time=datetime.utcnow()+timedelta(days=3), max_participants=4, config=TournamentConfig())
+    row = await api.create_tournament(req, creator, db)
+    req.address='不能覆盖的假地址';req.latitude=1;req.longitude=1
+    await api.update_tournament(row['id'], req, creator, db)
+    detail = await api.get_tournament(row['id'], creator, db)
+    assert detail['address']=='球场真实位置' and detail['latitude']==32 and detail['longitude']==118
+    req.venue_id=None
+    with pytest.raises(HTTPException) as denied:
+        await api.update_tournament(row['id'], req, creator, db)
+    assert denied.value.status_code==409

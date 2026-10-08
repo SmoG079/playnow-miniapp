@@ -203,7 +203,7 @@ async def list_posts(
         user_nickname = nickname or _fallback_nickname(post.user_id, phone)
         items.append(PostBrief(
             id=post.id, club_id=post.club_id, user_id=post.user_id,
-            city=effective_city, latitude=club_lat, longitude=club_lng,
+            city=effective_city, address=post.address, latitude=club_lat, longitude=club_lng,
             title=post.title, sport_type=post.sport_type,
             preferred_date=post.preferred_date,
             preferred_start=post.preferred_start,
@@ -238,7 +238,7 @@ async def create_post(
         )
         req.club_id, req.venue_id = booking.club_id, venue.id
         req.city=venue.city
-        req.latitude=venue.latitude; req.longitude=venue.longitude
+        req.latitude=venue.latitude; req.longitude=venue.longitude; req.address=venue.address
     elif req.club_id:
         # Retain the existing club-only publishing path for administrators.
         if _v(current_user.role) not in ("club_admin", "platform_admin"):
@@ -266,7 +266,7 @@ async def create_post(
         id=await allocate_activity(db, "post"),
         club_id=req.club_id,
         user_id=current_user.id,
-        city=city_name(req.city), latitude=req.latitude, longitude=req.longitude,
+        city=city_name(req.city), address=req.address, latitude=req.latitude, longitude=req.longitude,
         title=req.title,
         sport_type=sport_type,
         preferred_date=req.preferred_date,
@@ -296,7 +296,7 @@ async def create_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=post.city, latitude=post.latitude, longitude=post.longitude,
+        city=post.city, address=post.address, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -337,13 +337,13 @@ async def update_post(
         venue_id = update_data.get("venue_id", post.venue_id)
         if booking_id or venue_id:
             booking, venue = await _post_booking(db, post.user_id, booking_id, venue_id)
-            update_data.update(club_id=booking.club_id, venue_id=venue.id, city=venue.city, latitude=venue.latitude, longitude=venue.longitude)
+            update_data.update(club_id=booking.club_id, venue_id=venue.id, city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
         else:
             update_data["club_id"] = None
     if post.venue_id and "venue_id" not in update_data:
         venue = await db.get(Venue, post.venue_id)
         if venue:
-            update_data.update(city=venue.city, latitude=venue.latitude, longitude=venue.longitude)
+            update_data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -357,7 +357,7 @@ async def update_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=post.city, latitude=post.latitude, longitude=post.longitude,
+        city=post.city, address=post.address, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -419,6 +419,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
 
     effective_city, effective_lat, effective_lng = post.city, post.latitude, post.longitude
     # Get venue info if available
+    venue_name = None
     venue_address = None
     venue_latitude = None
     venue_longitude = None
@@ -431,6 +432,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         venue = venue_result.scalar_one_or_none()
         if venue:
             cover_image = venue.cover_image
+            venue_name = venue.name
             venue_address = venue.address
             venue_latitude = float(venue.latitude) if venue.latitude is not None else None
             venue_longitude = float(venue.longitude) if venue.longitude is not None else None
@@ -456,7 +458,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
 
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=effective_city, latitude=effective_lat, longitude=effective_lng,
+        city=effective_city, address=venue_address if post.venue_id else post.address, latitude=effective_lat, longitude=effective_lng,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -472,7 +474,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
-        price=post.price, user_phone=user_phone, venue_address=venue_address,
+        price=post.price, user_phone=user_phone, venue_name=venue_name, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
         cover_image=(post.images[0] if post.images else cover_image), club_documents=club_documents,
         images=post.images,
@@ -580,7 +582,7 @@ async def review_registration(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
+    if post.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only post owner can review")
     if _v(post.status) == "closed":
         raise HTTPException(status_code=409, detail="活动已关闭，不能审核报名")
@@ -595,8 +597,8 @@ async def review_registration(
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
 
-    if _v(reg.status) == "cancelled":
-        raise HTTPException(status_code=409, detail="报名已取消，不能审核")
+    if _v(reg.status) != "pending":
+        raise HTTPException(status_code=409, detail="报名已处理或取消，不能重复审核")
     if req.status not in ("approved", "rejected"):
         raise HTTPException(status_code=422, detail="审核状态无效")
     new_status = RegistrationStatus(req.status)
@@ -608,6 +610,7 @@ async def review_registration(
         if _v(post.status) not in ("open", "full") or count >= post.players_needed:
             raise HTTPException(status_code=409, detail="活动已关闭或报名已满")
     reg.status = new_status
+    reg.review_reason = req.reason
 
     # Notify registrant about approval/rejection
     title_map = {
@@ -623,7 +626,7 @@ async def review_registration(
             user_id=user_id,
             type=NotificationType.match,
             title=title_map[new_status],
-            content=content_map[new_status],
+            content=content_map[new_status] + (f"：{req.reason}" if req.reason else ""),
             ref_id=post.id,
             ref_type="match_post",
         )

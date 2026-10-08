@@ -45,7 +45,7 @@ class TournamentConfig(BaseModel):
 
 class TournamentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    club_id: int
+    club_id: int | None = Field(None, ge=1)
     city: str | None = Field(None, min_length=1, max_length=64)
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)

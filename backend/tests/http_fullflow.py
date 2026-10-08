@@ -30,6 +30,10 @@ assert str(call('GET','/users/me',owner)['ntrp_level'])=='3.5'
 member_id=call('GET','/users/me',member)['id']
 call('PUT','/users/me',member,expected=422,json={'ntrp_level':8})
 club=call('POST','/clubs',owner,json={'name':'E2E isolated club','contact_phone':'13800000000','sport_types':['tennis'],'opening_time':'08:00','closing_time':'22:00'})['id']
+assert club not in call('GET','/users/me',owner)['managed_club_ids']
+call('GET',f'/clubs/{club}',expected=404)
+call('POST',f'/applications/clubs/{club}/review',owner,expected=403,json={'approved':True})
+call('POST',f'/applications/clubs/{club}/review',admin,json={'approved':True,'reason':'isolated CI review'})
 assert club in call('GET','/users/me',owner)['managed_club_ids']
 call('GET','/clubs');call('GET',f'/clubs/{club}')
 call('PUT',f'/clubs/{club}',owner,json={'description':'scratch verification'})

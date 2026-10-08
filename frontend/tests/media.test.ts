@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const upload = vi.hoisted(() => vi.fn());
 vi.mock("../src/services/api", () => ({ uploadFile: upload }));
-import { isRemoteImage, uploadedImage, chooseUploadedImages } from "../src/services/media";
+import { isRemoteImage, uploadedImage, chooseUploadedImages, chooseImagePaths } from "../src/services/media";
 
 describe("image upload and previews", () => {
   beforeEach(() => { upload.mockReset(); vi.stubGlobal("uni", { chooseImage: vi.fn() }); });
+  it("uses compressed native media files and cancellation never uploads", async () => {
+    (uni as any).chooseMedia = vi.fn((options:any) => options.success({tempFiles:[{tempFilePath:"wxfile://tmp/cover.jpg"}]}));
+    expect(await chooseImagePaths(1)).toEqual(["wxfile://tmp/cover.jpg"]);
+    expect(uni.chooseMedia).toHaveBeenCalledWith(expect.objectContaining({mediaType:["image"],sizeType:["compressed"]}));
+    (uni as any).chooseMedia = vi.fn((options:any) => options.fail({errMsg:"chooseMedia:fail cancel"}));
+    await chooseUploadedImages(1,"post",vi.fn());
+    expect(upload).not.toHaveBeenCalled();
+  });
   it("uploads simulator HTTP temporary files instead of persisting them as remote images", async () => {
     for (const path of ["http://tmp/cover.jpeg", "http://127.0.0.1:47692/__tmp__/cover.jpeg", "http://usr/avatar.png", "wxfile://tmp/photo.jpg"]) {
       expect(isRemoteImage(path)).toBe(false);

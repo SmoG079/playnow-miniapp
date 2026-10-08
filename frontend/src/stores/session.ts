@@ -9,6 +9,7 @@ export interface User {
   avatar_url?: string;
   phone?: string;
   role?: string;
+  roles?: string[];
   managed_club_ids?: number[];
   ntrp_level?: number;
   city?: string;

@@ -109,6 +109,7 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
               ></view
             ><text class="tag">{{ p.venue_id ? "订场" : "自由" }}</text></view
           ><text class="activity-title">{{ p.title }}</text
+          ><text v-if="p.address" class="muted small post-address">{{ p.address }}</text
           ><view class="row between"
             ><text class="muted small"
               >{{ p.preferred_date }} {{ p.preferred_start }}–{{
@@ -151,3 +152,5 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
 .discovery-filters{margin-bottom:20px}.filter-line{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .my-level,.clear-date{margin:0;padding:9px 12px;line-height:20px;font-size:12px;border-radius:12px;background:#e5f0e8;color:#285f40}.my-level::after,.clear-date::after{border:0}
 </style>
+
+<style scoped>.post-address { display:block; margin:0 0 10px; line-height:1.5; }</style>

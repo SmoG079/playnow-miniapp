@@ -4,6 +4,7 @@ import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
+import { returnToActivityForm } from "../../utils/navigation";
 const s = useSession(),
   q = ref<any>({}),
   venue = ref<any>(null),
@@ -66,9 +67,7 @@ async function pay() {
         slot_start: q.value.start,
         slot_end: q.value.end,
       });
-      if (q.value.return_mode === "post")
-        uni.switchTab({ url: "/pages/publish/post-create" });
-      else uni.redirectTo({ url: "/pages/publish/tournament-create" });
+      returnToActivityForm(q.value.return_mode);
     } else
       uni.redirectTo({
         url: `/pages/booking/success?booking_id=${booking.value.id}&order_no=${booking.value.order_no}`,

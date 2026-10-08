@@ -93,7 +93,7 @@ export interface Tournament {
   latitude?: number | null;
   longitude?: number | null;
   id: number;
-  club_id: number;
+  club_id: number | null;
   club_name: string;
   title: string;
   description: string;
@@ -120,9 +120,12 @@ export interface Tournament {
   draw_stage?: string;
   draw_published: boolean;
   can_manage: boolean;
+  can_review?: boolean;
   can_register: boolean;
   bracket_preview?: { teams: Team[]; matches: Match[] };
+  my_draw?: { team_id: number; group_no: number; half: string; matches: Match[] } | null;
   participant_preview?: {
+    my_draw?: { team_id: number; group_no: number; half: string; matches: Match[] } | null;
     teams: Team[];
     matches: Match[];
     note: string;

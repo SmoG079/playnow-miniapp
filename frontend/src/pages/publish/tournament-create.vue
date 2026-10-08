@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from "vue";
-import { onLoad, onShow } from "@dcloudio/uni-app";
+import { reactive, ref, watch, computed } from "vue";
+import { onLoad, onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
-import CitySelect from "../../components/CitySelect.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
 import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
@@ -19,10 +18,11 @@ import {
   getTournament,
 } from "../../services/tournaments";
 import { buildSchedulePreview } from "../../services/tournament-preview";
+import { saveTournamentDraft, readTournamentDraft, clearTournamentDraft } from "../../services/tournament-draft";
 const discovery = useDiscovery();
 const session = useSession(),
   clubs = ref<any[]>([]),
-  clubIndex = ref(0),
+  clubIndex = ref(-1),
   loading = ref(false),
   coverUploading = ref(false),
   locationSelecting = ref(false),
@@ -32,7 +32,38 @@ const session = useSession(),
   preview = ref<any>(null),
   previewVisible = ref(false),
   linked = ref<any>(null);
+const clubSheet = ref(false), clubLoading = ref(false), clubPurpose = ref("host");
+async function chooseClub(purpose = "host") {
+  if (clubLoading.value || (purpose === "host" && editId.value)) return;
+  clubPurpose.value = purpose;
+  clubLoading.value = true;
+  const selected = clubs.value[clubIndex.value];
+  try {
+    const available = await listAll<any>(`/clubs?city=${encodeURIComponent(form.city)}`);
+    if (selected && !available.some(c => c.id === selected.id)) available.unshift(selected);
+    clubs.value = available;
+    clubIndex.value = selected ? clubs.value.findIndex(c => c.id === selected.id) : -1;
+    clubSheet.value = true;
+  } catch (error:any) { uni.showToast({title:error.message || "俱乐部加载失败",icon:"none"}); }
+  finally { clubLoading.value = false; }
+}
+function selectClub({index}: {index:number}) {
+  if (clubPurpose.value === "host") clubIndex.value = index - 1;
+  else {
+    const club = clubs.value[index];
+    if (club) uni.navigateTo({url:`/pages/booking/venue-detail?id=${club.id}&return_mode=tournament`});
+  }
+  clubSheet.value = false;
+}
+const clubActions = computed(() => clubPurpose.value === "host" ? [{name:"不设置主办俱乐部"},...clubs.value.map(c => ({name:c.name}))] : clubs.value.map(c => ({name:c.name})));
+let initialized = false, completed = false, draftOwner = "";
+let pendingBooking: any = null;
+function cacheDraft() {
+  if (!initialized || completed || !draftOwner || session.user?.id !== draftOwner) return;
+  saveTournamentDraft(draftOwner, editId.value, { form, config: cfg, images: images.value, club: clubs.value[clubIndex.value] || null, linked: linked.value, panels: panels.value });
+}
 const cfg = reactive(defaultConfig());
+onHide(cacheDraft); onUnload(cacheDraft);
 const form = reactive({
   city: discovery.city,
   latitude: null as number | null, longitude: null as number | null,
@@ -64,15 +95,30 @@ const summary = computed(
   () =>
     `${formatNames[cfg.format]} · ${disciplineNames[cfg.discipline]} · ${cfg.group_count}组`,
 );
+watch([form, cfg, images, linked, clubIndex, panels], cacheDraft, { deep:true, flush:"sync" });
 onLoad(async (q) => {
   const redirect =
     "/pages/publish/tournament-create" + (q?.id ? `?id=${q.id}` : "");
   if (!session.requireLogin(redirect)) return;
   await session.fetchUser();
-  clubs.value = await listAll<any>("/clubs");
-  if (!clubs.value.length) {
-    uni.showToast({ title: "暂无可选择的主办俱乐部", icon: "none" });
+  editId.value = Number(q?.id || 0);
+  draftOwner = session.user?.id || "";
+  const draft = readTournamentDraft(draftOwner, editId.value);
+  if (draft) {
+    Object.assign(form, draft.form); Object.assign(cfg, draft.config);
+    images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
+    if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
+    initialized = true;
+    applyReturnedBooking();
     return;
+  }
+  await discovery.ensureCity().catch(() => {});
+  form.city = discovery.city;
+  if (!editId.value && session.user?.managed_club_ids?.length) {
+    try {
+      const club = await request<any>(`/clubs/${session.user.managed_club_ids[0]}`);
+      clubs.value = [club]; clubIndex.value = 0;
+    } catch { uni.showToast({title:"默认俱乐部加载失败，可点击重新选择",icon:"none"}); }
   }
   form.start_date = form.end_date = new Date(
     Date.now() + 86400000 + 8 * 3600000,
@@ -82,7 +128,10 @@ onLoad(async (q) => {
   editId.value = Number(q?.id || 0);
   if (editId.value) {
     const t = await getTournament(editId.value);
-    clubIndex.value = clubs.value.findIndex((c) => c.id === t.club_id);
+    if (t.club_id) {
+      const club = await request<any>(`/clubs/${t.club_id}`);
+      clubs.value = [club]; clubIndex.value = 0;
+    }
     const start = localTime(t.start_time),
       end = localTime(t.end_time);
     Object.assign(form, {
@@ -119,16 +168,28 @@ onLoad(async (q) => {
         )
       : "1";
   }
+  initialized = true;
+  applyReturnedBooking();
 });
-onShow(() => {
-  const x = uni.getStorageSync("booking_return");
+function applyReturnedBooking() {
+  if (!initialized) return;
+  const x = pendingBooking || uni.getStorageSync("booking_return");
   if (x) {
     linked.value = x;
     form.city = x.city || ""; form.latitude = x.latitude ?? null; form.longitude = x.longitude ?? null;
     form.address = x.address || "";
+    pendingBooking = null;
     uni.removeStorageSync("booking_return");
+    cacheDraft();
   }
-});
+}
+onShow(() => { pendingBooking = uni.getStorageSync("booking_return") || pendingBooking; applyReturnedBooking(); });
+watch(() => discovery.city, value => {
+  if (!editId.value && !linked.value?.venue_id && form.city !== value) {
+    form.city = value; form.address = ""; form.latitude = null; form.longitude = null;
+
+  }
+}, { flush: "sync" });
 function fail(message: string, panel = "advanced") {
   panels.value = [...new Set([...panels.value, panel])];
   uni.showToast({ title: message, icon: "none" });
@@ -152,17 +213,17 @@ function payload(previewOnly = false) {
   const start = new Date(`${form.start_date}T${form.start}:00+08:00`),
     end = new Date(`${form.end_date}T${form.end}:00+08:00`);
   if (
-    (!previewOnly && (!title || !clubs.value[clubIndex.value])) ||
+    (!previewOnly && !title) ||
     isNaN(+start) ||
     isNaN(+end) ||
     end <= start
   ) {
-    fail("请检查名称、主办俱乐部和时间", "basic");
+    fail("请检查名称和时间", "basic");
     return;
   }
   if (!previewOnly && !form.city) { fail("请选择比赛城市", "basic"); return; }
-  if (!previewOnly && !form.address.trim() && !linked.value?.venue_id) {
-    fail("请填写比赛地点或关联场地", "basic");
+  if (!previewOnly && !linked.value?.venue_id && (!form.address.trim() || form.latitude === null || form.longitude === null)) {
+    fail("请在地图中选择比赛地点或关联场地", "basic");
     return;
   }
   if (
@@ -184,7 +245,7 @@ function payload(previewOnly = false) {
   return {
     city: form.city,
     latitude: form.latitude, longitude: form.longitude,
-    club_id: clubs.value[clubIndex.value]?.id || 0,
+    club_id: clubs.value[clubIndex.value]?.id || null,
     title,
     auto_title: form.auto_title,
     sport_type: "网球",
@@ -231,7 +292,7 @@ async function pick() {
   if (loading.value || coverUploading.value) return;
   coverUploading.value = true;
   try { await chooseUploadedImages(6 - images.value.length, "post", url => { images.value.push(url); }); }
-  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  catch (error: any) { uni.showToast({ title: error.message || "图片上传失败，请重试", icon: "none" }); }
   finally { coverUploading.value = false; }
 }
 async function save() {
@@ -247,7 +308,11 @@ async function save() {
       editId.value ? `/tournaments/${editId.value}` : "/tournaments",
       { method: editId.value ? "PUT" : "POST", data },
     );
+    completed = true; clearTournamentDraft();
     uni.redirectTo({ url: `/pages/common/tournament-detail?id=${t.id}` });
+  } catch (error:any) {
+    cacheDraft();
+    uni.showToast({title:error.message || "比赛保存失败，请重试",icon:"none"});
   } finally {
     loading.value = false;
   }
@@ -259,18 +324,8 @@ async function save() {
       <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
       <view id="basic"
         ><text class="section-title">基本信息</text
-        ><text class="field-label">主办俱乐部</text
-        ><picker
-          :range="clubs.map((c) => c.name)"
-          :value="clubIndex"
-          @change="clubIndex = Number($event.detail.value)"
-          ><view class="picker-field">{{
-            clubs[clubIndex]?.name || "请选择主办俱乐部"
-          }}</view></picker
-        >
-        <view v-if="linked?.venue_id" class="picker-field">球场城市 · {{ form.city || "请联系管理员补充球场位置" }}</view>
-        <CitySelect v-else @update:model-value="form.latitude = null; form.longitude = null" v-model="form.city" label="比赛城市 *" />
-        <ActivityLocationSelect v-if="!linked?.venue_id" @busy="locationSelecting = $event" :city="form.city" :selected="form.latitude !== null" @select="point => { form.city = point.city; form.latitude = point.latitude; form.longitude = point.longitude; form.address = point.address; }" />
+        ><text class="field-label">主办俱乐部（选填）</text>
+        <view class="picker-field" @click="chooseClub()"><text>{{ clubLoading ? '正在加载…' : clubs[clubIndex]?.name || '不设置主办俱乐部' }}</text><wd-icon v-if="!editId" name="arrow-down" /></view>
         <text class="field-label">赛事名称 *</text
         ><wd-input
           v-model="form.title"
@@ -308,26 +363,12 @@ async function save() {
             ><view class="picker-field">{{ form.end }}</view></picker
           ></view
         >
-        <text class="field-label">比赛地点 *</text
-        ><wd-input
-          v-model="form.address"
-          placeholder="填写地址，或关联已预订场地"
-        />
-        <wd-button
-          block
-          variant="plain"
-          @click="
-            uni.navigateTo({
-              url:
-                '/pages/booking/venue-detail?id=' +
-                clubs[clubIndex]?.id +
-                '&return_mode=tournament',
-            })
-          "
-          >{{ linked ? "已关联场地" : "预订并关联场地" }}</wd-button
-        >
+        <text class="field-label">比赛地点 *</text>
+        <ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
+        <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
         <text class="muted">比赛排场名称不会自动预订场地</text></view
       >
+      <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
       <wd-collapse v-model="panels">
         <wd-collapse-item name="details" title="更多基础信息 · 介绍、奖项、图片"
           ><view id="details">
@@ -405,6 +446,7 @@ async function save() {
       ><wd-textarea v-model="form.courts" /><text class="field-label"
         >每场预计分钟</text
       ><wd-input v-model="cfg.match_minutes" type="number" />
+      <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
       <wd-collapse v-model="panels">
         <wd-collapse-item
           name="advanced"

@@ -13,8 +13,8 @@ from app.services.tencent_map import GEOCODER_URL, geocoder_params
 from app.services.discovery import distance_expr, city_name
 from app.services.pricing import slot_charge
 from app.core.config import get_settings
-from app.api.deps import get_current_user, get_club_admin, _v
-from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord
+from app.api.deps import get_current_user, get_optional_user, get_club_admin, _v
+from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord, Notification, NotificationType
 from app.models.models import ClubMemberRole
 from app.utils.geo import haversine
 from app.schemas.schemas import (
@@ -95,8 +95,8 @@ async def list_clubs(
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Club).where(Club.status == "active")
-    count_query = select(func.count(Club.id)).where(Club.status == "active")
+    query = select(Club).where(Club.status == "active", Club.approval_status == "approved")
+    count_query = select(func.count(Club.id)).where(Club.status == "active", Club.approval_status == "approved")
 
     if city is not None:
         selected_city = city_name(city)
@@ -192,6 +192,7 @@ async def create_club(
     if opening is None or closing is None or closing <= opening:
         raise HTTPException(status_code=422, detail="营业结束时间需晚于开始时间")
     club = Club(
+        approval_status="pending", status="inactive", created_by=current_user.id,
         city=req.city,
         name=req.name,
         sport_types=req.sport_types,
@@ -210,27 +211,25 @@ async def create_club(
     db.add(club)
     await db.flush()
 
-    # Creator becomes owner
-    member = ClubMember(club_id=club.id, user_id=current_user.id, role=ClubMemberRole.owner)
-    db.add(member)
-
-    # Upgrade user role if not already
-    role = _v(current_user.role)
-    if role == "user":
-        current_user.role = "club_admin"
-
+    admins = (await db.execute(select(User.id).where(User.role == "platform_admin"))).scalars().all()
+    for admin_id in admins:
+        db.add(Notification(user_id=admin_id, type=NotificationType.system,
+            title="新的俱乐部创建申请", content=f"《{club.name}》等待审核，请在申请处理页面查看。",
+            ref_type="club_application", ref_id=club.id))
     await db.flush()
-
+    # Ownership and the club administrator role are granted only after approval.
     return _club_to_detail(club)
 
 
 @router.get("/{club_id}", response_model=ClubDetail)
-async def get_club(club_id: int, db: AsyncSession = Depends(get_db)):
+async def get_club(club_id: int, db: AsyncSession = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
     result = await db.execute(select(Club).where(Club.id == club_id))
     club = result.scalar_one_or_none()
     if not club:
         raise HTTPException(status_code=404, detail="Club not found")
 
+    if club.approval_status != "approved" and (not user or (user.id != club.created_by and _v(user.role) != "platform_admin")):
+        raise HTTPException(status_code=404, detail="Club not found")
     club.view_count += 1
     await db.flush()
 
@@ -277,6 +276,7 @@ def _club_to_detail(club: Club) -> ClubDetail:
         address=club.address,
         latitude=club.latitude,
         longitude=club.longitude,
+        approval_status=club.approval_status, review_reason=club.review_reason, reviewed_at=club.reviewed_at,
         status=club.status.value if hasattr(club.status, 'value') else str(club.status),
         description=club.description,
         rules=club.rules,
@@ -305,6 +305,9 @@ async def _club_to_detail_async(club: Club, db: AsyncSession) -> ClubDetail:
 
 @router.get("/{club_id}/venues")
 async def club_venues(club_id: int, db: AsyncSession = Depends(get_db)):
+    club = await db.get(Club, club_id)
+    if not club or club.approval_status != "approved":
+        raise HTTPException(404, "Club not found")
     result = await db.execute(
         select(Venue).where(Venue.club_id == club_id).order_by(Venue.sort_order)
     )

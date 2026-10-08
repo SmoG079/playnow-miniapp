@@ -15,8 +15,10 @@ describe("production migration", () => {
     const expected = native.pages.filter(
       (route: string) => !native.removedNotificationStubs.includes(route),
     );
-    expect(migrated).toHaveLength(28);
-    expect(migrated).toEqual(expected);
+    expect(migrated).toEqual(expect.arrayContaining(expected));
+    expect(migrated).toContain("pages/profile/applications");
+    expect(new Set(migrated).size).toBe(migrated.length);
+    for (const removed of native.removedNotificationStubs) expect(migrated).not.toContain(removed);
     for (const route of migrated)
       expect(fs.existsSync(path.join(root, `src/${route}.vue`)), route).toBe(
         true,

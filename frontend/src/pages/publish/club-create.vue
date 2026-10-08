@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
-import CitySelect from "../../components/CitySelect.vue";
 import { useDiscovery } from "../../stores/discovery";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import { request, uploadFile } from "../../services/api";
@@ -12,6 +11,7 @@ const s = useSession(),
   id = ref(0),
   loading = ref(false),
   imageUploading = ref(false),
+  locationSelecting = ref(false),
   images = ref<string[]>([]),
   documents = ref<any[]>([]),
   form = reactive<any>({
@@ -30,6 +30,10 @@ const s = useSession(),
 onLoad(async (q) => {
   if (!s.requireLogin("/pages/publish/club-create")) return;
   id.value = Number(q?.club_id || 0);
+  if (!id.value) {
+    await discovery.ensureCity().catch(() => uni.showToast({ title: "请在地图中选择俱乐部位置", icon: "none" }));
+    form.city = discovery.city;
+  }
   if (id.value) {
     if (
       !(await s.requireClubAdmin(
@@ -49,25 +53,29 @@ onLoad(async (q) => {
     documents.value = c.documents || [];
   }
 });
+watch(() => discovery.city, value => {
+  if (!id.value && form.city !== value) {
+    form.city = value; form.address = ""; form.latitude = null; form.longitude = null;
+  }
+}, { flush: "sync" });
 function chooseLocation() {
+  if (locationSelecting.value || loading.value) return;
   uni.chooseLocation({
-    success: async (r) => {
-      Object.assign(form, {
-        address: r.address || r.name,
-        latitude: r.latitude,
-        longitude: r.longitude,
-      });
-      try { const c: any = await request(`/discovery/location-city?lat=${r.latitude}&lng=${r.longitude}`); form.city = c.city; } catch { uni.showToast({ title: "请手动确认俱乐部城市", icon: "none" }); }
+    ...(form.latitude != null && form.longitude != null ? { latitude: form.latitude, longitude: form.longitude } : {}),
+    success: async (point) => {
+      locationSelecting.value = true;
+      try {
+        const city = await discovery.selectPoint(point);
+        Object.assign(form, { city, address: point.address || point.name, latitude: point.latitude, longitude: point.longitude });
+      } catch (error: any) {
+        uni.showToast({ title: error.message || "城市识别失败，请重新选择位置", icon: "none" });
+      } finally { locationSelecting.value = false; }
     },
     fail: (error) => {
       if (error.errMsg?.includes("auth deny"))
-        uni.showModal({
-          title: "需要位置权限",
-          content: "请在设置中开启位置权限，或直接手动输入地址",
-          success: (result) => result.confirm && uni.openSetting(),
-        });
+        uni.showModal({ title: "需要位置权限", content: "请在设置中开启位置权限后，通过地图选择俱乐部位置", success: result => result.confirm && uni.openSetting() });
       else if (!error.errMsg?.includes("cancel"))
-        uni.showToast({ title: "地图不可用，请手动输入地址", icon: "none" });
+        uni.showToast({ title: "地图不可用，请稍后重试", icon: "none" });
     },
   });
 }
@@ -75,7 +83,7 @@ async function chooseImages() {
   if (loading.value || imageUploading.value) return;
   imageUploading.value = true;
   try { await chooseUploadedImages(9 - images.value.length, "post", url => { images.value.push(url); }); }
-  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  catch (error: any) { uni.showToast({ title: error.message || "图片上传失败，请重试", icon: "none" }); }
   finally { imageUploading.value = false; }
 }
 function chooseDocument() {
@@ -104,16 +112,10 @@ function chooseDocument() {
     },
   });
 }
-function inputAddress(value: string) {
-  if (value !== form.address) {
-    form.latitude = null;
-    form.longitude = null;
-  }
-  form.address = value;
-}
 async function save() {
-  if (loading.value || imageUploading.value) return;
-  if (!form.city) return uni.showToast({ title: "请选择俱乐部城市", icon: "none" });
+  if (loading.value || imageUploading.value || locationSelecting.value) return;
+  if (form.latitude == null || form.longitude == null) return uni.showToast({ title: "请在地图中选择俱乐部位置", icon: "none" });
+  if (!form.city) return uni.showToast({ title: "请在地图中选择俱乐部位置", icon: "none" });
   if (!form.name.trim() || !form.contact_phone || !form.address.trim())
     return uni.showToast({ title: "请填写名称、地址和联系电话", icon: "none" });
   if (
@@ -125,19 +127,6 @@ async function save() {
     return uni.showToast({ title: "营业结束时间需晚于开始时间", icon: "none" });
   loading.value = true;
   try {
-    if (form.latitude == null || form.longitude == null) {
-      try {
-        const point: any = await request("/clubs/geocode", {
-          method: "POST",
-          data: { address: form.address },
-        });
-        form.latitude = point?.latitude ?? null;
-        form.longitude = point?.longitude ?? null;
-      } catch {
-        form.latitude = null;
-        form.longitude = null;
-      }
-    }
     const urls = [];
     for (const p of images.value)
       urls.push(await uploadedImage(p, "post"));
@@ -164,7 +153,7 @@ async function save() {
       data,
     });
     await s.fetchUser();
-    uni.showToast({ title: "保存成功", icon: "success" });
+    uni.showToast({ title: id.value ? "保存成功" : "已提交，等待系统管理员审核", icon: "none" });
     setTimeout(() => uni.navigateBack(), 600);
   } finally {
     loading.value = false;
@@ -174,25 +163,17 @@ async function save() {
 <template>
   <AppShell back :title="id ? '编辑俱乐部' : '创建俱乐部'"
     ><view class="content publish-content"
-      ><CitySelect v-model="form.city" label="俱乐部城市 *" />
+      >
       <text class="field-label">俱乐部名称 *</text
       ><wd-input v-model="form.name" /><text class="field-label"
         >联系电话 *</text
       ><wd-input v-model="form.contact_phone" type="number" /><text
         class="field-label"
-        >地址</text
+        >俱乐部位置 *</text
       ><view class="picker-field" @click="chooseLocation"
         ><text>{{ form.address || "在地图中选择" }}</text
         ><wd-icon name="location" /></view
-      ><wd-input
-        :model-value="form.address"
-        placeholder="也可以手动输入详细地址"
-        @update:model-value="inputAddress"
-      /><text
-        v-if="form.latitude != null && form.longitude != null"
-        class="muted small"
-        >已获取地图坐标</text
-      >
+      ><text class="muted small">{{ locationSelecting ? '正在识别城市…' : (form.city ? form.city + ' · 城市根据地图位置自动填写' : '选择地图位置后自动获取城市') }}</text>
       <text class="field-label">营业时间</text
       ><view class="form-two"
         ><picker
@@ -247,8 +228,8 @@ async function save() {
           >添加 PDF</wd-button
         ></view
       ><view class="publish-action"
-        ><wd-button block :loading="loading || imageUploading" @click="save"
-          >保存俱乐部</wd-button
+        ><wd-button block :loading="loading || imageUploading || locationSelecting" @click="save"
+          >{{ id ? "保存俱乐部" : "提交俱乐部申请" }}</wd-button
         ></view
       ></view
     ></AppShell

@@ -5,6 +5,7 @@ import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
+import { postLocation } from "../../domain/post-location";
 const s = useSession(),
   id = ref(""),
   post = ref<any>(null),
@@ -13,6 +14,12 @@ const s = useSession(),
   reply = ref<any>(null),
   busy = ref(false),
   showRegs = ref(false);
+const location = computed(() => postLocation(post.value || {}));
+function openMeetingLocation() {
+  const point = location.value;
+  if (point.latitude == null || point.longitude == null) return;
+  uni.openLocation({ latitude:Number(point.latitude), longitude:Number(point.longitude), name:point.title, address:point.address });
+}
 const owner = computed(() => post.value?.user_id === s.user?.id);
 const registration = computed(() =>
   post.value?.registrations?.find(
@@ -138,27 +145,13 @@ function remove(c: any) {
         ><text class="page-title">{{ post.title }}</text
         ><view class="detail-facts"
           ><view class="fact"
-            ><wd-icon name="time-line" /><view
+            ><view class="fact-icon"><wd-icon name="time-line" size="18px" /></view><view
               ><text class="strong">{{ post.preferred_date }}</text
               ><text class="muted"
                 >{{ post.preferred_start }}–{{ post.preferred_end }}</text
               ></view
             ></view
-          ><view
-            class="fact"
-            @click="
-              post.venue_latitude != null && post.venue_longitude != null &&
-              uni.openLocation({
-                latitude: Number(post.venue_latitude),
-                longitude: Number(post.venue_longitude),
-                name: post.venue_address || '球场',
-                address: post.venue_address,
-              })
-            "
-            ><wd-icon name="location" /><view
-              ><text class="strong">{{ post.club_name || "地点待协商" }}</text
-              ><text class="muted">{{ post.venue_address }}</text></view
-            ></view
+          ><view class="fact" @click="openMeetingLocation"><view class="fact-icon"><wd-icon name="location" size="18px" /></view><view><text class="strong">{{ location.title }}</text><text v-if="location.address && location.address !== location.title" class="muted">{{ location.address }}</text><text v-if="location.latitude != null && location.longitude != null" class="muted">点击查看地图与导航</text></view></view
           ></view
         ><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
@@ -244,3 +237,7 @@ function remove(c: any) {
     ><wd-loading v-else
   /></AppShell>
 </template>
+
+<style scoped>
+.detail-facts .fact > .fact-icon { flex:0 0 22px; width:22px; align-items:center; }
+</style>

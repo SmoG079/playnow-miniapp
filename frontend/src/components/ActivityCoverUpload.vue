@@ -1,27 +1,21 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import Photo from "./Photo.vue";
-import { uploadedImage } from "../services/media";
+import { uploadedImage, chooseImagePaths } from "../services/media";
 const props = defineProps<{ modelValue: string[]; disabled?: boolean }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: string[]): void; (e: "busy", value: boolean): void }>();
 const uploading = ref(false);
 async function selectCover() {
   if (uploading.value || props.disabled) return;
-  let selected: UniApp.ChooseImageSuccessCallbackResult;
-  try {
-    selected = await uni.chooseImage({ count: 1, sizeType: ["compressed"], sourceType: ["album", "camera"] });
-  } catch { return; }
-  const path = selected.tempFilePaths[0];
-  if (!path) return;
   uploading.value = true;
   emit("busy", true);
   try {
-    const result = { url: await uploadedImage(path, "post") };
-    const remaining = props.modelValue.filter((url) => url !== result.url);
-    // Only cloud URLs enter the form. Temporary device paths are never persisted.
-    emit("update:modelValue", [result.url, ...remaining].slice(0, 6));
-  } catch {
-    uni.showToast({ title: "封面上传失败，请重试", icon: "none" });
+    const [path] = await chooseImagePaths(1);
+    if (!path) return;
+    const url = await uploadedImage(path, "post");
+    emit("update:modelValue", [url, ...props.modelValue.filter(item => item !== url)].slice(0, 6));
+  } catch (error:any) {
+    if (!error?.errMsg?.includes("cancel")) uni.showToast({ title: error.message || "封面上传失败，请重试", icon: "none" });
   } finally {
     uploading.value = false;
     emit("busy", false);

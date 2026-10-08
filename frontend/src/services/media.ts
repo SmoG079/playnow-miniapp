@@ -14,14 +14,27 @@ export async function uploadedImage(path: string, type = "post"): Promise<string
   return result.url;
 }
 
+/** Native image picker; compressed images reduce memory pressure on real devices. */
+export async function chooseImagePaths(count: number): Promise<string[]> {
+  if (typeof uni.chooseMedia === "function") {
+    const selected = await new Promise<UniApp.ChooseMediaSuccessCallbackResult>((resolve,reject) => uni.chooseMedia({
+      count, mediaType:["image"], sizeType:["compressed"], sourceType:["album","camera"], success:resolve, fail:reject,
+    }));
+    return (selected.tempFiles || []).map(file => file.tempFilePath).filter(Boolean);
+  }
+  const selected = await uni.chooseImage({count,sizeType:["compressed"],sourceType:["album","camera"]});
+  const paths = selected.tempFilePaths;
+  return Array.isArray(paths) ? paths : paths ? [paths] : [];
+}
+
 /** Upload before adding a preview; never render a simulator temporary file URL. */
 export async function chooseUploadedImages(count: number, type: string, add: (url: string) => void): Promise<void> {
   if (count <= 0) return;
-  let selected: UniApp.ChooseImageSuccessCallbackResult;
-  try { selected = await uni.chooseImage({ count, sizeType: ["compressed"] }); }
+  let paths: string[];
+  try { paths = await chooseImagePaths(count); }
   catch (error: any) {
     if (error?.errMsg?.includes("cancel")) return;
     throw error;
   }
-  for (const path of selected.tempFilePaths) add(await uploadedImage(path, type));
+  for (const path of paths) add(await uploadedImage(path, type));
 }

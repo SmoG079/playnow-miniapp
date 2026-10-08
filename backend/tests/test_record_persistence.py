@@ -96,6 +96,11 @@ async def test_club_data_round_trip_and_edit_preserves_other_fields(db):
         documents=[{"name": "规则", "url": "https://test/rules.pdf"}],
     ), user, db)
     assert (created.rules, created.opening_time, created.closing_time) == ("请穿网球鞋", "09:30", "20:30")
+    assert created.approval_status == "pending" and user.role == UserRole.user
+    from app.api.v1.applications import review_club, ClubReview
+    reviewer = await db.get(User, 2)
+    reviewer.role = UserRole.platform_admin
+    await review_club(created.id, ClubReview(approved=True), reviewer, db)
     await db.commit()
     async with async_sessionmaker(db.bind, expire_on_commit=False)() as fresh:
         club = await fresh.get(Club, created.id)

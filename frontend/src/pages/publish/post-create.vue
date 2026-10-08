@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
-import CitySelect from "../../components/CitySelect.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
 import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
@@ -26,6 +25,7 @@ const tournamentDisabledReason = computed(() => "请先登录后创建比赛");
 const today = () => new Date().toISOString().slice(0, 10);
 const form = reactive<any>({
   city: discovery.city,
+  address: "",
   latitude: null, longitude: null,
   title: "",
   preferred_date: today(),
@@ -44,11 +44,13 @@ onShow(async () => {
   statusBarHeight.value = uni.getWindowInfo().statusBarHeight || 0;
   if (!s.requireLogin("/pages/publish/post-create")) return;
   await s.fetchUser().catch(() => {});
-  if (!form.city) form.city = discovery.city;
-  const selectedClubId = clubs.value[clubIndex.value]?.id;
-  clubs.value = await listAll<any>("/clubs");
-  clubIndex.value = clubs.value.findIndex((c) => c.id === selectedClubId);
+  await discovery.ensureCity().catch(() => {});
+  if (!form.booking_id) form.city = discovery.city;
   const linked = uni.getStorageSync("booking_return");
+  if (linked) {
+    form.city = linked.city || form.city;
+  }
+  await loadClubs();
   if (linked) {
     if (linked.club_id)
       clubIndex.value = clubs.value.findIndex((c) => c.id === Number(linked.club_id));
@@ -56,7 +58,7 @@ onShow(async () => {
     choosingVenue.value = true;
     venueName.value = linked.venue_name || "已预订场地";
     Object.assign(form, {
-      city: linked.city || "", latitude: linked.latitude ?? null, longitude: linked.longitude ?? null,
+      city: linked.city || "", address: linked.address || "", latitude: linked.latitude ?? null, longitude: linked.longitude ?? null,
       venue_id: linked.venue_id,
       booking_id: linked.booking_id,
       preferred_date: linked.slot_date,
@@ -66,6 +68,36 @@ onShow(async () => {
     uni.removeStorageSync("booking_return");
   }
 });
+watch(() => discovery.city, value => {
+  if (!form.booking_id && form.city !== value) {
+    form.city = value; changeCity();
+  }
+}, { flush: "sync" });
+let clubLoadVersion = 0;
+async function loadClubs() {
+  const version = ++clubLoadVersion;
+  const selected = clubs.value[clubIndex.value]?.id;
+  try {
+    const available = form.city ? await listAll<any>(`/clubs?city=${encodeURIComponent(form.city)}`) : [];
+    if (version !== clubLoadVersion) return;
+    clubs.value = available;
+    clubIndex.value = clubs.value.findIndex(c => c.id === selected);
+  } catch (error: any) {
+    if (version !== clubLoadVersion) return;
+    clubs.value = []; clubIndex.value = -1;
+    uni.showToast({ title: error.message || "球场列表加载失败", icon: "none" });
+  }
+}
+function changeCity() {
+  form.address = ""; form.latitude = null; form.longitude = null;
+  clubIndex.value = -1; loadClubs();
+}
+function selectLocation(point: any) {
+  Object.assign(form, point); loadClubs();
+}
+function goClub() {
+  if (s.requireLogin("/pages/publish/club-create")) uni.navigateTo({ url: "/pages/publish/club-create" });
+}
 function goPost() {
   editingPost.value = true;
 }
@@ -75,6 +107,7 @@ function unlinkVenue() {
   venueName.value = "";
   clubIndex.value = -1;
   choosingVenue.value = false;
+  form.address = ""; form.latitude = null; form.longitude = null;
 }
 async function goTournament() {
   const redirect = "/pages/publish/tournament-create";
@@ -86,7 +119,7 @@ async function pickImages() {
   if (loading.value || coverUploading.value) return;
   coverUploading.value = true;
   try { await chooseUploadedImages(6 - images.value.length, "post", url => { images.value.push(url); }); }
-  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  catch (error: any) { uni.showToast({ title: error.message || "图片上传失败，请重试", icon: "none" }); }
   finally { coverUploading.value = false; }
 }
 async function submit() {
@@ -106,7 +139,7 @@ async function submit() {
     return uni.showToast({ title: "请填写有效费用", icon: "none" });
   if (choosingVenue.value && (clubIndex.value < 0 || !form.booking_id))
     return uni.showToast({ title: "请选择俱乐部并完成订场", icon: "none" });
-  if (!form.city) return uni.showToast({ title: "请选择活动城市", icon: "none" });
+  if (!form.city || (!form.booking_id && (!form.address || form.latitude === null || form.longitude === null))) return uni.showToast({ title: "请在地图中选择活动地点", icon: "none" });
   loading.value = true;
   try {
     const urls = [];
@@ -194,6 +227,7 @@ function goBook() {
           </view>
         </view>
       </view>
+      <view v-if="!editingPost" class="create-club-entry"><wd-button variant="text" size="small" custom-style="color:#147553;font-size:13px" @click="goClub">创建俱乐部</wd-button></view>
       <view v-else class="post-form">
         <wd-button variant="text" @click="editingPost = false"
           >返回发布入口</wd-button
@@ -201,14 +235,6 @@ function goBook() {
         <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
         <text class="form-title">发布约球</text>
         <text class="muted">场地可选，未关联即为自由约球。</text>
-        <view class="comparison-help"
-          ><wd-button variant="text" @click="showPostComparison = true"
-            >自由约球与定场约球有什么区别？</wd-button
-          ></view
-        >
-        <view v-if="form.booking_id" class="picker-field">球场城市 · {{ form.city || "请联系管理员补充球场位置" }}</view>
-        <CitySelect v-else @update:model-value="form.latitude = null; form.longitude = null" v-model="form.city" />
-        <ActivityLocationSelect @busy="locationSelecting = $event" v-if="!form.booking_id" :city="form.city" :selected="form.latitude !== null" @select="point => { form.city = point.city; form.latitude = point.latitude; form.longitude = point.longitude; }" />
         <text class="field-label">标题 *</text
         ><wd-input
           v-model="form.title"
@@ -227,7 +253,7 @@ function goBook() {
               : "未关联场地 · 自由约球"
           }}</text>
           <wd-button
-            v-if="!choosingVenue && clubs.length"
+            v-if="!choosingVenue"
             variant="plain"
             @click="choosingVenue = true"
             >关联场地</wd-button
@@ -236,7 +262,7 @@ function goBook() {
             form.booking_id ? "移除关联" : "取消关联"
           }}</wd-button>
         </view>
-        <template v-if="choosingVenue"
+        <template v-if="choosingVenue && clubs.length"
           ><text class="field-label">俱乐部</text
           ><picker
             :range="clubs.map((c) => c.name)"
@@ -248,7 +274,12 @@ function goBook() {
           ><wd-button block variant="plain" @click="goBook">{{
             form.booking_id ? "已关联预约，重新选择" : "去选择并预订场地"
           }}</wd-button></template
-        ><text class="field-label">日期</text
+        >
+        <view v-if="choosingVenue && !clubs.length" class="venue-empty"><text class="muted">{{ form.city ? '当前城市暂无可预订场地' : '请先在地图中选择活动地点' }}</text><wd-button variant="text" size="small" @click="goClub">创建俱乐部</wd-button></view>
+        <view class="comparison-help"><wd-button variant="text" size="small" @click="showPostComparison = true">自由约球与定场约球有什么区别？</wd-button></view>
+        <text class="field-label">活动地点</text>
+        <ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
+        <text class="field-label">日期</text
         ><picker
           mode="date"
           :value="form.preferred_date"
@@ -364,6 +395,11 @@ function goBook() {
   margin: auto 0;
   padding: 32px 0 40px;
 }
+.create-club-entry { text-align:center; padding:8px 0 16px; }
+.venue-empty { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px 0; }
+.selected-address { display:block; font-size:14px; line-height:1.6; color:#304238; margin-bottom:12px; }
+.linked-location { display:flex; align-items:center; gap:10px; padding:14px; border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); background:#fff; }
+.linked-location > view { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; font-size:14px; }
 .publish-entry {
   padding: 0 8px;
 }

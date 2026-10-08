@@ -1,6 +1,9 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from typing import Literal
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update, literal, String, union_all, cast, or_
+from sqlalchemy import select, func, update, literal, String, union_all, cast, or_, case, and_
 from app.core.database import get_db
 from app.api.deps import get_current_user, _v
 from app.models.models import (
@@ -26,7 +29,7 @@ async def managed_tournaments(
     managed = select(ClubMember.club_id).where(ClubMember.user_id == current_user.id)
     created = select(TournamentAudit.tournament_id).where(
         TournamentAudit.actor_id == current_user.id, TournamentAudit.action == "created")
-    query = select(Tournament, Club.name).join(Club, Club.id == Tournament.club_id)
+    query = select(Tournament, Club.name).outerjoin(Club, Club.id == Tournament.club_id)
     if role != "platform_admin":
         scope = Tournament.id.in_(created)
         if role == "club_admin":
@@ -42,6 +45,70 @@ async def managed_tournaments(
         for t, name in rows], total=total, page=page, page_size=page_size)
 
 
+@router.get("/me/activity-records", response_model=PaginatedResponse)
+@router.get("/me/activities", response_model=PaginatedResponse)
+async def my_activities(
+    kind: Literal["tournament", "post"] = "tournament",
+    relation: Literal["joined", "published"] = "joined",
+    phase: Literal["all", "open", "ongoing", "ended", "review"] = "all",
+    keyword: str = Query("", max_length=128),
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """Filter the current user's indexed records before paginating; bracket data is lazy-loaded."""
+    from app.models.models import TournamentAudit
+    now = datetime.utcnow()
+    if kind == "tournament":
+        event, registration = Tournament, TournamentRegistration
+        owned = select(TournamentAudit.id).where(TournamentAudit.tournament_id == Tournament.id,
+            TournamentAudit.action == "created", TournamentAudit.actor_id == current_user.id).correlate(Tournament).exists()
+        event_phase = case((Tournament.status.in_(["finished", "cancelled"]), "ended"),
+            (Tournament.end_time <= now, "ended"), (Tournament.start_time <= now, "ongoing"), else_="open")
+        query = select(Tournament, TournamentRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
+            TournamentRegistration, and_(TournamentRegistration.tournament_id == Tournament.id,
+                                          TournamentRegistration.user_id == current_user.id))
+        approval = TournamentRegistration.approval
+    else:
+        event, registration = MatchPost, MatchRegistration
+        owned = MatchPost.user_id == current_user.id
+        local_now = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Shanghai"))
+        today, clock = local_now.date(), local_now.time().replace(tzinfo=None)
+        ended = or_(MatchPost.preferred_date < today,
+            and_(MatchPost.preferred_date == today, MatchPost.preferred_end <= clock))
+        started = and_(MatchPost.preferred_date == today, MatchPost.preferred_start <= clock)
+        event_phase = case((MatchPost.status == "closed", "ended"), (ended, "ended"), (started, "ongoing"), else_="open")
+        query = select(MatchPost, MatchRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
+            MatchRegistration, and_(MatchRegistration.post_id == MatchPost.id, MatchRegistration.user_id == current_user.id))
+        approval = MatchRegistration.status
+    query = query.where(owned if relation == "published" else registration.id.is_not(None))
+    keyword = keyword.strip()
+    if keyword:
+        search = event.title.contains(keyword, autoescape=True)
+        number = keyword.lstrip("#")
+        if number.isascii() and number.isdigit() and int(number) <= 9223372036854775807:
+            search = or_(search, event.id == int(number))
+        query = query.where(search)
+    if phase == "review":
+        query = query.where(approval == "pending", event_phase != "ended") if relation == "joined" else query.where(False)
+    elif phase != "all": query = query.where(event_phase == phase)
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = (await db.execute(query.order_by(event.created_at.desc(), event.id.desc()).offset((page-1)*page_size).limit(page_size))).all()
+    items = []
+    for e, r, event_phase_value, owner in rows:
+        item = dict(id=e.id, activity_id=e.id, kind=kind, title=e.title, city=e.city,
+            status=_v(e.status), phase=event_phase_value, can_manage=bool(owner), created_at=e.created_at)
+        if kind == "tournament":
+            item.update(start_time=e.start_time, end_time=e.end_time, address=e.address, cover_image=e.cover_image,
+                draw_version=e.published_version, registration=dict(status=_v(r.status), approval=r.approval,
+                admission=r.admission, payment=r.payment, requested_group=r.requested_group, review_reason=r.review_reason) if r else None)
+        else:
+            item.update(preferred_date=e.preferred_date, preferred_start=e.preferred_start,
+                preferred_end=e.preferred_end, address=e.address, cover_image=(e.images or [None])[0],
+                registration=dict(status=_v(r.status), review_reason=r.review_reason) if r else None)
+        items.append(item)
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
 @router.get("/me", response_model=UserMeResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
@@ -51,7 +118,13 @@ async def get_me(
         select(ClubMember.club_id).where(ClubMember.user_id == current_user.id)
     )
     club_ids = [row[0] for row in result.fetchall()]
+    roles = []
+    role = _v(current_user.role)
+    if role == "platform_admin": roles.append("platform_admin")
+    if role == "club_admin" or club_ids: roles.append("club_admin")
+    if not roles: roles.append("user")
     return UserMeResponse(
+        roles=roles,
         id=current_user.id,
         nickname=current_user.nickname,
         avatar_url=current_user.avatar_url,
@@ -346,38 +419,6 @@ async def my_tournaments(page: int = Query(1,ge=1),page_size: int = Query(20,ge=
                           provisional=provisional,registration=detail['my_registration'],teams=detail['teams'],registrations=detail['registrations'],
                           my_draw=personal_position(detail['teams'],detail['matches'],current_user.id)))
     return PaginatedResponse(items=items,total=total,page=page,page_size=page_size)
-
-
-@router.get("/me/activities", response_model=PaginatedResponse)
-async def my_activities(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=50),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """A lightweight mixed record page; detail/draw data stays in its own tables."""
-    from app.models.models import Tournament, TournamentRegistration
-    post_query = select(
-        MatchPost.id.label("activity_id"), literal("post").label("kind"),
-        MatchRegistration.id.label("registration_id"), MatchPost.title,
-        MatchRegistration.status.cast(String(16)).label("status"),
-        MatchRegistration.created_at.label("registered_at"), MatchPost.club_id,
-    ).join(MatchRegistration, MatchRegistration.post_id == MatchPost.id).where(
-        MatchRegistration.user_id == current_user.id)
-    tournament_query = select(
-        Tournament.id.label("activity_id"), literal("tournament").label("kind"),
-        TournamentRegistration.id.label("registration_id"), Tournament.title,
-        TournamentRegistration.status.cast(String(16)).label("status"),
-        TournamentRegistration.created_at.label("registered_at"), Tournament.club_id,
-    ).join(TournamentRegistration, TournamentRegistration.tournament_id == Tournament.id).where(
-        TournamentRegistration.user_id == current_user.id)
-    records = union_all(post_query, tournament_query).subquery()
-    total = await db.scalar(select(func.count()).select_from(records)) or 0
-    rows = (await db.execute(select(records).order_by(
-        records.c.registered_at.desc(), records.c.activity_id.desc()
-    ).offset((page - 1) * page_size).limit(page_size))).mappings().all()
-    return PaginatedResponse(items=[dict(row) for row in rows], total=total,
-                             page=page, page_size=page_size)
 
 
 @router.get("/me/registrations", response_model=PaginatedResponse)

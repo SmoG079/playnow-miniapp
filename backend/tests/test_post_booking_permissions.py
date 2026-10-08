@@ -114,3 +114,26 @@ async def test_edit_cannot_bypass_booking_ownership_and_unlink_becomes_free(db):
     await update_post(linked.id, PostUpdate(booking_id=None, venue_id=None), owner, db)
     stored = await db.get(MatchPost, linked.id)
     assert stored.club_id is None and stored.venue_id is None and stored.booking_id is None
+
+@pytest.mark.asyncio
+async def test_free_meeting_address_survives_creation_detail_and_update(db):
+    from app.api.v1.posts import get_post, list_posts
+    user = await db.get(User, 1)
+    created = await create_post(request(city='南京市', address='滨江网球场', latitude=32.0, longitude=118.0), user, db)
+    assert created.address == '滨江网球场'
+    detail = await get_post(created.id, db)
+    assert (detail.address, detail.latitude, detail.longitude) == ('滨江网球场', 32.0, 118.0)
+    changed = await update_post(created.id, PostUpdate(address='中央网球场', latitude=32.1, longitude=118.1), user, db)
+    assert changed.address == '中央网球场'
+    result = await list_posts(db=db,city='南京市',club_id=None,sport=None,status=None,ntrp_levels=None,lat=None,lng=None,sort_by='date_asc',page=1,page_size=20,activity_type='all',on_date=None)
+    assert result.items[0].address == '中央网球场'
+
+@pytest.mark.asyncio
+async def test_booked_post_uses_authoritative_court_address(db):
+    from app.api.v1.posts import get_post
+    venue = await db.get(Venue, 1)
+    venue.city, venue.address, venue.latitude, venue.longitude = '南京市', '东区球场路8号', 32.1, 118.1
+    created = await create_post(request(booking_id=1,venue_id=1,address='伪造位置',latitude=1,longitude=2),await db.get(User,1),db)
+    assert (created.address, created.latitude, created.longitude) == ('东区球场路8号',32.1,118.1)
+    detail=await get_post(created.id,db)
+    assert detail.venue_name == '场地' and detail.venue_address == '东区球场路8号'

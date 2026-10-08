@@ -25,6 +25,7 @@ export function clearTokens() {
   uni.removeStorageSync("refresh_token");
   uni.removeStorageSync("registered_post_ids");
   uni.removeStorageSync("booking_return");
+  uni.removeStorageSync("tournament_draft_cache");
 }
 
 async function refreshTokens() {
@@ -104,7 +105,7 @@ function rawRequest<T>(
   });
 }
 
-async function authenticated<T>(operation: () => Promise<T>, skipAuth = false): Promise<T> {
+async function authenticated<T>(operation: () => Promise<T>, skipAuth = false, preservePage = false): Promise<T> {
   try { return await operation(); }
   catch (error: any) {
     if (error.statusCode !== 401 || skipAuth) throw error;
@@ -114,6 +115,10 @@ async function authenticated<T>(operation: () => Promise<T>, skipAuth = false): 
       await refreshPromise;
       return await operation();
     } catch (refreshError: any) {
+      if (preservePage) {
+        if (refreshError.statusCode === 401) throw new Error("登录已过期，请重新登录后重试；已填内容已保留");
+        throw refreshError;
+      }
       if (!refreshError.preserveSession && (refreshError.statusCode === 401 || refreshError.message === "登录已失效")) {
         clearTokens();
         uni.reLaunch({ url: `/pages/common/login?redirect=${encodeURIComponent(currentRoute())}` });
@@ -177,5 +182,5 @@ export function uploadFile(filePath: string, fileType = "upload"): Promise<{ url
         reject(Object.assign(new Error(message), { cause: error }));
       },
     });
-  }));
+  }), false, true);
 }
