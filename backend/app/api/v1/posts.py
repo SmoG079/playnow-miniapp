@@ -555,6 +555,8 @@ async def review_registration(
         raise HTTPException(status_code=404, detail="Post not found")
     if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
         raise HTTPException(status_code=403, detail="Only post owner can review")
+    if _v(post.status) == "closed":
+        raise HTTPException(status_code=409, detail="活动已关闭，不能审核报名")
 
     result = await db.execute(
         select(MatchRegistration).where(

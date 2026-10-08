@@ -127,3 +127,18 @@ async def test_closed_posts_hidden_in_public_square_and_filters_but_history_reta
     assert listing.total==len(expected)
     history=await users.my_posts(1,20,owner,db)
     assert closed.id in [x.id for x in history.items]
+
+@pytest.mark.asyncio
+async def test_review_and_cancellation_cannot_reopen_closed_post(db):
+    from fastapi import HTTPException
+    from app.schemas.schemas import RegisterPostRequest, ReviewRegistrationRequest
+    owner=await db.get(User,2)
+    participant=await db.get(User,3)
+    post=await posts.create_post(PostCreate(**dict(POST,players_needed=1)),owner,db)
+    await posts.register_post(post.id,RegisterPostRequest(),participant,db)
+    await posts.close_post(post.id,owner,db)
+    with pytest.raises(HTTPException) as err:
+        await posts.review_registration(post.id,participant.id,ReviewRegistrationRequest(status='approved'),owner,db)
+    assert err.value.status_code==409
+    await posts.cancel_register(post.id,participant,db)
+    assert (await db.get(MatchPost,post.id)).status.value=='closed'
