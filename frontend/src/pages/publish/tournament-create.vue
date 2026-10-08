@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch, computed } from "vue";
+import { reactive, ref, watch, computed, nextTick } from "vue";
 import { onLoad, onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
@@ -13,10 +13,10 @@ import {
   defaultConfig,
   formatNames,
   disciplineNames,
-  validateConfig,
   localTime,
   getTournament,
 } from "../../services/tournaments";
+import { tournamentFieldIssues, type TournamentFieldIssue } from "../../domain/tournament-form";
 import { buildSchedulePreview } from "../../services/tournament-preview";
 import { saveTournamentDraft, readTournamentDraft, clearTournamentDraft } from "../../services/tournament-draft";
 const discovery = useDiscovery();
@@ -85,6 +85,15 @@ const form = reactive({
   cancellation_hours: "1",
   courts: "1号场地",
 });
+const fieldIssues = ref<TournamentFieldIssue[]>([]);
+let validatedPreviewOnly = false;
+watch([form,cfg,linked], () => { if (fieldIssues.value.length) fieldIssues.value = tournamentFieldIssues(form,cfg,linked.value,validatedPreviewOnly); }, {deep:true});
+async function locateIssue(issue:TournamentFieldIssue) {
+  if (["advanced","rules"].includes(issue.panel)) panels.value=[...new Set([...panels.value,issue.panel])];
+  await nextTick();
+  const target = ({start:"start_date",end:"end_date"} as Record<string,string>)[issue.field] || issue.field;
+  setTimeout(() => uni.pageScrollTo({selector:"#required-"+target,duration:200}),250);
+}
 const placeholderHint =
   "支持日期、时间、地点占位符：" +
   ["日期", "时间", "地点"].map((x) => "{{" + x + "}}").join(" ");
@@ -196,52 +205,22 @@ function fail(message: string, panel = "advanced") {
   uni.pageScrollTo({ selector: "#" + panel, duration: 200 });
 }
 function payload(previewOnly = false) {
+  validatedPreviewOnly = previewOnly;
+  fieldIssues.value = tournamentFieldIssues(form,cfg,linked.value,previewOnly);
+  if (fieldIssues.value.length) {
+    panels.value = [...new Set([...panels.value,...fieldIssues.value.map(issue=>issue.panel).filter(panel=>["advanced","rules"].includes(panel))])];
+    const first = fieldIssues.value[0];
+    uni.showModal({title:"请补充或修改以下信息",content:fieldIssues.value.map(issue=>"· "+issue.message).join("\n"),showCancel:false,confirmText:"去填写",success:()=>void locateIssue(first)});
+    return;
+  }
   cfg.group_count = Number(cfg.group_count);
   cfg.match_minutes = Number(cfg.match_minutes);
   cfg.qualifiers_per_group = Number(cfg.qualifiers_per_group);
-  cfg.courts = form.courts
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
+  cfg.max_parallel = cfg.max_parallel == null || String(cfg.max_parallel).trim() === "" ? null : Number(cfg.max_parallel);
+  cfg.courts = form.courts.split("\n").map(x=>x.trim()).filter(Boolean);
   if (cfg.format === "knockout") cfg.allow_draw = false;
-  const error = validateConfig(cfg, Number(form.max_participants));
-  if (error) {
-    fail(error, "rules");
-    return;
-  }
   const title = form.auto_title ? autoTitle.value : form.title.trim();
-  const start = new Date(`${form.start_date}T${form.start}:00+08:00`),
-    end = new Date(`${form.end_date}T${form.end}:00+08:00`);
-  if (
-    (!previewOnly && !title) ||
-    isNaN(+start) ||
-    isNaN(+end) ||
-    end <= start
-  ) {
-    fail("请检查名称和时间", "basic");
-    return;
-  }
-  if (!previewOnly && !form.city) { fail("请选择比赛城市", "basic"); return; }
-  if (!previewOnly && !linked.value?.venue_id && (!form.address.trim() || form.latitude === null || form.longitude === null)) {
-    fail("请在地图中选择比赛地点或关联场地", "basic");
-    return;
-  }
-  if (
-    !previewOnly &&
-    (Number(form.entry_fee) < 0 || !Number.isFinite(Number(form.entry_fee)))
-  ) {
-    fail("请检查报名费");
-    return;
-  }
-  if (
-    !previewOnly &&
-    [form.registration_hours, form.cancellation_hours].some(
-      (x) => !Number.isFinite(Number(x)) || Number(x) < 0,
-    )
-  ) {
-    fail("截止时长须为非负数字");
-    return;
-  }
+  const start = new Date(`${form.start_date}T${form.start}:00+08:00`), end = new Date(`${form.end_date}T${form.end}:00+08:00`);
   return {
     city: form.city,
     latitude: form.latitude, longitude: form.longitude,
@@ -296,8 +275,9 @@ async function pick() {
   finally { coverUploading.value = false; }
 }
 async function save() {
+  if (loading.value || coverUploading.value || locationSelecting.value) return;
   const data = payload();
-  if (!data || loading.value || coverUploading.value || locationSelecting.value) return;
+  if (!data) return;
   loading.value = true;
   try {
     for (const img of images.value)
@@ -322,12 +302,12 @@ async function save() {
   <AppShell back :title="editId ? '编辑赛事' : '创建赛事'"
     ><view class="content publish-content">
       <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
+      <view v-if="fieldIssues.length" class="validation-summary"><text class="strong">请补充或修改以下信息</text><text v-for="issue in fieldIssues" :key="issue.field" class="validation-item" @click="locateIssue(issue)">· {{ issue.message }}</text></view>
       <view id="basic"
         ><text class="section-title">基本信息</text
         ><text class="field-label">主办俱乐部（选填）</text>
         <view class="picker-field" @click="chooseClub()"><text>{{ clubLoading ? '正在加载…' : clubs[clubIndex]?.name || '不设置主办俱乐部' }}</text><wd-icon v-if="!editId" name="arrow-down" /></view>
-        <text class="field-label">赛事名称 *</text
-        ><wd-input
+        <text class="field-label" id="required-title">赛事名称 *</text><wd-input
           v-model="form.title"
           :placeholder="form.auto_title ? autoTitle : '输入赛事名称'"
           :disabled="form.auto_title"
@@ -335,8 +315,7 @@ async function save() {
         <view class="switch-row"
           ><text>自动生成标题</text><wd-switch v-model="form.auto_title"
         /></view>
-        <text class="field-label">开始日期与时间 *</text
-        ><view class="form-two"
+        <text class="field-label" id="required-start_date">开始日期与时间 *</text><view class="form-two"
           ><picker
             mode="date"
             :value="form.start_date"
@@ -349,8 +328,7 @@ async function save() {
             ><view class="picker-field">{{ form.start }}</view></picker
           ></view
         >
-        <text class="field-label">结束日期与时间 *</text
-        ><view class="form-two"
+        <text class="field-label" id="required-end_date">结束日期与时间 *</text><view class="form-two"
           ><picker
             mode="date"
             :value="form.end_date"
@@ -363,7 +341,7 @@ async function save() {
             ><view class="picker-field">{{ form.end }}</view></picker
           ></view
         >
-        <text class="field-label">比赛地点 *</text>
+        <text class="field-label" id="required-address">比赛地点 *</text>
         <ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
         <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
         <text class="muted">比赛排场名称不会自动预订场地</text></view
@@ -407,8 +385,7 @@ async function save() {
       </wd-collapse>
       <text class="section-title">比赛设置</text
       ><text class="muted">{{ summary }}</text
-      ><text class="field-label">赛制</text
-      ><view class="choices"
+      ><text class="field-label">赛制 *</text><view class="choices"
         ><wd-button
           v-for="(label, key) in formatNames"
           :key="key"
@@ -421,8 +398,7 @@ async function save() {
           >{{ label }}</wd-button
         ></view
       >
-      <text class="field-label">比赛项目</text
-      ><view class="choices"
+      <text class="field-label">比赛项目 *</text><view class="choices"
         ><wd-button
           v-for="(label, key) in disciplineNames"
           :key="key"
@@ -432,20 +408,15 @@ async function save() {
           >{{ label }}</wd-button
         ></view
       >
-      <text class="field-label">人数上限（个人） *</text
-      ><wd-input v-model="form.max_participants" type="number" /><text
+      <text class="field-label" id="required-max_participants">人数上限（个人） *</text><wd-input v-model="form.max_participants" type="number" /><text
         class="field-label"
-        >报名费（每人）</text
-      ><wd-input v-model="form.entry_fee" type="digit" /><text class="muted"
+         id="required-entry_fee">报名费（每人） *</text><wd-input v-model="form.entry_fee" type="digit" /><text class="muted"
         >线上预付需经支付退款验收后启用</text
       >
-      <text class="field-label">分组数量</text
-      ><wd-input v-model="cfg.group_count" type="number" /><text
+      <text class="field-label" id="required-group_count">分组数量 *</text><wd-input v-model="cfg.group_count" type="number" /><text
         class="field-label"
-        >场地名称（每行一个）</text
-      ><wd-textarea v-model="form.courts" /><text class="field-label"
-        >每场预计分钟</text
-      ><wd-input v-model="cfg.match_minutes" type="number" />
+         id="required-courts">场地名称（每行一个） *</text><wd-textarea v-model="form.courts" /><text class="field-label"
+         id="required-match_minutes">每场预计分钟 *</text><wd-input v-model="cfg.match_minutes" type="number" />
       <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
       <wd-collapse v-model="panels">
         <wd-collapse-item
@@ -467,11 +438,9 @@ async function save() {
               ><text>参与者不分组展示</text
               ><wd-switch v-model="cfg.ungrouped_display"
             /></view>
-            <text class="field-label">报名截止（开赛前小时）</text
-            ><wd-input v-model="form.registration_hours" type="digit" /><text
+            <text class="field-label" id="required-registration_hours">报名截止（开赛前小时） *</text><wd-input v-model="form.registration_hours" type="digit" /><text
               class="field-label"
-              >取消截止（开赛前小时）</text
-            ><wd-input v-model="form.cancellation_hours" type="digit" /> </view
+               id="required-cancellation_hours">取消截止（开赛前小时） *</text><wd-input v-model="form.cancellation_hours" type="digit" /> </view
         ></wd-collapse-item>
         <wd-collapse-item name="rules" title="赛制高级设置"
           ><view id="rules">
@@ -481,8 +450,7 @@ async function save() {
             <view v-if="cfg.format !== 'knockout'" class="switch-row"
               ><text>循环赛允许平局</text><wd-switch v-model="cfg.allow_draw"
             /></view>
-            <text class="field-label">每轮最多同时场次（留空按场地数）</text
-            ><wd-input
+            <text class="field-label" id="required-max_parallel">每轮最多同时场次（留空按场地数）</text><wd-input
               :model-value="cfg.max_parallel || ''"
               type="number"
               @update:model-value="
@@ -490,8 +458,7 @@ async function save() {
               "
             />
             <template v-if="cfg.format === 'groups_knockout'"
-              ><text class="field-label">每组晋级队数</text
-              ><wd-input v-model="cfg.qualifiers_per_group" type="number"
+              ><text class="field-label" id="required-qualifiers_per_group">每组晋级队数 *</text><wd-input v-model="cfg.qualifiers_per_group" type="number"
             /></template>
             <text class="muted"
               >比分由管理员填写并指定胜者；淘汰赛支持轮空。</text
@@ -509,7 +476,6 @@ async function save() {
         ><wd-button
           block
           :loading="loading || coverUploading || locationSelecting"
-          :disabled="!clubs.length"
           @click="save"
           >{{ editId ? "保存赛事" : "发布赛事" }}</wd-button
         ></view
@@ -534,6 +500,8 @@ async function save() {
   </AppShell>
 </template>
 <style scoped>
+.validation-summary{padding:16px;border:1px solid #e3cda8;border-radius:12px;background:#fffaf1;margin:16px 0}.validation-item{display:block;margin-top:8px;font-size:13px;line-height:1.6;color:#976424}
+
 .switch-row {
   display: flex;
   align-items: center;
