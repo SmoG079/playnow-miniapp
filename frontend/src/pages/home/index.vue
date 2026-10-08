@@ -31,6 +31,7 @@ const levels = [
 const visiblePosts = computed(() =>
   posts.value.filter(
     (p) =>
+      p.status !== "closed" &&
       (mode.value === "all" ||
         (mode.value === "free" ? !p.venue_id : !!p.venue_id)) &&
       (!date.value || p.preferred_date === date.value),

@@ -129,7 +129,10 @@ async def list_posts(
         .outerjoin(Club, MatchPost.club_id == Club.id)
         .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
     )
-    count_query = select(func.count(MatchPost.id))
+    # The public square never exposes closed posts, including explicit status queries.
+    query = query.where(MatchPost.status != MatchPostStatus.closed)
+    count_query = select(func.count(MatchPost.id)).where(
+        MatchPost.status != MatchPostStatus.closed)
 
     if club_id:
         query = query.where(MatchPost.club_id == club_id)
@@ -143,7 +146,7 @@ async def list_posts(
 
     selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
     if selected_levels:
-        all_posts = select(MatchPost).where(MatchPost.id > 0)
+        all_posts = select(MatchPost).where(MatchPost.id > 0, MatchPost.status != MatchPostStatus.closed)
         if club_id:
             all_posts = all_posts.where(MatchPost.club_id == club_id)
         if sport:
