@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../config";
-import { SESSION_CONTEXT_KEY } from "./session-context";
+import { SESSION_CONTEXT_KEY, sessionContext } from "./session-context";
+import { assertWeChatAppId } from "./wechat-login";
 
 export interface PageResult<T> {
   items: T[];
@@ -29,14 +30,38 @@ export function clearTokens() {
 async function refreshTokens() {
   const refreshToken = uni.getStorageSync("refresh_token");
   if (!refreshToken) throw new Error("登录已失效");
-  const tokens = await rawRequest<any>(
-    "/auth/refresh",
-    "POST",
-    { refresh_token: refreshToken },
-    true,
-  );
-  if (uni.getStorageSync("refresh_token") !== refreshToken)
+  const accessToken = uni.getStorageSync("access_token");
+  const context = uni.getStorageSync(SESSION_CONTEXT_KEY);
+  const unchanged = () => uni.getStorageSync("refresh_token") === refreshToken
+    && uni.getStorageSync("access_token") === accessToken
+    && uni.getStorageSync(SESSION_CONTEXT_KEY) === context;
+  let tokens: any;
+  try {
+    tokens = await rawRequest<any>("/auth/refresh", "POST", { refresh_token: refreshToken }, true);
+  } catch (error: any) {
+    if (!unchanged()) throw new Error("登录会话已变化，请重新加载");
+    // Only restore a previous login in this WeChat app; never sign in a guest
+    // or undo an explicit logout. Network failures simply keep the cached session.
+    if (error.statusCode !== 401 || !accessToken || context !== sessionContext()
+      || typeof uni.getAccountInfoSync !== "function" || typeof uni.login !== "function") throw error;
+    try {
+      assertWeChatAppId(uni.getAccountInfoSync().miniProgram.appId);
+      const code = await new Promise<string>((resolve, reject) => uni.login({
+        provider: "weixin",
+        success: (result) => result.code ? resolve(result.code) : reject(new Error("未获取到微信登录凭证")),
+        fail: () => reject(new Error("微信登录恢复失败，请稍后重试")),
+      }));
+      if (!unchanged()) throw new Error("登录会话已变化，请重新加载");
+      tokens = await rawRequest<any>("/auth/login", "POST", { code }, true);
+    } catch (restoreError: any) {
+      restoreError.preserveSession = true;
+      throw restoreError;
+    }
+  }
+  if (!unchanged())
     throw new Error("登录会话已变化，请重新加载");
+  if (!tokens.access_token || !tokens.refresh_token)
+    throw new Error("登录响应缺少令牌");
   uni.setStorageSync("access_token", tokens.access_token);
   uni.setStorageSync("refresh_token", tokens.refresh_token);
 }
@@ -89,7 +114,7 @@ async function authenticated<T>(operation: () => Promise<T>, skipAuth = false): 
       await refreshPromise;
       return await operation();
     } catch (refreshError: any) {
-      if (refreshError.statusCode === 401 || refreshError.message === "登录已失效") {
+      if (!refreshError.preserveSession && (refreshError.statusCode === 401 || refreshError.message === "登录已失效")) {
         clearTokens();
         uni.reLaunch({ url: `/pages/common/login?redirect=${encodeURIComponent(currentRoute())}` });
       }

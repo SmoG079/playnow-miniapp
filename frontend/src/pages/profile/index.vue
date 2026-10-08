@@ -60,11 +60,6 @@ function logout() {
               title-width="calc(100% - 40px)" center is-link :border="false"
               custom-style="min-height:60px" @click="openPage(m[2])" />
           </view>
-          <view class="profile-menu-card">
-            <wd-cell title="编辑个人资料" prefix-icon="user" icon-size="22px"
-              title-width="calc(100% - 40px)" center is-link :border="false"
-              custom-style="min-height:60px" @click="openPage('/pages/profile/edit')" />
-          </view>
         </view>
         <view class="publish-action"
           ><wd-button block variant="plain" type="danger" @click="logout"

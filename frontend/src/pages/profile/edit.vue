@@ -9,7 +9,6 @@ import { openPage } from "../../utils/navigation";
 const s = useSession(),
   loading = ref(false),
   imageUploading = ref(false),
-  phoneLoading = ref(false),
   isNew = ref(false),
   redirect = ref(""),
   levels = [
@@ -52,27 +51,8 @@ async function avatar(e: any) {
   catch (error: any) { uni.showToast({ title: error.message || "头像上传失败，请重试", icon: "none" }); }
   finally { imageUploading.value = false; }
 }
-async function phone(e: any) {
-  if (phoneLoading.value) return;
-  const detail = e.detail || {};
-  if (!detail.code) {
-    const message = /no permission|not authorized|jsapi|权限/i.test(detail.errMsg || "")
-      ? "小程序暂未开通手机号权限，请手动填写"
-      : "未获得手机号，可手动填写";
-    return uni.showToast({ title: message, icon: "none" });
-  }
-  phoneLoading.value = true;
-  try {
-    const result = await request<{ phone: string }>("/auth/phone", { method: "POST", data: { code: detail.code } });
-    form.phone = result.phone;
-    uni.showToast({ title: "已填写手机号", icon: "success" });
-  } catch (error: any) {
-    uni.showToast({ title: error.message || "获取失败，可手动填写", icon: "none" });
-  } finally { phoneLoading.value = false; }
-}
-
 async function save() {
-  if (loading.value || imageUploading.value || phoneLoading.value) return;
+  if (loading.value || imageUploading.value) return;
   if (!form.nickname.trim())
     return uni.showToast({ title: "请输入昵称", icon: "none" });
   if (form.phone && !/^1\d{10}$/.test(form.phone))
@@ -127,11 +107,7 @@ async function save() {
         placeholder="请输入昵称"
         @input="form.nickname = ($event as any).detail.value"
       /><text class="field-label">手机号</text
-      ><wd-input v-model="form.phone" type="tel" :maxlength="11" placeholder="请输入手机号">
-        <template #suffix>
-          <wd-button size="mini" variant="text" :loading="phoneLoading" open-type="getPhoneNumber" @getphonenumber="phone">微信填写</wd-button>
-        </template>
-      </wd-input>
+      ><wd-input v-model="form.phone" type="tel" :maxlength="11" placeholder="请输入手机号" />
       <text class="field-label">NTRP 等级</text
       ><picker
         :range="levels"
@@ -141,7 +117,7 @@ async function save() {
           >{{ form.ntrp_level || "请选择"
           }}<wd-icon name="arrow-down" /></view></picker
       ><view class="publish-action"
-        ><wd-button block :loading="loading || imageUploading || phoneLoading" @click="save"
+        ><wd-button block :loading="loading || imageUploading" @click="save"
           >保存</wd-button
         ></view
       ></view
