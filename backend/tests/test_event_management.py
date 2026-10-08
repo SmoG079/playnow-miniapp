@@ -39,7 +39,7 @@ async def test_management_list_includes_created_and_closed_events_and_is_scoped(
     creator.role = UserRole.user
     result = await users.managed_tournaments(1,20,creator,db)
     assert [x["id"] for x in result.items]==[created["id"]]
-    assert not result.items[0]["can_manage"]
+    assert result.items[0]["can_manage"]
 
 @pytest.mark.asyncio
 async def test_cancel_with_legacy_paid_order_does_not_block_or_send_real_refund(db,monkeypatch):
@@ -69,3 +69,43 @@ async def test_closing_post_preserves_signup_history(db):
     await db.commit()
     assert (await users.my_post_registrations(1,20,await db.get(User,3),db)).total==1
     assert (await db.get(MatchPost,post.id)).status.value=="closed"
+
+@pytest.mark.asyncio
+async def test_regular_creator_can_manage_draw_results_and_cancel_but_other_user_cannot(db):
+    from fastapi import HTTPException
+    from app.schemas.tournament import TournamentConfig, DrawCommand, VersionCommand, ResultCommand
+    owner=await db.get(User,2)
+    other=await db.get(User,5)
+    req=TournamentCreate(**dict(TOURNAMENT,max_participants=2,config=TournamentConfig()))
+    created=await tournaments.create_tournament(req,owner,db)
+    tid=created['id']
+    await db.commit()
+    assert (await tournaments.get_tournament(tid,owner,db))['can_manage']
+    assert not (await tournaments.get_tournament(tid,other,db))['can_manage']
+    assert (await users.managed_tournaments(1,20,owner,db)).items[0]['can_manage']
+    for action in (
+        lambda: tournaments.update_tournament(tid,req,other,db),
+        lambda: tournaments.close_registration(tid,other,db),
+        lambda: tournaments.create_draw(tid,DrawCommand(idempotency_key='other-user-draw'),other,db),
+        lambda: tournaments.cancel_event(tid,ReasonCommand(reason='无权限取消'),other,db),
+    ):
+        with pytest.raises(HTTPException) as err: await action()
+        assert err.value.status_code==403
+    await tournaments.update_tournament(tid,req,owner,db)
+    for uid in (3,4): await register(db,tid,uid)
+    await tournaments.close_registration(tid,owner,db)
+    await tournaments.create_draw(tid,DrawCommand(idempotency_key='regular-creator-draw'),owner,db)
+    await tournaments.publish_draw(tid,VersionCommand(expected_version=1),owner,db)
+    match=(await tournaments.get_tournament(tid,owner,db))['matches'][0]
+    await tournaments.record_result(tid,match['id'],ResultCommand(expected_version=1,winner_id=match['team_a_id'],score='6:4'),owner,db)
+    assert (await tournaments.get_tournament(tid,None,db))['matches'][0]['score']=='6:4'
+    await tournaments.cancel_event(tid,ReasonCommand(reason='创建者取消'),owner,db)
+    assert (await tournaments.get_tournament(tid,owner,db))['status']=='cancelled'
+
+@pytest.mark.asyncio
+async def test_unknown_host_club_is_rejected_for_all_creators(db):
+    from fastapi import HTTPException
+    req=TournamentCreate(**dict(TOURNAMENT,club_id=999,config={}))
+    for action in (tournaments.preview,tournaments.create_tournament):
+        with pytest.raises(HTTPException) as err: await action(req,await db.get(User,2),db)
+        assert err.value.status_code==422

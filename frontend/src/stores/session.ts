@@ -24,13 +24,7 @@ export const useSession = defineStore("session", () => {
     ["club_admin", "platform_admin"].includes(user.value?.role || ""),
   );
   const isPlatformAdmin = computed(() => user.value?.role === "platform_admin");
-  const canPublishTournament = computed(
-    () =>
-      loggedIn.value &&
-      (isPlatformAdmin.value ||
-        (user.value?.role === "club_admin" &&
-          !!user.value.managed_club_ids?.length)),
-  );
+  const canPublishTournament = computed(() => loggedIn.value);
 
   function syncTokens() {
     accessToken.value = String(uni.getStorageSync("access_token") || "");

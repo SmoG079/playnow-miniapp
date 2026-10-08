@@ -16,12 +16,7 @@ const s = useSession(),
   clubs = ref<any[]>([]),
   clubIndex = ref(-1),
   images = ref<string[]>([]);
-const tournamentDisabledReason = computed(() => {
-  if (!s.loggedIn) return "请先登录";
-  if (!s.user) return "暂时无法确认发布权限，请稍后重试";
-  if (s.user.role === "club_admin") return "请先创建俱乐部或获得俱乐部管理权限";
-  return "仅主办俱乐部管理员及平台管理员可发布";
-});
+const tournamentDisabledReason = computed(() => "请先登录后创建比赛");
 const today = () => new Date().toISOString().slice(0, 10);
 const form = reactive<any>({
   title: "",
@@ -73,11 +68,7 @@ function unlinkVenue() {
 }
 async function goTournament() {
   const redirect = "/pages/publish/tournament-create";
-  if (!(await s.requireClubAdmin(redirect))) return;
-  if (!s.canPublishTournament) {
-    uni.showToast({ title: "需要主办俱乐部管理权限", icon: "none" });
-    return;
-  }
+  if (!s.requireLogin(redirect)) return;
   uni.navigateTo({ url: redirect });
 }
 

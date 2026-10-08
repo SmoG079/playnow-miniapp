@@ -61,17 +61,9 @@ onLoad(async (q) => {
     "/pages/publish/tournament-create" + (q?.id ? `?id=${q.id}` : "");
   if (!session.requireLogin(redirect)) return;
   await session.fetchUser();
-  if (!session.canPublishTournament) {
-    uni.showToast({ title: "需要主办俱乐部管理权限", icon: "none" });
-    uni.switchTab({ url: "/pages/publish/post-create" });
-    return;
-  }
-  const all = await listAll<any>("/clubs");
-  clubs.value = session.isPlatformAdmin
-    ? all
-    : all.filter((c) => session.canManageClub(c.id));
+  clubs.value = await listAll<any>("/clubs");
   if (!clubs.value.length) {
-    uni.showToast({ title: "需要主办俱乐部管理权限", icon: "none" });
+    uni.showToast({ title: "暂无可选择的主办俱乐部", icon: "none" });
     return;
   }
   form.start_date = form.end_date = new Date(
@@ -258,7 +250,7 @@ async function save() {
           :value="clubIndex"
           @change="clubIndex = Number($event.detail.value)"
           ><view class="picker-field">{{
-            clubs[clubIndex]?.name || "无可管理俱乐部"
+            clubs[clubIndex]?.name || "请选择主办俱乐部"
           }}</view></picker
         >
         <text class="field-label">赛事名称 *</text

@@ -56,7 +56,20 @@ def brief(t):
 
 
 async def admin(db, t, user):
+    # Creation audit is server-authored and remains the source of creator ownership.
+    creator = await db.scalar(select(TournamentAudit.id).where(
+        TournamentAudit.tournament_id == t.id,
+        TournamentAudit.action == "created",
+        TournamentAudit.actor_id == user.id,
+    ).limit(1))
+    if creator is not None:
+        return user
     return await get_club_admin(t.club_id, user, db)
+
+
+async def require_host_club(db, club_id):
+    if not await db.get(Club, club_id):
+        raise HTTPException(422, "主办俱乐部不存在")
 
 
 async def is_admin(db, t, user):
@@ -270,7 +283,7 @@ async def preview(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_club_admin(req.club_id, user, db)
+    await require_host_club(db, req.club_id)
     if not req.config:
         raise HTTPException(422, "请选择赛制")
     count = req.max_participants // (1 if req.config.discipline == "singles" else 2)
@@ -343,7 +356,7 @@ async def create_tournament(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_club_admin(req.club_id, user, db)
+    await require_host_club(db, req.club_id)
     t = Tournament(id=await activity_ids.allocate_activity(db, "tournament"))
     await apply_request(db, t, req)
     db.add(t)

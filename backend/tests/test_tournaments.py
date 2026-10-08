@@ -576,15 +576,15 @@ async def test_tournament_orders_do_not_pollute_booking_pagination(db, monkeypat
 @pytest.mark.parametrize(
     "role,membership,target,allowed",
     [
-        ("user", None, 1, False),
-        ("user", 1, 1, False),
-        ("club_admin", None, 1, False),
+        ("user", None, 1, True),
+        ("user", 1, 1, True),
+        ("club_admin", None, 1, True),
         ("club_admin", 1, 1, True),
-        ("club_admin", 1, 2, False),
+        ("club_admin", 1, 2, True),
         ("platform_admin", None, 2, True),
     ],
 )
-async def test_publish_and_preview_require_role_and_club_ownership(
+async def test_all_roles_can_publish_and_preview_existing_club(
     db, role, membership, target, allowed
 ):
     from app.models.models import ClubMember, ClubMemberRole

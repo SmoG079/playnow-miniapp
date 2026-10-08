@@ -87,13 +87,13 @@ describe("session token state", () => {
     expect(session.user).toBeNull();
   });
   it.each([
-    ["user", [], false, false],
-    ["user", [7], false, false],
-    ["club_admin", [], false, false],
+    ["user", [], true, false],
+    ["user", [7], true, false],
+    ["club_admin", [], true, false],
     ["club_admin", [7], true, true],
     ["platform_admin", [], true, true],
   ])(
-    "%s 的赛事入口和俱乐部权限一致 (%j)",
+    "%s 可发布赛事，俱乐部管理权限单独校验 (%j)",
     async (role, ids, allowed, canManage) => {
       const { useSession } = await import("../src/stores/session");
       const session = useSession();

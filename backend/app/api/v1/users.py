@@ -35,9 +35,10 @@ async def managed_tournaments(
     total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = (await db.execute(query.order_by(Tournament.created_at.desc(), Tournament.id.desc())
                             .offset((page - 1) * page_size).limit(page_size))).all()
+    created_ids = set((await db.execute(created)).scalars().all())
     club_ids = set((await db.execute(managed)).scalars().all()) if role == "club_admin" else set()
     return PaginatedResponse(items=[dict(**brief(t), club_name=name,
-        can_manage=role == "platform_admin" or (role == "club_admin" and t.club_id in club_ids))
+        can_manage=t.id in created_ids or role == "platform_admin" or (role == "club_admin" and t.club_id in club_ids))
         for t, name in rows], total=total, page=page, page_size=page_size)
 
 
