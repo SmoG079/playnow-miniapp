@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as Date
 import secrets
 import random
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.config import get_settings
@@ -37,6 +37,8 @@ from app.schemas.tournament import (
 from app.services import tournament_lifecycle as life
 from app.services import tournament_engine as engine
 from app.services import activity_ids
+from app.services.discovery import city_name, ordered
+from app.api.v1.posts import haversine
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
@@ -48,7 +50,7 @@ def row_dict(row, names):
 def brief(t):
     data = row_dict(
         t,
-        "id club_id title sport_type start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
+        "id club_id city latitude longitude title sport_type start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
     )
     data["activity_id"] = t.id
     data["status"] = _v(t.status)
@@ -245,36 +247,32 @@ async def rankings(db, d, matches):
 
 @router.get("")
 async def list_tournaments(
-    club_id: int | None = None,
-    sport: str | None = None,
-    status: str | None = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
+    club_id: int | None = None, sport: str | None = None, status: str | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db), city: str | None = None,
+    sort_by: str = Query('date_asc',pattern='^(created|distance|date_asc|date_desc)$'),
+    lat: float | None = Query(None,ge=-90,le=90), lng: float | None = Query(None,ge=-180,le=180),
+    on_date: Date | None = None,
 ):
-    query = select(Tournament, Club.name).join(Club, Tournament.club_id == Club.id)
-    if club_id:
-        query = query.where(Tournament.club_id == club_id)
-    if sport:
-        query = query.where(Tournament.sport_type == sport)
-    if status:
-        query = query.where(Tournament.status == status)
-    total = (
-        await db.execute(select(func.count()).select_from(query.subquery()))
-    ).scalar()
-    rows = (
-        await db.execute(
-            query.order_by(Tournament.start_time)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
-    return dict(
-        items=[dict(**brief(t), club_name=name) for t, name in rows],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+    venue_lat=case((Tournament.venue_id.is_not(None),Venue.latitude),else_=Tournament.latitude)
+    venue_lng=case((Tournament.venue_id.is_not(None),Venue.longitude),else_=Tournament.longitude)
+    query = select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).join(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
+    selected_city=city_name(city)
+    effective_city=case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)
+    query=query.where(effective_city==selected_city) if selected_city else query.where(False)
+    if club_id: query=query.where(Tournament.club_id==club_id)
+    if sport: query=query.where(Tournament.sport_type==sport)
+    if status: query=query.where(Tournament.status==status)
+    if on_date:
+        start=datetime.combine(on_date,datetime.min.time())-timedelta(hours=8)
+        query=query.where(Tournament.start_time>=start,Tournament.start_time<start+timedelta(days=1))
+    total=(await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
+    query=ordered(query,sort_by,Tournament.start_time,Tournament.id,lat,lng,
+                  venue_lat,venue_lng)
+    rows=(await db.execute(query.offset((page-1)*page_size).limit(page_size))).all()
+    return dict(items=[dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng},club_name=name,distance=haversine(lat,lng,
+         clat,clng))
+         for t,name,clat,clng,actual_city in rows],total=total,page=page,page_size=page_size)
 
 
 @router.post("/preview")
@@ -341,6 +339,9 @@ async def apply_request(db, t, req):
             422, "请先通过订场流程预订场地；赛事排场不会自动锁定预约时段"
         )
     fields = req.model_dump(exclude={"config"})
+    fields["city"] = city_name(req.city)
+    if req.venue_id:
+        fields.update(city=v.city,latitude=v.latitude,longitude=v.longitude,address=v.address)
     for key, value in fields.items():
         setattr(t, key, value)
     if req.auto_title:
@@ -478,6 +479,10 @@ async def get_tournament(
             "description prize images address contact_name contact_phone lock_venue config registration_deadline cancellation_deadline registration_closed roster_frozen",
         ),
     )
+    if t.venue_id:
+        venue = await db.get(Venue, t.venue_id)
+        if venue:
+            data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
     data["auto_title"] = t.auto_title
     data["description_template"] = t.description
     local_start = t.start_time + timedelta(hours=8)
@@ -486,7 +491,7 @@ async def get_tournament(
         (t.description or "")
         .replace("{{日期}}", f"{local_start:%Y-%m-%d}")
         .replace("{{时间}}", f"{local_start:%H:%M} — {local_end:%Y-%m-%d %H:%M}")
-        .replace("{{地点}}", t.address or (club.address if club else "") or "")
+        .replace("{{地点}}", data["address"] or "")
         .replace("{{项目}}", "网球")
     )
     closed = t.registration_closed or life.now() >= (

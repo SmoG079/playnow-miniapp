@@ -4,126 +4,98 @@ import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
 import { openPage } from "../../utils/navigation";
-const tab = ref(0),
-  mode = ref("all"),
-  date = ref(""),
-  ntrp = ref(""),
-  distance = ref(false),
-  posts = ref<any[]>([]),
-  tournaments = ref<any[]>([]),
-  loading = ref(false);
-const levels = [
-  "不限",
-  "1.0",
-  "1.5",
-  "2.0",
-  "2.5",
-  "3.0",
-  "3.5",
-  "4.0",
-  "4.5",
-  "5.0",
-  "5.5",
-  "6.0",
-  "6.5",
-  "7.0",
-];
-const visiblePosts = computed(() =>
-  posts.value.filter(
-    (p) =>
-      p.status !== "closed" &&
-      (mode.value === "all" ||
-        (mode.value === "free" ? !p.venue_id : !!p.venue_id)) &&
-      (!date.value || p.preferred_date === date.value),
-  ),
-);
+import { useDiscovery } from "../../stores/discovery";
+import { useSession } from "../../stores/session";
+import { sortOptions, sortValues, levelOptions, discoveryQuery, ownLevel } from "../../services/discovery";
+const location = useDiscovery(), session = useSession();
+const statusTop = Number(uni.getSystemInfoSync().statusBarHeight || 24) + 12;
+const tab = ref(0), mode = ref(0), date = ref(""), ntrp = ref(0), sort = ref(0);
+const posts = ref<any[]>([]), tournaments = ref<any[]>([]), loading = ref(false);
+const cityPanel = ref(false);
+const types = ["全部约球", "自由约球", "定场约球"];
+let loadVersion = 0;
+const visiblePosts = computed(() => posts.value.filter(p => p.status !== "closed"));
 async function load() {
+  const version = ++loadVersion;
+  posts.value = []; tournaments.value = [];
+  if (!location.city) { loading.value = false; return; }
   loading.value = true;
   try {
-    let extra = ntrp.value ? `&ntrp_levels=${ntrp.value}` : "";
-    if (distance.value) {
-      try {
-        const loc: any = await uni.getLocation({ type: "gcj02" });
-        extra += `&sort_by=distance&lat=${loc.latitude}&lng=${loc.longitude}`;
-      } catch {
-        distance.value = false;
-      }
-    }
+    const extra = discoveryQuery(location.city, sortValues[sort.value], date.value, location.latitude, location.longitude);
     const [p, t] = await Promise.all([
-      request<PageResult<any>>(`/posts?page=1&page_size=20${extra}`),
-      request<PageResult<any>>(
-        `/tournaments?status=open&page=1&page_size=10${distance.value ? extra.replace(/&ntrp_levels=[^&]+/, "") : ""}`,
-      ),
+      request<PageResult<any>>(`/posts?page=1&page_size=20&${extra}&activity_type=${["all","free","venue"][mode.value]}${ntrp.value ? "&ntrp_levels=" + levelOptions[ntrp.value] : ""}`),
+      request<PageResult<any>>(`/tournaments?status=open&page=1&page_size=20&${extra}`),
     ]);
-    posts.value = p.items || [];
-    tournaments.value = t.items || [];
+    if (version !== loadVersion) return;
+    posts.value = p.items || []; tournaments.value = t.items || [];
   } catch (e: any) {
-    uni.showToast({ title: e.message || "加载失败", icon: "none" });
-  } finally {
-    loading.value = false;
-  }
+    if (version === loadVersion) uni.showToast({ title: e.message || "加载失败", icon: "none" });
+  } finally { if (version === loadVersion) loading.value = false; }
 }
-onShow(() => {
-  load();
+async function locateCity() {
+  try { await location.locate(); }
+  catch { uni.showToast({ title: "定位未成功，请手动选择城市", icon: "none" }); }
+  cityPanel.value = false;
+  await load();
+}
+function cityChange(e: any) { location.selectRegion(e.detail.value); cityPanel.value = false; void load(); }
+async function sortChange(e: any) {
+  const selected = Number(e.detail.value);
+  if (sortValues[selected] === "distance") {
+    try { await location.coordinates(); }
+    catch { uni.showToast({ title: "距离排序需要开启定位", icon: "none" }); return; }
+  }
+  sort.value = selected; await load();
+}
+function typeChange(e: any) { mode.value = Number(e.detail.value); void load(); }
+function levelChange(e: any) { ntrp.value = Number(e.detail.value); void load(); }
+function dateChange(e: any) { date.value = e.detail.value; void load(); }
+async function myLevel() {
+  if (!session.requireLogin("/pages/home/index")) return;
+  try { await session.fetchUser(); }
+  catch { uni.showToast({ title: "暂时无法读取我的级别，请稍后重试", icon: "none" }); return; }
+  const level = ownLevel(session.user?.ntrp_level);
+  if (!level) {
+    uni.showModal({ title: "完善我的级别", content: "先在个人资料中设置 NTRP 级别，再使用一键筛选。", confirmText: "去设置", success: r => r.confirm && openPage("/pages/profile/edit") });
+    return;
+  }
+  ntrp.value = levelOptions.indexOf(level); await load();
+}
+onShow(async () => {
+  if (!location.city && !location.attempted) { await locateCity(); return; }
+  await load();
 });
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
-function dateChange(e: any) {
-  date.value = e.detail.value;
-}
 </script>
 <template>
   <AppShell active="home"
-    ><view class="home-header"
-      ><text class="brand">PlayNow<text class="brand-dot">.</text></text
-      ><text class="page-title">今天，球场见。</text></view
+    ><view class="home-header" :style="{ paddingTop: statusTop + 'px' }">
+      <text class="brand">PlayNow<text class="brand-dot">.</text></text>
+      <view class="headline"><text class="page-title">今天，球场见。</text></view>
+    </view
     ><view class="content"
-      ><view class="text-tabs section-head"
+      ><view class="city-header">
+        <view class="city-pill" @click="cityPanel = true"><wd-icon name="location" size="10px" /><text>{{ location.city || "城市" }}</text><wd-icon name="arrow-down" size="8px" /></view>
+      </view>
+<view class="text-tabs section-head"
         ><button :class="{ selected: tab === 0 }" @click="tab = 0">
           约球广场</button
         ><button :class="{ selected: tab === 1 }" @click="tab = 1">
           比赛
         </button></view
-      ><template v-if="tab === 0"
-        ><view class="filter-row"
-          ><wd-button
-            v-for="x in [
-              ['all', '全部'],
-              ['free', '自由'],
-              ['venue', '订场'],
-            ]"
-            :key="x[0]"
-            size="small"
-            :type="mode === x[0] ? 'primary' : 'info'"
-            variant="plain"
-            @click="mode = x[0]"
-            >{{ x[1] }}</wd-button
-          ><picker mode="date" :value="date" @change="dateChange"
-            ><wd-button size="small" variant="plain">{{
-              date || "日期"
-            }}</wd-button></picker
-          ><wd-button
-            size="small"
-            variant="plain"
-            @click="
-              distance = !distance;
-              load();
-            "
-            >{{ distance ? "距离排序" : "按距离" }}</wd-button
-          ></view
-        ><scroll-view scroll-x class="chip-scroll"
-          ><view class="choices nowrap"
-            ><button
-              v-for="l in levels"
-              :key="l"
-              :class="{ chosen: ntrp === (l === '不限' ? '' : l) }"
-              @click="
-                ntrp = l === '不限' ? '' : l;
-                load();
-              "
-            >
-              {{ l }}
-            </button></view
-          ></scroll-view
+      ><view class="discovery-filters">
+        <view class="filter-line">
+          <picker :range="sortOptions" :value="sort" @change="sortChange"><view class="filter-pill"><text>筛选 · {{ sortOptions[sort].replace("按", "") }}</text><wd-icon name="arrow-down" size="12px" /></view></picker>
+          <picker v-if="tab === 0" :range="types" :value="mode" @change="typeChange"><view class="filter-pill"><text>{{ types[mode] }}</text><wd-icon name="arrow-down" size="12px" /></view></picker>
+        </view>
+        <view class="filter-line">
+          <picker mode="date" :value="date" @change="dateChange"><view class="filter-pill"><text>{{ date || "日期" }}</text><wd-icon name="arrow-down" size="12px" /></view></picker>
+          <picker v-if="tab === 0" :range="levelOptions" :value="ntrp" @change="levelChange"><view class="filter-pill"><text>{{ ntrp ? "NTRP " + levelOptions[ntrp] : "NTRP 等级" }}</text><wd-icon name="arrow-down" size="12px" /></view></picker>
+          <button v-if="tab === 0" class="my-level" @click="myLevel">适合我的级别</button>
+          <button v-if="date" class="clear-date" @click="date = ''; load()">清除日期</button>
+        </view>
+      </view>
+      <template v-if="tab === 0"
         ><view
           v-for="p in visiblePosts"
           :key="p.id"
@@ -177,5 +149,20 @@ function dateChange(e: any) {
         ><wd-empty
           v-if="!loading && !tournaments.length"
           tip="暂无比赛" /></template></view
-  ></AppShell>
+    ><wd-popup v-model="cityPanel" position="bottom" closable safe-area-inset-bottom custom-style="border-radius:20px 20px 0 0">
+      <view class="city-options"><text class="section-title">选择城市</text>
+        <wd-button block :loading="location.locating" @click="locateCity">定位到当前城市</wd-button>
+        <picker mode="region" :value="location.region" @change="cityChange"><view class="filter-pill"><text>手动选择城市</text><wd-icon name="arrow-right" size="14px" /></view></picker>
+      </view>
+    </wd-popup></AppShell>
 </template>
+
+<style scoped>
+.city-options{padding:28px 24px;display:flex;flex-direction:column;gap:20px}.city-options .filter-pill{justify-content:space-between}
+.city-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.headline{display:flex;align-items:center;justify-content:space-between}
+.city-pill{display:flex;align-items:center;justify-content:center;gap:2px;box-sizing:border-box;width:68px;background:#123b2c;color:white;padding:7px 4px;border-radius:20px;font-size:11px;font-weight:600}.city-pill text{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.discovery-filters{margin-bottom:20px}.filter-line{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.filter-pill{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e3e8e5;border-radius:12px;font-size:13px;background:white;color:#283e32}
+.my-level,.clear-date{margin:0;padding:9px 12px;line-height:20px;font-size:12px;border-radius:12px;background:#e5f0e8;color:#285f40}.my-level::after,.clear-date::after{border:0}
+.city-hint{padding:18px;text-align:center;color:#789084;background:#edf4ef;border-radius:14px;margin-bottom:20px}
+</style>

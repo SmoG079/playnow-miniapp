@@ -9,6 +9,8 @@ from sqlalchemy import select, func, update
 import httpx
 import logging
 from app.core.database import get_db
+from app.services.tencent_map import GEOCODER_URL, geocoder_params
+from app.services.discovery import distance_expr
 from app.services.pricing import slot_charge
 from app.core.config import get_settings
 from app.api.deps import get_current_user, get_club_admin, _v
@@ -41,6 +43,7 @@ class GeocodeRequest(BaseModel):
 
 
 class GeocodeResponse(BaseModel):
+    city: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     address: str
@@ -59,15 +62,14 @@ async def geocode_address(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                "https://apis.map.qq.com/ws/geocoder/v1/",
-                params={
-                    "address": req.address,
-                    "key": settings.TENCENT_MAP_KEY,
-                },
+                GEOCODER_URL,
+                params=geocoder_params({"address": req.address}, settings.TENCENT_MAP_KEY, getattr(settings, "TENCENT_MAP_SK", "")),
+                headers={"x-legacy-url-decode": "no"},
             )
             data = resp.json()
-    except Exception as exc:
-        logger.warning("Tencent geocoder request failed: %s", exc)
+    except Exception:
+        # Exception URLs may contain the key and signature.
+        logger.warning("Tencent geocoder request failed")
         return GeocodeResponse(address=req.address)
 
     location = data.get("result", {}).get("location") if data.get("status") == 0 else None
@@ -75,6 +77,7 @@ async def geocode_address(
         return GeocodeResponse(address=req.address)
 
     return GeocodeResponse(
+        city=data.get("result", {}).get("address_components", {}).get("city"),
         latitude=location.get("lat"),
         longitude=location.get("lng"),
         address=req.address,
@@ -105,23 +108,32 @@ async def list_clubs(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    offset = (page - 1) * page_size
-    result = await db.execute(query.offset(offset).limit(page_size).order_by(Club.id.desc()))
-    clubs = result.scalars().all()
-
     has_location = lat is not None and lng is not None
-    items = []
-    for c in clubs:
-        distance = None
-        if has_location and c.latitude is not None and c.longitude is not None:
-            distance = haversine(
-                lat, lng,
-                float(c.latitude), float(c.longitude),
-            )
-        items.append(ClubBrief.model_validate(c).model_copy(update={"distance": distance}))
-
+    venue_distance = distance_expr(lat, lng, Venue.latitude, Venue.longitude) if has_location else None
+    nearest = select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active)
     if has_location:
-        items.sort(key=lambda x: x.distance if x.distance is not None else float("inf"))
+        nearest = nearest.order_by(venue_distance.is_(None), venue_distance, Venue.id)
+    else:
+        nearest = nearest.order_by(Venue.sort_order, Venue.id)
+    nearest = nearest.correlate(Club).limit(1).scalar_subquery()
+    query = query.add_columns(Venue).outerjoin(Venue, Venue.id == nearest)
+    if has_location:
+        query = query.order_by(venue_distance.is_(None), venue_distance, Club.id.desc())
+    else:
+        query = query.order_by(Club.id.desc())
+    result = await db.execute(query.offset((page-1)*page_size).limit(page_size))
+    items, clubs = [], []
+    for c, v in result.all():
+        clubs.append(c)
+        distance = haversine(lat, lng, float(v.latitude), float(v.longitude)) if has_location and v and v.latitude is not None and v.longitude is not None else None
+        items.append(ClubBrief.model_validate(c).model_copy(update={
+            "distance": distance, "nearest_venue_id": v.id if v else None,
+            "nearest_venue_name": v.name if v else None,
+            "venue_address": v.address if v else None,
+            "venue_city": v.city if v else None,
+            "venue_latitude": float(v.latitude) if v and v.latitude is not None else None,
+            "venue_longitude": float(v.longitude) if v and v.longitude is not None else None,
+        }))
 
     # Increment exposure count for listed clubs
     if clubs:
@@ -171,6 +183,7 @@ async def create_club(
     if opening is None or closing is None or closing <= opening:
         raise HTTPException(status_code=422, detail="营业结束时间需晚于开始时间")
     club = Club(
+        city=req.city,
         name=req.name,
         sport_types=req.sport_types,
         description=req.description,
@@ -248,6 +261,7 @@ def _club_to_detail(club: Club) -> ClubDetail:
     """Build ClubDetail from ORM object without triggering lazy load."""
     return ClubDetail(
         id=club.id,
+        city=club.city,
         name=club.name,
         sport_types=club.sport_types,
         cover_image=club.cover_image,
@@ -493,7 +507,8 @@ async def get_club_venue_slots(
         },
         venues=[
             {"id": v.id, "name": v.name, "sport_type": v.sport_type,
-             "price_per_hour": v.price_per_hour}
+             "price_per_hour": v.price_per_hour, "city": v.city, "address": v.address,
+             "latitude": v.latitude, "longitude": v.longitude}
             for v in venues
         ],
         rows=rows,

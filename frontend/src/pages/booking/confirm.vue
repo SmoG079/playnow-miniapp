@@ -59,6 +59,8 @@ async function pay() {
         booking_id: booking.value.id,
         club_id: booking.value.club_id || venue.value?.club_id,
         venue_id: q.value.venue_id,
+        city: venue.value?.city, address: venue.value?.address,
+        latitude: venue.value?.latitude, longitude: venue.value?.longitude,
         venue_name: q.value.venue_name || venue.value?.name,
         slot_date: q.value.date,
         slot_start: q.value.start,

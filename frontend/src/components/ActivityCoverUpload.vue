@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import Photo from "./Photo.vue";
-import { uploadFile } from "../services/api";
+import { uploadedImage } from "../services/media";
 const props = defineProps<{ modelValue: string[]; disabled?: boolean }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: string[]): void; (e: "busy", value: boolean): void }>();
 const uploading = ref(false);
@@ -16,7 +16,7 @@ async function selectCover() {
   uploading.value = true;
   emit("busy", true);
   try {
-    const result = await uploadFile(path, "post");
+    const result = { url: await uploadedImage(path, "post") };
     const remaining = props.modelValue.filter((url) => url !== result.url);
     // Only cloud URLs enter the form. Temporary device paths are never persisted.
     emit("update:modelValue", [result.url, ...remaining].slice(0, 6));

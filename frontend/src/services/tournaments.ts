@@ -88,6 +88,10 @@ export interface Registration {
   refund_status?: string;
 }
 export interface Tournament {
+  venue_id?: number | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   id: number;
   club_id: number;
   club_name: string;

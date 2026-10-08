@@ -63,6 +63,7 @@ class UserMeResponse(UserProfile):
 # ── Club ──
 
 class ClubCreate(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
     name: str = Field(..., min_length=1, max_length=128)
     sport_types: list[str] = Field(default_factory=list)
     description: Optional[str] = None
@@ -77,7 +78,17 @@ class ClubCreate(BaseModel):
     opening_time: Optional[str] = "08:00"
     closing_time: Optional[str] = "22:00"
 
+    @field_validator("city")
+    @classmethod
+    def normalized_city(cls, value):
+        if value is None: return None
+        value=value.strip()
+        if not value: raise ValueError("请选择活动所在城市")
+        return value
+
+
 class ClubUpdate(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
     name: Optional[str] = None
     sport_types: Optional[list[str]] = None
     description: Optional[str] = None
@@ -92,7 +103,17 @@ class ClubUpdate(BaseModel):
     opening_time: Optional[str] = None
     closing_time: Optional[str] = None
 
+    @field_validator("city")
+    @classmethod
+    def normalized_city(cls, value):
+        if value is None: return None
+        value=value.strip()
+        if not value: raise ValueError("请选择活动所在城市")
+        return value
+
+
 class ClubBrief(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
     id: int
     name: str
     sport_types: Any
@@ -104,6 +125,12 @@ class ClubBrief(BaseModel):
     view_count: int = 0
     exposure_count: int = 0
     distance: Optional[float] = None
+    nearest_venue_id: Optional[int] = None
+    nearest_venue_name: Optional[str] = None
+    venue_address: Optional[str] = None
+    venue_city: Optional[str] = None
+    venue_latitude: Optional[float] = None
+    venue_longitude: Optional[float] = None
     opening_time: Optional[str] = None
     closing_time: Optional[str] = None
 
@@ -150,7 +177,28 @@ class ClubListParams(BaseModel):
 
 # ── Venue ──
 
-class VenueCreate(BaseModel):
+class VenueLocation(BaseModel):
+    city: Optional[str] = Field(None, max_length=64)
+    address: Optional[str] = Field(None, max_length=256)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+
+    @field_validator("city", "address")
+    @classmethod
+    def clean_location(cls, value):
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("城市和地址不能留空")
+        return value
+
+    @model_validator(mode="after")
+    def coordinate_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("经纬度必须同时填写")
+        return self
+
+class VenueCreate(VenueLocation):
     name: str = Field(..., min_length=1, max_length=64)
     sport_type: str = "tennis"
     price_per_hour: Decimal = Field(..., gt=0)
@@ -159,7 +207,7 @@ class VenueCreate(BaseModel):
     sort_order: int = 0
     price_rules: Optional[list[dict]] = None
 
-class VenueUpdate(BaseModel):
+class VenueUpdate(VenueLocation):
     name: Optional[str] = None
     sport_type: Optional[str] = None
     price_per_hour: Optional[Decimal] = None
@@ -169,7 +217,7 @@ class VenueUpdate(BaseModel):
     status: Optional[str] = None
     price_rules: Optional[list[dict]] = None
 
-class VenueBrief(BaseModel):
+class VenueBrief(VenueLocation):
     id: int
     club_id: int
     name: str
@@ -325,6 +373,9 @@ class PaginatedResponse(BaseModel):
 # ── Match Post ──
 
 class PostCreate(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     club_id: Optional[int] = None
     title: str = Field(..., min_length=1, max_length=256)
     sport_type: Optional[str] = None
@@ -344,6 +395,8 @@ class PostCreate(BaseModel):
 
     @model_validator(mode="after")
     def required_information(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("活动地点经纬度须同时填写")
         self.title = self.title.strip()
         if not self.title:
             raise ValueError("请填写活动名称")
@@ -351,7 +404,19 @@ class PostCreate(BaseModel):
             raise ValueError("结束时间必须晚于开始时间")
         return self
 
+    @field_validator("city")
+    @classmethod
+    def normalized_city(cls, value):
+        if value is None: return None
+        value=value.strip()
+        if not value: raise ValueError("请选择活动所在城市")
+        return value
+
+
 class PostUpdate(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     title: Optional[str] = None
     sport_type: Optional[str] = None
     preferred_date: Optional[date] = None
@@ -379,7 +444,19 @@ class PostUpdate(BaseModel):
                 raise ValueError("请填写活动名称")
         return self
 
+    @field_validator("city")
+    @classmethod
+    def normalized_city(cls, value):
+        if value is None: return None
+        value=value.strip()
+        if not value: raise ValueError("请选择活动所在城市")
+        return value
+
+
 class PostBrief(BaseModel):
+    city: Optional[str] = Field(None, min_length=1, max_length=64)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     @computed_field
     @property
     def activity_id(self) -> int:

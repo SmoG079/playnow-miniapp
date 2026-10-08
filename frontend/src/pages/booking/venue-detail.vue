@@ -82,6 +82,10 @@ function choose(c: any) {
   }
   selected.value.push(c);
 }
+function courtLocation(v: any) {
+  if (v.latitude != null && v.longitude != null) uni.openLocation({ latitude: Number(v.latitude), longitude: Number(v.longitude), name: v.name, address: v.address || "" });
+  else uni.showModal({ title: v.name, content: v.address || "球场位置尚未补充，请联系管理员", showCancel: false });
+}
 function book() {
   if (duration.value < 60)
     return uni.showToast({ title: "请至少选择 1 小时", icon: "none" });
@@ -106,7 +110,7 @@ function book() {
       ><view class="content booking-content"
         ><text class="page-title compact">{{ club.name }}</text
         ><text class="muted"
-          ><wd-icon name="location" /> {{ club.address }}</text
+          >选择下方球场查看实际位置</text
         ><view class="date-options section-head"
           ><button
             v-for="d in dates"
@@ -124,7 +128,7 @@ function book() {
           ><view class="slot-table" :style="`--cols:${venues.length}`"
             ><view class="slot-header"
               ><text>时间</text
-              ><text v-for="v in venues" :key="v.id">{{ v.name }}</text></view
+              ><text v-for="v in venues" :key="v.id" @click="courtLocation(v)">{{ v.name }}<text class="small muted">{{ v.address || '位置待补充' }}</text></text></view
             ><view v-for="r in rows" :key="r.time_label" class="slot-row"
               ><text class="time-label">{{ r.time_label }}</text
               ><button

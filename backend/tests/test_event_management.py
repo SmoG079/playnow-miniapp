@@ -114,13 +114,13 @@ async def test_unknown_host_club_is_rejected_for_all_creators(db):
 @pytest.mark.parametrize('levels,status', [(None,None),('3.0',None),(None,'closed'),('3.0','closed'),(None,'full')])
 async def test_closed_posts_hidden_in_public_square_and_filters_but_history_retained(db,levels,status):
     owner=await db.get(User,2)
-    public=await posts.create_post(PostCreate(**dict(POST,level_required='3.0')),owner,db)
-    closed=await posts.create_post(PostCreate(**dict(POST,title='已关闭活动',level_required='3.0')),owner,db)
+    public=await posts.create_post(PostCreate(**dict(POST,city="扬州市",level_required='3.0')),owner,db)
+    closed=await posts.create_post(PostCreate(**dict(POST,city='扬州市',title='已关闭活动',level_required='3.0')),owner,db)
     from app.models.models import MatchPostStatus
     (await db.get(MatchPost,public.id)).status=MatchPostStatus.full
     await posts.close_post(closed.id,owner,db)
     await db.commit()
-    listing=await posts.list_posts(club_id=None,sport=None,status=status,ntrp_levels=levels,
+    listing=await posts.list_posts(city="扬州市",club_id=None,sport=None,status=status,ntrp_levels=levels,
         lat=None,lng=None,sort_by='created',page=1,page_size=20,db=db)
     expected=[] if status=='closed' else [public.id]
     assert [x.id for x in listing.items]==expected

@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
+import CitySelect from "../../components/CitySelect.vue";
+import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
+import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
-import { listAll, request, uploadFile } from "../../services/api";
+import { listAll, request } from "../../services/api";
 import { useSession } from "../../stores/session";
+const discovery = useDiscovery();
 const s = useSession(),
   loading = ref(false),
   coverUploading = ref(false),
+  locationSelecting = ref(false),
   statusBarHeight = ref(0),
   editingPost = ref(false),
   showPostComparison = ref(false),
@@ -19,6 +25,8 @@ const s = useSession(),
 const tournamentDisabledReason = computed(() => "请先登录后创建比赛");
 const today = () => new Date().toISOString().slice(0, 10);
 const form = reactive<any>({
+  city: discovery.city,
+  latitude: null, longitude: null,
   title: "",
   preferred_date: today(),
   preferred_start: "19:00",
@@ -36,6 +44,7 @@ onShow(async () => {
   statusBarHeight.value = uni.getWindowInfo().statusBarHeight || 0;
   if (!s.requireLogin("/pages/publish/post-create")) return;
   await s.fetchUser().catch(() => {});
+  if (!form.city) form.city = discovery.city;
   const selectedClubId = clubs.value[clubIndex.value]?.id;
   clubs.value = await listAll<any>("/clubs");
   clubIndex.value = clubs.value.findIndex((c) => c.id === selectedClubId);
@@ -47,6 +56,7 @@ onShow(async () => {
     choosingVenue.value = true;
     venueName.value = linked.venue_name || "已预订场地";
     Object.assign(form, {
+      city: linked.city || "", latitude: linked.latitude ?? null, longitude: linked.longitude ?? null,
       venue_id: linked.venue_id,
       booking_id: linked.booking_id,
       preferred_date: linked.slot_date,
@@ -72,15 +82,15 @@ async function goTournament() {
   uni.navigateTo({ url: redirect });
 }
 
-function pickImages() {
-  uni.chooseImage({
-    count: 6 - images.value.length,
-    sizeType: ["compressed"],
-    success: (r) => images.value.push(...r.tempFilePaths),
-  });
+async function pickImages() {
+  if (loading.value || coverUploading.value) return;
+  coverUploading.value = true;
+  try { await chooseUploadedImages(6 - images.value.length, "post", url => { images.value.push(url); }); }
+  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  finally { coverUploading.value = false; }
 }
 async function submit() {
-  if (loading.value || coverUploading.value) return;
+  if (loading.value || coverUploading.value || locationSelecting.value) return;
   if (!form.title.trim())
     return uni.showToast({ title: "请输入标题", icon: "none" });
   if (!form.preferred_date || !form.preferred_start || !form.preferred_end)
@@ -96,17 +106,19 @@ async function submit() {
     return uni.showToast({ title: "请填写有效费用", icon: "none" });
   if (choosingVenue.value && (clubIndex.value < 0 || !form.booking_id))
     return uni.showToast({ title: "请选择俱乐部并完成订场", icon: "none" });
+  if (!form.city) return uni.showToast({ title: "请选择活动城市", icon: "none" });
   loading.value = true;
   try {
     const urls = [];
     for (const path of images.value)
       urls.push(
-        path.startsWith("http") ? path : (await uploadFile(path, "post")).url,
+        await uploadedImage(path, "post"),
       );
     await request("/posts", {
       method: "POST",
       data: {
         ...form,
+        city: form.city,
         club_id: form.booking_id ? clubs.value[clubIndex.value]?.id : null,
         venue_id: form.booking_id ? form.venue_id : null,
         booking_id: form.booking_id || null,
@@ -186,7 +198,7 @@ function goBook() {
         <wd-button variant="text" @click="editingPost = false"
           >返回发布入口</wd-button
         >
-        <ActivityCoverUpload v-model="images" :disabled="loading" @busy="coverUploading = $event" />
+        <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
         <text class="form-title">发布约球</text>
         <text class="muted">场地可选，未关联即为自由约球。</text>
         <view class="comparison-help"
@@ -194,6 +206,9 @@ function goBook() {
             >自由约球与定场约球有什么区别？</wd-button
           ></view
         >
+        <view v-if="form.booking_id" class="picker-field">球场城市 · {{ form.city || "请联系管理员补充球场位置" }}</view>
+        <CitySelect v-else @update:model-value="form.latitude = null; form.longitude = null" v-model="form.city" />
+        <ActivityLocationSelect @busy="locationSelecting = $event" v-if="!form.booking_id" :city="form.city" :selected="form.latitude !== null" @select="point => { form.city = point.city; form.latitude = point.latitude; form.longitude = point.longitude; }" />
         <text class="field-label">标题 *</text
         ><wd-input
           v-model="form.title"
@@ -293,7 +308,7 @@ function goBook() {
         ><wd-cell title="报名需要审核"
           ><wd-switch v-model="form.approval_required" /></wd-cell
         ><view class="publish-action"
-          ><wd-button block :loading="loading || coverUploading" @click="submit"
+          ><wd-button block :loading="loading || coverUploading || locationSelecting" @click="submit"
             >发布约球</wd-button
           ></view
         ></view

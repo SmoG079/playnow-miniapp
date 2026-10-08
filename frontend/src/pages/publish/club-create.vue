@@ -2,14 +2,20 @@
 import { reactive, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
+import CitySelect from "../../components/CitySelect.vue";
+import { useDiscovery } from "../../stores/discovery";
+import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import { request, uploadFile } from "../../services/api";
 import { useSession } from "../../stores/session";
+const discovery = useDiscovery();
 const s = useSession(),
   id = ref(0),
   loading = ref(false),
+  imageUploading = ref(false),
   images = ref<string[]>([]),
   documents = ref<any[]>([]),
   form = reactive<any>({
+    city: discovery.city,
     name: "",
     sport_types: ["tennis"],
     description: "",
@@ -45,12 +51,14 @@ onLoad(async (q) => {
 });
 function chooseLocation() {
   uni.chooseLocation({
-    success: (r) =>
+    success: async (r) => {
       Object.assign(form, {
         address: r.address || r.name,
         latitude: r.latitude,
         longitude: r.longitude,
-      }),
+      });
+      try { const c: any = await request(`/discovery/location-city?lat=${r.latitude}&lng=${r.longitude}`); form.city = c.city; } catch { uni.showToast({ title: "请手动确认俱乐部城市", icon: "none" }); }
+    },
     fail: (error) => {
       if (error.errMsg?.includes("auth deny"))
         uni.showModal({
@@ -63,15 +71,12 @@ function chooseLocation() {
     },
   });
 }
-function chooseImages() {
-  const remain = 9 - images.value.length;
-  if (remain <= 0)
-    return uni.showToast({ title: "最多上传9张图片", icon: "none" });
-  uni.chooseImage({
-    count: remain,
-    sizeType: ["compressed"],
-    success: (r) => images.value.push(...r.tempFilePaths),
-  });
+async function chooseImages() {
+  if (loading.value || imageUploading.value) return;
+  imageUploading.value = true;
+  try { await chooseUploadedImages(9 - images.value.length, "post", url => { images.value.push(url); }); }
+  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  finally { imageUploading.value = false; }
 }
 function chooseDocument() {
   const remain = 5 - documents.value.length;
@@ -107,6 +112,8 @@ function inputAddress(value: string) {
   form.address = value;
 }
 async function save() {
+  if (loading.value || imageUploading.value) return;
+  if (!form.city) return uni.showToast({ title: "请选择俱乐部城市", icon: "none" });
   if (!form.name.trim() || !form.contact_phone || !form.address.trim())
     return uni.showToast({ title: "请填写名称、地址和联系电话", icon: "none" });
   if (
@@ -133,7 +140,7 @@ async function save() {
     }
     const urls = [];
     for (const p of images.value)
-      urls.push(/^https?:/.test(p) ? p : (await uploadFile(p, "post")).url);
+      urls.push(await uploadedImage(p, "post"));
     const uploadedDocuments = [];
     for (const doc of documents.value) {
       if (doc.url) uploadedDocuments.push(doc);
@@ -167,7 +174,8 @@ async function save() {
 <template>
   <AppShell back :title="id ? '编辑俱乐部' : '创建俱乐部'"
     ><view class="content publish-content"
-      ><text class="field-label">俱乐部名称 *</text
+      ><CitySelect v-model="form.city" label="俱乐部城市 *" />
+      <text class="field-label">俱乐部名称 *</text
       ><wd-input v-model="form.name" /><text class="field-label"
         >联系电话 *</text
       ><wd-input v-model="form.contact_phone" type="number" /><text
@@ -239,7 +247,7 @@ async function save() {
           >添加 PDF</wd-button
         ></view
       ><view class="publish-action"
-        ><wd-button block :loading="loading" @click="save"
+        ><wd-button block :loading="loading || imageUploading" @click="save"
           >保存俱乐部</wd-button
         ></view
       ></view

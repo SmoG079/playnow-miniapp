@@ -16,7 +16,7 @@
       "minified": true
     },
     "usingComponents": true,
-    "permission": { "scope.userLocation": { "desc": "用于搜索附近的俱乐部" } },
+    "permission": { "scope.userLocation": { "desc": "用于选择同城活动和搜索附近场地" } },
     "requiredPrivateInfos": ["getLocation", "chooseLocation"]
   }
 }

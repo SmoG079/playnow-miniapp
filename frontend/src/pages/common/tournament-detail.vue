@@ -440,8 +440,8 @@ function tie() {
         }}</text
         ><text class="muted"
           >{{ localTime(t.start_time) }} — {{ localTime(t.end_time) }}</text
-        ><text class="muted"
-          >{{ t.address || t.club_name }} · {{ t.current_participants }}/{{
+        ><text class="muted" @click="t.latitude != null && t.longitude != null && uni.openLocation({ latitude: Number(t.latitude), longitude: Number(t.longitude), name: t.title, address: t.address || '' })"
+          >{{ t.address || '球场位置待补充' }} · {{ t.current_participants }}/{{
             t.max_participants
           }}人</text
         >

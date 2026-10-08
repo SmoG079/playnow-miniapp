@@ -55,6 +55,7 @@ function remove(v: any) {
         ><view class="row between"
           ><text class="strong">{{ v.name }}</text
           ><text class="tag">{{ v.status }}</text></view
+        ><text class="muted">{{ v.city || "城市待补充" }} · {{ v.address || "球场地址待补充" }}</text
         ><text class="price">¥{{ v.price_per_hour }}/小时</text
         ><view class="row gap8"
           ><wd-button

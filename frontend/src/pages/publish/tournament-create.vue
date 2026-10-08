@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from "vue";
 import { onLoad, onShow } from "@dcloudio/uni-app";
+import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
+import CitySelect from "../../components/CitySelect.vue";
+import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
+import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import TournamentSchedulePreview from "../../components/TournamentSchedulePreview.vue";
-import { listAll, request, uploadFile } from "../../services/api";
+import { listAll, request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import {
   defaultConfig,
@@ -15,11 +19,13 @@ import {
   getTournament,
 } from "../../services/tournaments";
 import { buildSchedulePreview } from "../../services/tournament-preview";
+const discovery = useDiscovery();
 const session = useSession(),
   clubs = ref<any[]>([]),
   clubIndex = ref(0),
   loading = ref(false),
   coverUploading = ref(false),
+  locationSelecting = ref(false),
   editId = ref(0),
   panels = ref<string[]>([]),
   images = ref<string[]>([]),
@@ -28,6 +34,8 @@ const session = useSession(),
   linked = ref<any>(null);
 const cfg = reactive(defaultConfig());
 const form = reactive({
+  city: discovery.city,
+  latitude: null as number | null, longitude: null as number | null,
   title: "",
   auto_title: false,
   start_date: "",
@@ -88,10 +96,13 @@ onLoad(async (q) => {
       max_participants: t.max_participants,
       description: t.description_template || t.description,
       prize: t.prize || "",
+      city: t.city || discovery.city,
+      latitude: t.latitude ?? null, longitude: t.longitude ?? null,
       address: t.address || "",
       contact_name: t.contact_name || "",
       contact_phone: t.contact_phone || "",
     });
+    if (t.venue_id) linked.value = { venue_id: t.venue_id, venue_name: t.address || "已关联球场" };
     if (t.config) Object.assign(cfg, t.config);
     form.courts = cfg.courts.join("\n");
     images.value = t.images || [];
@@ -113,7 +124,8 @@ onShow(() => {
   const x = uni.getStorageSync("booking_return");
   if (x) {
     linked.value = x;
-    form.address = x.venue_name || form.address;
+    form.city = x.city || ""; form.latitude = x.latitude ?? null; form.longitude = x.longitude ?? null;
+    form.address = x.address || "";
     uni.removeStorageSync("booking_return");
   }
 });
@@ -148,6 +160,7 @@ function payload(previewOnly = false) {
     fail("请检查名称、主办俱乐部和时间", "basic");
     return;
   }
+  if (!previewOnly && !form.city) { fail("请选择比赛城市", "basic"); return; }
   if (!previewOnly && !form.address.trim() && !linked.value?.venue_id) {
     fail("请填写比赛地点或关联场地", "basic");
     return;
@@ -169,6 +182,8 @@ function payload(previewOnly = false) {
     return;
   }
   return {
+    city: form.city,
+    latitude: form.latitude, longitude: form.longitude,
     club_id: clubs.value[clubIndex.value]?.id || 0,
     title,
     auto_title: form.auto_title,
@@ -212,21 +227,21 @@ async function showPreview() {
     loading.value = false;
   }
 }
-function pick() {
-  uni.chooseImage({
-    count: 6 - images.value.length,
-    sizeType: ["compressed"],
-    success: (r) => images.value.push(...r.tempFilePaths),
-  });
+async function pick() {
+  if (loading.value || coverUploading.value) return;
+  coverUploading.value = true;
+  try { await chooseUploadedImages(6 - images.value.length, "post", url => { images.value.push(url); }); }
+  catch { uni.showToast({ title: "图片上传失败，请重试", icon: "none" }); }
+  finally { coverUploading.value = false; }
 }
 async function save() {
   const data = payload();
-  if (!data || loading.value || coverUploading.value) return;
+  if (!data || loading.value || coverUploading.value || locationSelecting.value) return;
   loading.value = true;
   try {
     for (const img of images.value)
       data.images.push(
-        /^https?:/.test(img) ? img : (await uploadFile(img, "post")).url,
+        await uploadedImage(img, "post"),
       );
     const t: any = await request(
       editId.value ? `/tournaments/${editId.value}` : "/tournaments",
@@ -241,7 +256,7 @@ async function save() {
 <template>
   <AppShell back :title="editId ? '编辑赛事' : '创建赛事'"
     ><view class="content publish-content">
-      <ActivityCoverUpload v-model="images" :disabled="loading" @busy="coverUploading = $event" />
+      <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
       <view id="basic"
         ><text class="section-title">基本信息</text
         ><text class="field-label">主办俱乐部</text
@@ -253,6 +268,9 @@ async function save() {
             clubs[clubIndex]?.name || "请选择主办俱乐部"
           }}</view></picker
         >
+        <view v-if="linked?.venue_id" class="picker-field">球场城市 · {{ form.city || "请联系管理员补充球场位置" }}</view>
+        <CitySelect v-else @update:model-value="form.latitude = null; form.longitude = null" v-model="form.city" label="比赛城市 *" />
+        <ActivityLocationSelect v-if="!linked?.venue_id" @busy="locationSelecting = $event" :city="form.city" :selected="form.latitude !== null" @select="point => { form.city = point.city; form.latitude = point.latitude; form.longitude = point.longitude; form.address = point.address; }" />
         <text class="field-label">赛事名称 *</text
         ><wd-input
           v-model="form.title"
@@ -443,12 +461,12 @@ async function save() {
         ><wd-button
           block
           variant="plain"
-          :loading="loading || coverUploading"
+          :loading="loading || coverUploading || locationSelecting"
           @click="showPreview"
           >预览赛程</wd-button
         ><wd-button
           block
-          :loading="loading || coverUploading"
+          :loading="loading || coverUploading || locationSelecting"
           :disabled="!clubs.length"
           @click="save"
           >{{ editId ? "保存赛事" : "发布赛事" }}</wd-button

@@ -4,12 +4,12 @@ from datetime import date as date_type
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.services.pricing import hourly_slot_price
 from app.api.deps import get_current_user, get_club_admin, _v
-from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, VenueStatus
+from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, VenueStatus, MatchPost, Tournament
 from app.schemas.schemas import (
     VenueCreate, VenueUpdate, VenueBrief, VenueDetail,
     SlotGenerateRequest, SlotBrief, SlotDateGroup,
@@ -39,6 +39,7 @@ async def create_venue_for_club(
     venue = Venue(
         club_id=club_id,
         name=req.name,
+        city=req.city, address=req.address, latitude=req.latitude, longitude=req.longitude,
         sport_type=req.sport_type,
         price_per_hour=req.price_per_hour,
         max_capacity=req.max_capacity,
@@ -94,9 +95,17 @@ async def update_venue(
     if not venue:
         raise HTTPException(status_code=404, detail="Venue not found")
     update_data = req.model_dump(exclude_unset=True)
+    if {"latitude", "longitude"} & update_data.keys() and not {"latitude", "longitude"} <= update_data.keys():
+        raise HTTPException(422, "更新坐标必须同时提供经纬度")
+    if any(key in update_data and update_data[key] != getattr(venue, key) for key in ("city", "address")) and "latitude" not in update_data:
+        update_data.update(latitude=None, longitude=None)
     for key, value in update_data.items():
         setattr(venue, key, value)
     await db.flush()
+    if {"city", "address", "latitude", "longitude"} & update_data.keys():
+        location = dict(city=venue.city, latitude=venue.latitude, longitude=venue.longitude)
+        await db.execute(update(MatchPost).where(MatchPost.venue_id == venue.id).values(**location))
+        await db.execute(update(Tournament).where(Tournament.venue_id == venue.id).values(**location, address=venue.address))
     await db.refresh(venue)
     return VenueBrief.model_validate(venue)
 

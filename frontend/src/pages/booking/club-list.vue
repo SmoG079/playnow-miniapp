@@ -88,7 +88,7 @@ onReachBottom(() => more.value && load(true));
           ></view
         ><view class="venue-card-body"
           ><text class="section-title">{{ c.name }}</text
-          ><text class="muted">{{ c.address || "暂无地址" }}</text
+          ><text class="muted">{{ c.nearest_venue_name ? c.nearest_venue_name + " · " : "" }}{{ c.venue_address || "球场位置待补充" }}</text
           ><view><text class="tag">网球</text></view></view
         ></view
       ><wd-empty v-if="!loading && !clubs.length" tip="暂未找到俱乐部"

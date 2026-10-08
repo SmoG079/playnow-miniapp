@@ -26,11 +26,23 @@ class Club(Base):
     longitude = Column(Integer)
 
 
+class Venue(Base):
+    __tablename__ = "venues"
+    id = Column(Integer, primary_key=True)
+    city = Column(String)
+    latitude = Column(Integer)
+    longitude = Column(Integer)
+
+
 class MatchPost(Base):
     __tablename__ = 'match_posts'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer)
     club_id = Column(Integer, nullable=True)
+    venue_id = Column(Integer, nullable=True)
+    city = Column(String)
+    latitude = Column(Integer)
+    longitude = Column(Integer)
     created_at = Column(DateTime)
 
 
@@ -53,11 +65,14 @@ def source_query(filename, function):
         assignment = next(n for n in node.body if isinstance(n, ast.Assign)
                           and any(isinstance(t, ast.Name) and t.id == 'query' for t in n.targets))
         expression = assignment.value
-    namespace = dict(select=select, func=func, MatchPost=MatchPost, User=User,
+    namespace = dict(select=select, func=func, case=case, Venue=Venue, MatchPost=MatchPost, User=User,
                      Club=Club, MatchRegistration=MatchRegistration,
                      current_user=SimpleNamespace(id=1), post_id=2,
                      approved_count=func.sum(case((MatchRegistration.status == 'approved', 1), else_=0)),
                      pending_count=func.sum(case((MatchRegistration.status == 'pending', 1), else_=0)))
+    namespace['registration_counts'] = select(MatchRegistration.post_id,
+        namespace['approved_count'].label('approved'),
+        namespace['pending_count'].label('pending')).group_by(MatchRegistration.post_id).subquery()
     query = eval(compile(ast.Expression(expression), str(file), 'eval'), namespace)
     return query.group_by(MatchPost.id)
 

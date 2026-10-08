@@ -46,6 +46,9 @@ class TournamentConfig(BaseModel):
 class TournamentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     club_id: int
+    city: str | None = Field(None, min_length=1, max_length=64)
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
     title: str = Field(min_length=1, max_length=256)
     description: str | None = None
     sport_type: str = "网球"
@@ -75,6 +78,8 @@ class TournamentCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_event(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("比赛地点经纬度须同时填写")
         self.title = self.title.strip()
         self.address = self.address.strip()
         if not self.title:
@@ -106,6 +111,15 @@ class TournamentCreate(BaseModel):
             ):
                 raise ValueError("晋级队数不能超过每组队伍数")
         return self
+
+
+    @field_validator("city")
+    @classmethod
+    def normalized_city(cls, value):
+        if value is None: return None
+        value=value.strip()
+        if not value: raise ValueError("请选择活动所在城市")
+        return value
 
 
 class RegistrationCommand(BaseModel):

@@ -1,4 +1,6 @@
 import re
+from datetime import date as Date
+from app.services.discovery import city_name, ordered
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, delete
@@ -108,12 +110,15 @@ async def list_posts(
     sport: str = Query(None),
     status: str = Query(None),
     ntrp_levels: str = Query(None),
-    lat: float = Query(None),
-    lng: float = Query(None),
-    sort_by: str = Query('created', regex='^(created|distance)$'),
+    lat: float = Query(None, ge=-90, le=90),
+    lng: float = Query(None, ge=-180, le=180),
+    sort_by: str = Query('created', pattern='^(created|distance|date_asc|date_desc)$'),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    city: str | None = None,
+    activity_type: str = Query('all',pattern='^(all|free|venue)$'),
+    on_date: Date | None = None,
 ):
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
@@ -121,18 +126,34 @@ async def list_posts(
     pending_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.pending, 1), else_=0)
     )
+    registration_counts = select(MatchRegistration.post_id,
+        approved_count.label('approved'),pending_count.label('pending')).group_by(MatchRegistration.post_id).subquery()
     query = (
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
-               Club.latitude, Club.longitude,
-               approved_count, pending_count)
+               case((MatchPost.venue_id.is_not(None),Venue.latitude),else_=MatchPost.latitude), case((MatchPost.venue_id.is_not(None),Venue.longitude),else_=MatchPost.longitude),
+               registration_counts.c.approved, registration_counts.c.pending,
+               case((MatchPost.venue_id.is_not(None),Venue.city),else_=MatchPost.city))
         .join(User, MatchPost.user_id == User.id)
         .outerjoin(Club, MatchPost.club_id == Club.id)
-        .outerjoin(MatchRegistration, MatchRegistration.post_id == MatchPost.id)
+        .outerjoin(Venue, MatchPost.venue_id == Venue.id)
+        .outerjoin(registration_counts, registration_counts.c.post_id == MatchPost.id)
     )
     # The public square never exposes closed posts, including explicit status queries.
     query = query.where(MatchPost.status != MatchPostStatus.closed)
     count_query = select(func.count(MatchPost.id)).where(
         MatchPost.status != MatchPostStatus.closed)
+
+    selected_city = city_name(city)
+    city_column = case((MatchPost.venue_id.is_not(None),Venue.city),else_=MatchPost.city)
+    query = query.where(city_column == selected_city) if selected_city else query.where(False)
+    count_query = count_query.outerjoin(Venue, MatchPost.venue_id == Venue.id)
+    count_query = count_query.where(city_column == selected_city) if selected_city else count_query.where(False)
+    if activity_type in ('free','venue'):
+        condition = MatchPost.venue_id.is_(None) if activity_type=='free' else MatchPost.venue_id.is_not(None)
+        query=query.where(condition); count_query=count_query.where(condition)
+    if on_date:
+        query=query.where(MatchPost.preferred_date==on_date)
+        count_query=count_query.where(MatchPost.preferred_date==on_date)
 
     if club_id:
         query = query.where(MatchPost.club_id == club_id)
@@ -146,7 +167,8 @@ async def list_posts(
 
     selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
     if selected_levels:
-        all_posts = select(MatchPost).where(MatchPost.id > 0, MatchPost.status != MatchPostStatus.closed)
+        all_posts = select(MatchPost).outerjoin(Venue,MatchPost.venue_id==Venue.id).where(MatchPost.status != MatchPostStatus.closed)
+        all_posts = all_posts.where(city_column==selected_city) if selected_city else all_posts.where(False)
         if club_id:
             all_posts = all_posts.where(MatchPost.club_id == club_id)
         if sport:
@@ -162,13 +184,9 @@ async def list_posts(
             query = query.where(False)
             count_query = count_query.where(False)
 
-    query = query.group_by(MatchPost.id)
-
-    if sort_by == 'distance' and lat is not None and lng is not None:
-        # Sort by distance in Python after fetching
-        pass  # We'll sort after fetching
-    else:
-        query = query.order_by(MatchPost.created_at.desc())
+    query = ordered(query, sort_by, MatchPost.preferred_date, MatchPost.id, lat, lng,
+                    case((MatchPost.venue_id.is_not(None),Venue.latitude),else_=MatchPost.latitude),
+                    case((MatchPost.venue_id.is_not(None),Venue.longitude),else_=MatchPost.longitude))
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -179,13 +197,13 @@ async def list_posts(
 
     items = []
     for row in rows:
-        post, nickname, avatar, phone, club_name, club_lat, club_lng, approved_cnt, pending_cnt = row
+        post, nickname, avatar, phone, club_name, club_lat, club_lng, approved_cnt, pending_cnt, effective_city = row
         distance = haversine(lat, lng,
-                             float(club_lat) if club_lat else None,
-                             float(club_lng) if club_lng else None)
+                             club_lat, club_lng)
         user_nickname = nickname or _fallback_nickname(post.user_id, phone)
         items.append(PostBrief(
             id=post.id, club_id=post.club_id, user_id=post.user_id,
+            city=effective_city, latitude=club_lat, longitude=club_lng,
             title=post.title, sport_type=post.sport_type,
             preferred_date=post.preferred_date,
             preferred_start=post.preferred_start,
@@ -205,9 +223,6 @@ async def list_posts(
             images=post.images,
         ))
 
-    if sort_by == 'distance':
-        items.sort(key=lambda x: x.distance if x.distance is not None else float('inf'))
-
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
@@ -222,6 +237,8 @@ async def create_post(
             db, current_user.id, req.booking_id, req.venue_id, req.club_id
         )
         req.club_id, req.venue_id = booking.club_id, venue.id
+        req.city=venue.city
+        req.latitude=venue.latitude; req.longitude=venue.longitude
     elif req.club_id:
         # Retain the existing club-only publishing path for administrators.
         if _v(current_user.role) not in ("club_admin", "platform_admin"):
@@ -249,6 +266,7 @@ async def create_post(
         id=await allocate_activity(db, "post"),
         club_id=req.club_id,
         user_id=current_user.id,
+        city=city_name(req.city), latitude=req.latitude, longitude=req.longitude,
         title=req.title,
         sport_type=sport_type,
         preferred_date=req.preferred_date,
@@ -278,6 +296,7 @@ async def create_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
+        city=post.city, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -318,9 +337,13 @@ async def update_post(
         venue_id = update_data.get("venue_id", post.venue_id)
         if booking_id or venue_id:
             booking, venue = await _post_booking(db, post.user_id, booking_id, venue_id)
-            update_data.update(club_id=booking.club_id, venue_id=venue.id)
+            update_data.update(club_id=booking.club_id, venue_id=venue.id, city=venue.city, latitude=venue.latitude, longitude=venue.longitude)
         else:
             update_data["club_id"] = None
+    if post.venue_id and "venue_id" not in update_data:
+        venue = await db.get(Venue, post.venue_id)
+        if venue:
+            update_data.update(city=venue.city, latitude=venue.latitude, longitude=venue.longitude)
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -334,6 +357,7 @@ async def update_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
+        city=post.city, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -393,6 +417,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
             user_nickname=r_nick, user_avatar=r_av,
         ))
 
+    effective_city, effective_lat, effective_lng = post.city, post.latitude, post.longitude
     # Get venue info if available
     venue_address = None
     venue_latitude = None
@@ -406,6 +431,10 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         venue = venue_result.scalar_one_or_none()
         if venue:
             cover_image = venue.cover_image
+            venue_address = venue.address
+            venue_latitude = float(venue.latitude) if venue.latitude is not None else None
+            venue_longitude = float(venue.longitude) if venue.longitude is not None else None
+            effective_city, effective_lat, effective_lng = venue.city, venue.latitude, venue.longitude
     # Fallback to club info
     if not venue_address:
         club_result = await db.execute(
@@ -413,9 +442,6 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         )
         club = club_result.scalar_one_or_none()
         if club:
-            venue_address = club.address
-            venue_latitude = float(club.latitude) if club.latitude else None
-            venue_longitude = float(club.longitude) if club.longitude else None
             cover_image = cover_image or club.cover_image
             club_documents = club.documents
 
@@ -430,6 +456,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
 
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
+        city=effective_city, latitude=effective_lat, longitude=effective_lng,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,

@@ -64,6 +64,7 @@ class Settings(BaseSettings):
 
     # Tencent Map (optional: used for address geocoding)
     TENCENT_MAP_KEY: str = ""
+    TENCENT_MAP_SK: str = ""
 
     # Public asset base URL — clients load uploaded images from this host.
     # MUST be https and the same origin/port nginx exposes for /uploads.

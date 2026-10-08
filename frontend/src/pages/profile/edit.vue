@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
+import { uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
-import { request, uploadFile } from "../../services/api";
+import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 const s = useSession(),
   loading = ref(false),
+  imageUploading = ref(false),
   isNew = ref(false),
   redirect = ref(""),
   levels = [
@@ -42,8 +44,12 @@ onLoad(async (q) => {
     ntrp_level: u?.ntrp_level ? String(u.ntrp_level) : "",
   });
 });
-function avatar(e: any) {
-  form.avatar_url = e.detail.avatarUrl;
+async function avatar(e: any) {
+  if (loading.value || imageUploading.value) return;
+  imageUploading.value = true;
+  try { form.avatar_url = await uploadedImage(e.detail.avatarUrl, "avatar"); }
+  catch { uni.showToast({ title: "头像上传失败，请重试", icon: "none" }); }
+  finally { imageUploading.value = false; }
 }
 async function phone(e: any) {
   if (!e.detail.code)
@@ -56,14 +62,14 @@ async function phone(e: any) {
   uni.showToast({ title: "已获取手机号", icon: "success" });
 }
 async function save() {
+  if (loading.value || imageUploading.value) return;
   if (!form.nickname.trim())
     return uni.showToast({ title: "请输入昵称", icon: "none" });
   if (form.phone && !/^1\d{10}$/.test(form.phone))
     return uni.showToast({ title: "手机号格式不正确", icon: "none" });
   loading.value = true;
   try {
-    if (form.avatar_url && !/^https?:/.test(form.avatar_url))
-      form.avatar_url = (await uploadFile(form.avatar_url, "avatar")).url;
+    if (form.avatar_url) form.avatar_url = await uploadedImage(form.avatar_url, "avatar");
     await request("/users/me", {
       method: "PUT",
       data: {
@@ -129,7 +135,7 @@ async function save() {
           >{{ form.ntrp_level || "请选择"
           }}<wd-icon name="arrow-down" /></view></picker
       ><view class="publish-action"
-        ><wd-button block :loading="loading" @click="save"
+        ><wd-button block :loading="loading || imageUploading" @click="save"
           >保存</wd-button
         ></view
       ></view

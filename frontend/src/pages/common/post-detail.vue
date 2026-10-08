@@ -147,11 +147,11 @@ function remove(c: any) {
           ><view
             class="fact"
             @click="
-              post.venue_latitude &&
+              post.venue_latitude != null && post.venue_longitude != null &&
               uni.openLocation({
                 latitude: Number(post.venue_latitude),
                 longitude: Number(post.venue_longitude),
-                name: post.club_name,
+                name: post.venue_address || '球场',
                 address: post.venue_address,
               })
             "

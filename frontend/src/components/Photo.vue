@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRemoteImage } from "../services/media";
 import { ref, computed, watch } from "vue";
 const props = defineProps<{
   src?: string;
@@ -14,7 +15,7 @@ const placeholder = props.round ? "user" : "image";
 
 // 实际展示的图片：优先远程 src；为空或加载失败时回退到本地打包图
 const displaySrc = computed(() => {
-  if (props.src && !failed.value) return props.src;
+  if (props.src && !failed.value && (isRemoteImage(props.src) || props.src.startsWith("/static/"))) return props.src;
   return props.fallback || "";
 });
 
