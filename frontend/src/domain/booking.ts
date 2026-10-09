@@ -5,6 +5,55 @@ export interface Slot {
   price: number;
   available: boolean;
 }
+
+export interface BookingCell {
+  slot_id: number;
+  venue_id: number;
+  start_time: string;
+  end_time: string;
+  status: string;
+}
+
+function minutes(time: string) {
+  const [hour, minute] = time.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+export function bookingDuration(slots: BookingCell[]) {
+  return slots.reduce((sum, slot) => sum + minutes(slot.end_time) - minutes(slot.start_time), 0);
+}
+
+/** Keep a selection empty or at least one continuous hour. */
+export function selectBookingCell<T extends BookingCell>(
+  selected: T[], cell: T, cells: T[],
+): { slots: T[]; error?: string } {
+  if (!cell.slot_id || cell.status !== "available")
+    return { slots: selected, error: "该时段暂不可预订" };
+  const existing = selected.findIndex(slot => slot.slot_id === cell.slot_id);
+  if (existing >= 0) {
+    const remaining = selected.slice(0, existing);
+    return { slots: bookingDuration(remaining) >= 60 ? remaining : [] };
+  }
+  if (selected.length) {
+    const last = selected[selected.length - 1];
+    if (last.venue_id !== cell.venue_id || minutes(last.end_time) !== minutes(cell.start_time))
+      return { slots: selected, error: "请选择同一场地的连续时段" };
+    return { slots: [...selected, cell] };
+  }
+  const initial = [cell];
+  while (bookingDuration(initial) < 60) {
+    const last = initial[initial.length - 1];
+    const next = cells.find(slot =>
+      slot.venue_id === cell.venue_id && slot.slot_id && slot.status === "available" &&
+      minutes(slot.start_time) === minutes(last.end_time) &&
+      minutes(slot.end_time) > minutes(slot.start_time) &&
+      !initial.some(chosen => chosen.slot_id === slot.slot_id),
+    );
+    if (!next) return { slots: selected, error: "后续可订时段不足1小时，请选择其他时段" };
+    initial.push(next);
+  }
+  return { slots: initial };
+}
 export function selectSlot(
   selected: Slot[],
   slot: Slot,

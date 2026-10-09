@@ -117,7 +117,7 @@ def test_prior_head_booking_migration_preserves_history_and_enforces_detail_fk(
             conn.execute(
                 sa.text("SELECT version_num FROM alembic_version")
             ).scalar_one()
-            == "20261009_review_integrity"
+            == "20261009_user_rating"
         )
     with pytest.raises(sa.exc.IntegrityError):
         with engine.begin() as conn:

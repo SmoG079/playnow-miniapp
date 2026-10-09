@@ -21,9 +21,11 @@ describe("tournament form continuity", () => {
     expect(readTournamentDraft("owner",0).images).toEqual(["https://cos.example/cover.jpg"]);
     expect(readTournamentDraft("another-account",0)).toBeNull();expect(readTournamentDraft("owner",2)).toBeNull();
   });
-  it("draft cache expires and is cleared after successful creation", () => {
+  it("saved drafts survive more than a day and clear only their own editing target", () => {
     vi.useFakeTimers();saveTournamentDraft("owner",0,{form:{title:"draft"}});
-    vi.advanceTimersByTime(24*60*60*1000+1);expect(readTournamentDraft("owner",0)).toBeNull();
-    saveTournamentDraft("owner",0,{form:{title:"draft"}});clearTournamentDraft();expect(readTournamentDraft("owner",0)).toBeNull();vi.useRealTimers();
+    vi.advanceTimersByTime(30*24*60*60*1000);expect(readTournamentDraft("owner",0).form.title).toBe("draft");
+    saveTournamentDraft("owner",2,{form:{title:"edit"}});
+    clearTournamentDraft("owner",0);expect(readTournamentDraft("owner",0)).toBeNull();
+    expect(readTournamentDraft("owner",2).form.title).toBe("edit");vi.useRealTimers();
   });
 });

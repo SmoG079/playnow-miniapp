@@ -4,7 +4,7 @@ import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { businessDate } from "../../utils/date";
-const selectedCity = ref("");
+import { bookingDuration, selectBookingCell } from "../../domain/booking";
 const clubId = ref(""),
   club = ref<any>(null),
   venues = ref<any[]>([]),
@@ -14,13 +14,7 @@ const clubId = ref(""),
   dates = ref<any[]>([]),
   loading = ref(false),
   returnMode = ref("");
-const mins = (x: string) => {
-  const p = x.split(":").map(Number);
-  return p[0] * 60 + p[1];
-};
-const duration = computed(() =>
-  selected.value.reduce((n, s) => n + mins(s.end_time) - mins(s.start_time), 0),
-);
+const duration = computed(() => bookingDuration(selected.value));
 const total = computed(() =>
   selected.value.reduce((n, s) => n + Number(s.price || 0), 0).toFixed(2),
 );
@@ -53,10 +47,8 @@ async function load() {
     ]);
     if (version !== loadVersion) return;
     club.value = c;
-    const allVenues = r.venues || c.venues || [];
-    venues.value = selectedCity.value ? allVenues.filter((v: any) => v.city === selectedCity.value) : allVenues;
-    const ids = new Set(venues.value.map(v => v.id));
-    rows.value = (r.rows || []).map((row: any) => ({ ...row, cells: row.cells.filter((cell: any) => ids.has(cell.venue_id)) }));
+    venues.value = r.venues || [];
+    rows.value = r.rows || [];
   } catch (e: any) {
     if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
   } finally {
@@ -64,7 +56,6 @@ async function load() {
   }
 }
 onLoad((q) => {
-  selectedCity.value = String(q?.city || "");
   clubId.value = String(q?.id || q?.club_id || "");
   returnMode.value = String(q?.return_mode || "");
   init();
@@ -75,21 +66,9 @@ function selectedCell(c: any) {
 }
 function choose(c: any) {
   if (loading.value) return;
-  if (c.status !== "available" || !c.slot_id) return;
-  const idx = selected.value.findIndex((s) => s.slot_id === c.slot_id);
-  if (idx >= 0) {
-    selected.value.splice(idx);
-    return;
-  }
-  if (selected.value.length) {
-    const last = selected.value[selected.value.length - 1];
-    if (
-      last.venue_id !== c.venue_id ||
-      mins(c.start_time) !== mins(last.end_time)
-    )
-      return uni.showToast({ title: "请选择同一场地的连续时段", icon: "none" });
-  }
-  selected.value.push(c);
+  const result = selectBookingCell(selected.value, c, rows.value.flatMap(row => row.cells));
+  if (result.error) return uni.showToast({ title: result.error, icon: "none" });
+  selected.value = result.slots;
 }
 function courtLocation(v: any) {
   if (v.latitude != null && v.longitude != null) uni.openLocation({ latitude: Number(v.latitude), longitude: Number(v.longitude), name: v.name, address: v.address || "" });
@@ -169,7 +148,7 @@ function book() {
         ><wd-loading v-if="loading" /><view class="booking-rules"
           ><text class="strong">预订须知</text
           ><text class="muted small"
-            >请选择同一片场地的连续时段，至少 1 小时。</text
+            >1 小时起订，首次点击自动选择后续连续时段；之后可按半小时追加。</text
           ></view
         ></view
       ><view class="fixed-action"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
-import { onShow } from "@dcloudio/uni-app";
+import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
@@ -9,6 +9,7 @@ import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import { listAll, request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { businessDate } from "../../utils/date";
+import { saveActivityDraft, readActivityDraft, clearActivityDraft } from "../../services/activity-draft";
 const discovery = useDiscovery();
 const s = useSession(),
   loading = ref(false),
@@ -22,9 +23,10 @@ const s = useSession(),
   clubs = ref<any[]>([]),
   clubIndex = ref(-1),
   images = ref<string[]>([]);
+const draftReady = ref(false);
 const tournamentDisabledReason = computed(() => "请先登录后创建比赛");
 const today = () => businessDate();
-const form = reactive<any>({
+const defaultForm = () => ({
   city: discovery.city,
   address: "",
   latitude: null, longitude: null,
@@ -41,12 +43,40 @@ const form = reactive<any>({
   venue_id: null,
   booking_id: null,
 });
+const form = reactive<any>(defaultForm());
+let initialized = false, completed = false, draftOwner = "";
+function cacheDraft() {
+  if (!initialized || completed || !editingPost.value || !draftOwner || s.user?.id !== draftOwner) return false;
+  return saveActivityDraft("post", draftOwner, 0, { form, images: images.value,
+    club: clubs.value[clubIndex.value] || null, choosingVenue: choosingVenue.value, venueName: venueName.value });
+}
+function saveDraft() {
+  const saved = cacheDraft();
+  uni.showToast({ title: saved ? "草稿已保存，可退出后继续填写" : "草稿保存失败，请重试", icon: "none" });
+}
+onHide(cacheDraft); onUnload(cacheDraft);
+watch([form, images, clubIndex, choosingVenue, venueName, editingPost], cacheDraft, { deep: true, flush: "sync" });
 onShow(async () => {
+  draftReady.value = false;
   statusBarHeight.value = uni.getWindowInfo().statusBarHeight || 0;
   if (!s.requireLogin("/pages/publish/post-create")) return;
   await s.fetchUser().catch(() => {});
+  if (!s.user?.id) return;
+  if (draftOwner !== s.user.id || completed) {
+    initialized = false; completed = false; draftOwner = s.user.id;
+    Object.assign(form, defaultForm()); images.value = []; clubs.value = []; clubIndex.value = -1;
+    choosingVenue.value = false; venueName.value = ""; editingPost.value = false;
+  }
   await discovery.ensureCity().catch(() => {});
-  if (!form.booking_id) form.city = discovery.city;
+  if (!initialized) {
+    const draft = readActivityDraft("post", draftOwner, 0);
+    if (draft) {
+      Object.assign(form, draft.form); images.value = draft.images || [];
+      choosingVenue.value = !!draft.choosingVenue; venueName.value = draft.venueName || "";
+      if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
+      editingPost.value = true;
+    } else form.city = discovery.city;
+  }
   const linked = uni.getStorageSync("booking_return");
   if (linked) {
     form.city = linked.city || form.city;
@@ -68,9 +98,12 @@ onShow(async () => {
     });
     uni.removeStorageSync("booking_return");
   }
+  initialized = true;
+  draftReady.value = true;
+  cacheDraft();
 });
 watch(() => discovery.city, value => {
-  if (!form.booking_id && form.city !== value) {
+  if (initialized && !form.booking_id && form.city !== value) {
     form.city = value; changeCity();
   }
 }, { flush: "sync" });
@@ -100,6 +133,7 @@ function goClub() {
   if (s.requireLogin("/pages/publish/club-create")) uni.navigateTo({ url: "/pages/publish/club-create" });
 }
 function goPost() {
+  if (!draftReady.value) return;
   editingPost.value = true;
 }
 function unlinkVenue() {
@@ -124,7 +158,7 @@ async function pickImages() {
   finally { coverUploading.value = false; }
 }
 async function submit() {
-  if (loading.value || coverUploading.value || locationSelecting.value) return;
+  if (!draftReady.value || loading.value || coverUploading.value || locationSelecting.value) return;
   if (!form.title.trim())
     return uni.showToast({ title: "请输入标题", icon: "none" });
   if (!form.preferred_date || !form.preferred_start || !form.preferred_end)
@@ -162,6 +196,8 @@ async function submit() {
         images: urls.length ? urls : null,
       },
     });
+    completed = true;
+    clearActivityDraft("post", draftOwner, 0);
     uni.showToast({ title: "发布成功", icon: "success" });
     setTimeout(() => uni.switchTab({ url: "/pages/home/index" }), 800);
   } catch (e: any) {
@@ -202,7 +238,7 @@ function goBook() {
           >
           <text class="entry-description">找球友一起练球、打友谊局。</text>
           <view class="entry-action"
-            ><wd-button variant="plain" @click="goPost"
+            ><wd-button variant="plain" :disabled="!draftReady" @click="goPost"
               >创建约球</wd-button
             ></view
           >
@@ -340,6 +376,8 @@ function goBook() {
         ><wd-cell title="报名需要审核"
           ><wd-switch v-model="form.approval_required" /></wd-cell
         ><view class="publish-action"
+          ><wd-button block variant="plain" :disabled="loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
+          ><text class="muted small">草稿保存在当前设备，退出后可继续填写。</text
           ><wd-button block :loading="loading || coverUploading || locationSelecting" @click="submit"
             >发布约球</wd-button
           ></view

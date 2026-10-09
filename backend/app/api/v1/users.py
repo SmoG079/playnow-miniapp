@@ -12,7 +12,7 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     UserMeResponse, UserUpdate, PaginatedResponse, NotificationBrief,
-    BookingDetail, PostBrief, MyPostRegistration,
+    BookingDetail, PostBrief, MyPostRegistration, RatingAssessmentRequest, RatingAssessmentResponse,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -133,6 +133,7 @@ async def get_me(
         created_at=current_user.created_at,
         managed_club_ids=club_ids,
         ntrp_level=current_user.ntrp_level,
+        rating_source="self_assessment" if getattr(current_user, "rating_assessment", None) else None,
     )
 
 
@@ -148,10 +149,33 @@ async def update_me(
         current_user.avatar_url = req.avatar_url
     if req.phone is not None:
         current_user.phone = req.phone
-    if req.ntrp_level is not None:
+    if "ntrp_level" in req.model_fields_set and req.ntrp_level != current_user.ntrp_level:
         current_user.ntrp_level = req.ntrp_level
+        current_user.rating_assessment = None
+        current_user.rating_assessed_at = None
     await db.commit()
     return {"msg": "ok"}
+
+
+@router.get("/me/rating-questionnaire")
+async def rating_questionnaire(current_user: User = Depends(get_current_user)):
+    from app.services.rating_assessment import catalog
+    return catalog()
+
+
+@router.post("/me/rating-assessment", response_model=RatingAssessmentResponse)
+async def submit_rating_assessment(
+    req: RatingAssessmentRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.rating_assessment import assess, VERSION
+    ntrp = assess(req.mode, req.answers)
+    current_user.ntrp_level = ntrp
+    current_user.rating_assessment = {"version": VERSION, "mode": req.mode, "answers": req.answers}
+    current_user.rating_assessed_at = datetime.utcnow()
+    await db.commit()
+    return RatingAssessmentResponse(ntrp_level=ntrp)
 
 
 @router.get("/me/notifications", response_model=PaginatedResponse)

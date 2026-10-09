@@ -81,7 +81,7 @@ onReachBottom(() => more.value && load(true));
         v-for="c in clubs"
         :key="c.id"
         class="venue-card"
-        @click="openPage('/pages/booking/venue-detail?id=' + c.id + '&city=' + encodeURIComponent(location.city))"
+        @click="openPage('/pages/booking/venue-detail?id=' + c.id)"
         ><view class="venue-photo"
           ><Photo
             width="100%"

@@ -557,10 +557,15 @@ image {
   align-items: center;
 }
 .slot-header {
-  height: 32px;
+  min-height: 32px;
+  padding: 6px 0;
+  margin-bottom: 7px;
   font-size: 12px;
   text-align: center;
   color: #7a8b81;
+}
+.slot-header .small {
+  display: block;
 }
 .slot-row {
   margin-bottom: 7px;

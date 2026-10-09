@@ -70,7 +70,7 @@ jobs:
           python -m compileall app alembic scripts -q
           python -m unittest tests/test_free_post_queries.py
           python -m unittest tests/test_http_routes.py tests/test_pricing.py
-          python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py tests/test_tournament_engine.py tests/test_tournaments.py tests/test_post_booking_permissions.py tests/test_record_persistence.py tests/test_activity_ids.py tests/test_event_management.py tests/test_activity_media.py tests/test_discovery.py tests/test_tencent_map.py tests/test_user_openid.py tests/test_applications.py tests/test_my_activities.py tests/test_review_fixes.py tests/test_private_document_migration.py -m "not deferred_booking_payments"
+          python -m pytest tests/test_rate_limit.py tests/test_bookings.py tests/test_settlement.py tests/test_tournament_engine.py tests/test_tournaments.py tests/test_post_booking_permissions.py tests/test_record_persistence.py tests/test_activity_ids.py tests/test_event_management.py tests/test_activity_media.py tests/test_discovery.py tests/test_tencent_map.py tests/test_user_openid.py tests/test_applications.py tests/test_my_activities.py tests/test_review_fixes.py tests/test_private_document_migration.py tests/test_rating_assessment.py -m "not deferred_booking_payments"
       - name: Empty database migration
         if: ${{ !cancelled() }}
         run: |

@@ -1,6 +1,6 @@
 from datetime import datetime, date, time
 from typing import Optional, Any, List, Annotated, Literal
-from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator, StrictInt, ConfigDict
 from decimal import Decimal
 from app.services.public_identity import public_user_id
 
@@ -63,6 +63,25 @@ class UserMeResponse(UserProfile):
     roles: list[str] = Field(default_factory=list)
     managed_club_ids: list[int] = []
     ntrp_level: Optional[Decimal] = None
+    rating_source: Optional[str] = None
+
+
+class RatingAssessmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: Literal["playnow_self_v1"]
+    mode: Literal["quick", "full"]
+    answers: dict[str, StrictInt] = Field(..., min_length=1, max_length=6)
+
+    @model_validator(mode="after")
+    def complete_answers(self):
+        from app.services.rating_assessment import validate_answers
+        validate_answers(self.mode, self.answers)
+        return self
+
+
+class RatingAssessmentResponse(BaseModel):
+    ntrp_level: DecimalAsFloat
+    rating_source: Literal["self_assessment"] = "self_assessment"
 
 
 # ── Club ──

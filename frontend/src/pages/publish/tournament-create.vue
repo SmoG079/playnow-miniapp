@@ -57,10 +57,15 @@ function selectClub({index}: {index:number}) {
 }
 const clubActions = computed(() => clubPurpose.value === "host" ? [{name:"不设置主办俱乐部"},...clubs.value.map(c => ({name:c.name}))] : clubs.value.map(c => ({name:c.name})));
 let initialized = false, completed = false, draftOwner = "";
+const draftReady = ref(false);
 let pendingBooking: any = null;
 function cacheDraft() {
-  if (!initialized || completed || !draftOwner || session.user?.id !== draftOwner) return;
-  saveTournamentDraft(draftOwner, editId.value, { form, config: cfg, images: images.value, club: clubs.value[clubIndex.value] || null, linked: linked.value, panels: panels.value });
+  if (!initialized || completed || !draftOwner || session.user?.id !== draftOwner) return false;
+  return saveTournamentDraft(draftOwner, editId.value, { form, config: cfg, images: images.value, club: clubs.value[clubIndex.value] || null, linked: linked.value, panels: panels.value });
+}
+function saveDraft() {
+  const saved = cacheDraft();
+  uni.showToast({ title: saved ? "草稿已保存，可退出后继续填写" : "草稿保存失败，请重试", icon: "none" });
 }
 const cfg = reactive(defaultConfig());
 onHide(cacheDraft); onUnload(cacheDraft);
@@ -118,6 +123,7 @@ onLoad(async (q) => {
     images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
     if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
     initialized = true;
+    draftReady.value = true;
     applyReturnedBooking();
     return;
   }
@@ -178,6 +184,7 @@ onLoad(async (q) => {
       : "1";
   }
   initialized = true;
+  draftReady.value = true;
   applyReturnedBooking();
 });
 function applyReturnedBooking() {
@@ -288,7 +295,7 @@ async function save() {
       editId.value ? `/tournaments/${editId.value}` : "/tournaments",
       { method: editId.value ? "PUT" : "POST", data },
     );
-    completed = true; clearTournamentDraft();
+    completed = true; clearTournamentDraft(draftOwner, editId.value);
     uni.redirectTo({ url: `/pages/common/tournament-detail?id=${t.id}` });
   } catch (error:any) {
     cacheDraft();
@@ -467,6 +474,8 @@ async function save() {
         >
       </wd-collapse>
       <view class="publish-action"
+        ><wd-button block variant="plain" :disabled="!draftReady || loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
+        ><text class="muted small">草稿保存在当前设备，退出后可继续填写。</text
         ><wd-button
           block
           variant="plain"

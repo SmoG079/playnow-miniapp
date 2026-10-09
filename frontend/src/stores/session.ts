@@ -12,6 +12,7 @@ export interface User {
   roles?: string[];
   managed_club_ids?: number[];
   ntrp_level?: number;
+  rating_source?: "self_assessment" | null;
   city?: string;
 }
 
