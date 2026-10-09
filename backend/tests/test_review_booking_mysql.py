@@ -274,7 +274,10 @@ def test_sync_task_resources_work_across_success_failure_and_new_event_loops(
 
     if (
         make_url(URL).host not in ("127.0.0.1", "localhost")
-        or not make_url(URL).database.startswith("playnow_test_")
+        or not (
+            make_url(URL).database == "test_db"
+            or make_url(URL).database.startswith("playnow_test_")
+        )
         or not REDIS.endswith("/15")
     ):
         raise RuntimeError("Refusing non-disposable task resources")

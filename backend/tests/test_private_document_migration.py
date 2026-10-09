@@ -2,6 +2,8 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import subprocess
+import sys
 
 import pytest
 
@@ -17,6 +19,17 @@ settings = SimpleNamespace(
     COS_REGION="ap-shanghai",
 )
 source = "https://example-123.cos.ap-shanghai.myqcloud.com/doc/old.pdf"
+
+
+def test_cli_can_start_without_pythonpath_override():
+    result = subprocess.run(
+        [sys.executable, str(Path(migration.__file__)), "--help"],
+        cwd=Path(migration.__file__).parents[1],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--production" in result.stdout
 
 
 def test_plan_preserves_metadata_and_requires_known_owner():
