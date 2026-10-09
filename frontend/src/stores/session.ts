@@ -40,10 +40,9 @@ export const useSession = defineStore("session", () => {
 
   function setTokens(access: string, refresh: string) {
     generation++;
+    clearTokens();
     loading.value = false;
     user.value = null;
-    uni.removeStorageSync("registered_post_ids");
-    uni.removeStorageSync("booking_return");
     accessToken.value = access;
     refreshToken.value = refresh;
     uni.setStorageSync(SESSION_CONTEXT_KEY, sessionContext());

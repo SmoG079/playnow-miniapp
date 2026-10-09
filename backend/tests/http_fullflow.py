@@ -42,12 +42,12 @@ venue=call('POST',f'/venues/with-club/{club}',owner,json={'name':'E2E court','pr
 call('GET',f'/venues/{venue}');call('GET',f'/clubs/{club}/venues')
 call('PUT',f'/venues/{venue}/with-club/{club}',owner,json={'price_per_hour':120})
 call('DELETE',f'/venues/{venue}/with-club/{club}',other,expected=403)
-date=(datetime.date.today()+datetime.timedelta(days=7)).isoformat()
-slotspec={'date_from':date,'date_to':date,'start_time':'08:00','end_time':'12:00','interval_minutes':60}
-assert call('POST',f'/venues/{venue}/slots/batch',owner,json=slotspec)['created']==4
-assert call('POST',f'/venues/{venue}/slots/batch',owner,json=slotspec)['skipped']==4
+date=(datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date()+datetime.timedelta(days=1)).isoformat()
+slotspec={'date_from':date,'date_to':date,'start_time':'08:00','end_time':'12:00','interval_minutes':30}
+assert call('POST',f'/venues/{venue}/slots/batch',owner,json=slotspec)['skipped']==8
+assert call('POST',f'/venues/{venue}/slots/batch',owner,json=slotspec)['skipped']==8
 slots=call('GET',f'/venues/{venue}/slots',params={'date':date})
-assert float(slots[0]['slots'][0]['price'])==120
+assert float(slots[0]['slots'][0]['price'])==60
 assert call('GET',f'/venues/{venue}/slots',params={'date_from':date,'date_to':date})==slots
 
 if isinstance(slots,dict): groups=slots.get('items',slots.get('dates',slots.get('slots',[])))
@@ -58,16 +58,16 @@ ids=[s['id'] for s in slots]
 call('PUT',f'/venues/{venue}/with-club/{club}',owner,json={'price_rules':[{'type':'time_range','start_time':'08:00','end_time':'10:00','price':180}]})
 grid=call('GET',f'/clubs/{club}/venue-slots',params={'date':date})
 quoted=sum(float(cell['price']) for row in grid['rows'] for cell in row['cells'] if cell['slot_id'] in ids[:2])
-assert quoted==360
-assert float(call('GET',f'/venues/{venue}/slots',params={'date':date})[0]['slots'][0]['price'])==180
+assert quoted==180
+assert float(call('GET',f'/venues/{venue}/slots',params={'date':date})[0]['slots'][0]['price'])==90
 call('PATCH',f'/venues/{venue}/slots/{ids[0]}/status',owner,json={'status':'maintenance'})
-call('POST','/bookings',member,expected=409,json={'slot_id':ids[0]})
+call('POST','/bookings',member,expected=409,json={'slot_ids':ids[:2]})
 call('PATCH',f'/venues/{venue}/slots/{ids[0]}/status',owner,json={'status':'available'})
 call('POST','/bookings',member,expected=422,json={})
 booking=call('POST','/bookings',member,json={'slot_ids':ids[:2]})
 assert float(booking['amount'])==quoted, (booking['amount'],quoted)
 bid=booking['id']
-call('POST','/bookings',other,expected=409,json={'slot_id':ids[0]})
+call('POST','/bookings',other,expected=409,json={'slot_ids':ids[:2]})
 call('GET',f'/bookings/{bid}',member)
 call('GET',f'/bookings/{bid}',other,expected=403)
 call('GET','/users/me/bookings',member)
@@ -108,9 +108,9 @@ assert call('GET','/users/me/notifications/unread-count',owner)['count']==0
 call('DELETE',f'/posts/{post}/register',member)
 cancelled=call('GET','/users/me/registrations',member)
 assert cancelled['total']==1 and cancelled['items'][0]['status']=='cancelled'
-call('DELETE',f'/posts/{post}',other,expected=403)
-call('DELETE',f'/posts/{post}',owner)
-call('GET',f'/posts/{post}',expected=404)
+call('POST',f'/posts/{post}/close',other,expected=403)
+call('POST',f'/posts/{post}/close',owner)
+assert call('GET',f'/posts/{post}')['status']=='closed'
 start=date+'T14:00:00';end=date+'T16:00:00'
 tournament=call('POST','/tournaments',owner,json={'club_id':club,'address':'E2E tennis court','title':'E2E free tournament','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4})['id']
 call('GET','/tournaments');call('GET',f'/tournaments/{tournament}')
@@ -118,8 +118,9 @@ call('PUT',f'/tournaments/{tournament}',owner,json={'club_id':club,'title':'E2E 
 assert call('POST',f'/tournaments/{tournament}/register',member,json={}).get('order_id') is None
 assert call('GET',f'/tournaments/{tournament}')['current_participants']==1
 registrations=call('GET','/users/me/registrations',member)
-assert registrations['total']==1 and registrations['items'][0]['ref_type']=='tournament'
-assert registrations['items'][0]['status']=='confirmed'
+assert registrations['total']==2
+assert any(r['ref_type']=='match_post' and r['ref_id']==post and r['status']=='cancelled' for r in registrations['items'])
+assert any(r['ref_type']=='tournament' and r['ref_id']==tournament and r['status']=='confirmed' for r in registrations['items'])
 call('GET',f'/clubs/{club}/stats',owner)
 image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jMZkAAAAASUVORK5CYII=')
 upload=call('POST','/upload',owner,files={'file':('e2e.png',image,'image/png')})

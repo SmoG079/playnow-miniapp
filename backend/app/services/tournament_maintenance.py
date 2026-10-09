@@ -17,6 +17,9 @@ async def maintain(session_factory=None):
     settings = get_settings()
     engine = None
     if session_factory is None:
+        from app.tasks.runtime import task_session_factory
+        session_factory = task_session_factory.get()
+    if session_factory is None:
         # Celery invokes asyncio.run per task; never reuse pooled connections
         # belonging to a previous event loop.
         engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
@@ -61,6 +64,7 @@ async def maintain_db(db, settings):
                 BookingOrder.business_type == "tournament",
                 BookingOrder.status == "pending",
             )
+            .order_by(BookingOrder.updated_at, BookingOrder.id)
             .limit(100)
         )
     ).all()
@@ -69,6 +73,7 @@ async def maintain_db(db, settings):
         try:
             t = await life.locked_event(db, event_id)
             o = await life.locked_order(db, ident)
+            o.updated_at = life.now()
             if _v(o.status) != "pending":
                 await db.rollback()
                 continue
@@ -95,6 +100,11 @@ async def maintain_db(db, settings):
             life.logger.error(
                 "Tournament payment recovery failed: %s", ident, exc_info=True
             )
+            # Persist the attempt even on remote errors so the first failing page cannot starve later orders.
+            from sqlalchemy import update
+            await db.execute(update(BookingOrder).where(BookingOrder.id == ident,
+                BookingOrder.status == "pending").values(updated_at=life.now()))
+            await db.commit()
 
     refs = (
         await db.execute(

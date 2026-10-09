@@ -56,6 +56,9 @@ def main():
     changed_keys = {"PUBLIC_BASE_URL", "WX_PAY_CERT_DIR", "LOG_LEVEL", "DEBUG"}
     for service in ("api", "celery_worker", "celery_beat"):
         env = services[service]["environment"]
+        jwt_secret = env.get("JWT_SECRET_KEY", "")
+        if len(jwt_secret) < 32 or jwt_secret.startswith("generate-a-random-secret-key-here"):
+            raise RuntimeError("Production JWT secret is missing or weak; no services were stopped")
         for key, value in oldenv.items():
             if key not in platform_keys | changed_keys and env.get(key) != value:
                 raise RuntimeError(f"Existing application setting would change: {key}")

@@ -1,12 +1,14 @@
+from typing import Optional
+from app.services.privacy import can_view_club_documents
 import re
 from datetime import date as Date
 from app.services.discovery import city_name, ordered
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case, delete
+from sqlalchemy import select, func, case, delete, or_
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
-from app.api.deps import get_current_user, _v
+from app.api.deps import get_optional_user, get_current_user, _v
 from app.services.activity_ids import allocate_activity, resolve_activity_id
 from app.models.models import (
     User, Club, ClubMember, Venue, MatchPost, MatchRegistration, MatchPostStatus,
@@ -86,8 +88,6 @@ def _level_matches(selected_levels: list[str], level_required: str | None) -> bo
 
 
 def _fallback_nickname(user_id: str, phone: str | None) -> str:
-    if phone and len(phone) >= 11:
-        return phone[:3] + '****' + phone[7:]
     return '网球用户'
 
 
@@ -167,7 +167,7 @@ async def list_posts(
 
     selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
     if selected_levels:
-        all_posts = select(MatchPost).outerjoin(Venue,MatchPost.venue_id==Venue.id).where(MatchPost.status != MatchPostStatus.closed)
+        all_posts = select(MatchPost.level_required).distinct().outerjoin(Venue,MatchPost.venue_id==Venue.id).where(MatchPost.status != MatchPostStatus.closed)
         all_posts = all_posts.where(city_column==selected_city) if selected_city else all_posts.where(False)
         if club_id:
             all_posts = all_posts.where(MatchPost.club_id == club_id)
@@ -176,10 +176,10 @@ async def list_posts(
         if status:
             all_posts = all_posts.where(MatchPost.status == status)
         result_all = await db.execute(all_posts)
-        matched_ids = [p.id for p in result_all.scalars().all() if _level_matches(selected_levels, p.level_required)]
-        if matched_ids:
-            query = query.where(MatchPost.id.in_(matched_ids))
-            count_query = count_query.where(MatchPost.id.in_(matched_ids))
+        matched_levels = [level for level in result_all.scalars().all() if _level_matches(selected_levels, level)]
+        if matched_levels:
+            query = query.where(or_(MatchPost.level_required.in_([l for l in matched_levels if l is not None]), MatchPost.level_required.is_(None) if None in matched_levels else False))
+            count_query = count_query.where(or_(MatchPost.level_required.in_([l for l in matched_levels if l is not None]), MatchPost.level_required.is_(None) if None in matched_levels else False))
         else:
             query = query.where(False)
             count_query = count_query.where(False)
@@ -210,7 +210,7 @@ async def list_posts(
             preferred_end=post.preferred_end,
             players_needed=post.players_needed,
             level_required=post.level_required,
-            status=post.status.value,
+            status=_v(post.status),
             approval_required=post.approval_required,
             created_at=post.created_at,
             user_nickname=user_nickname, user_avatar=avatar,
@@ -303,7 +303,7 @@ async def create_post(
         preferred_end=post.preferred_end,
         players_needed=post.players_needed,
         level_required=post.level_required,
-        status=post.status.value,
+        status=_v(post.status),
         approval_required=post.approval_required,
         created_at=post.created_at,
         user_nickname=user.nickname or _fallback_nickname(user.id, user.phone),
@@ -324,7 +324,7 @@ async def update_post(
     db: AsyncSession = Depends(get_db),
 ):
     post_id = await resolve_activity_id(db, post_id, "post")
-    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
+    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -332,6 +332,15 @@ async def update_post(
         raise HTTPException(status_code=403, detail="Only post owner can update")
 
     update_data = req.model_dump(exclude_unset=True)
+    start = update_data.get("preferred_start", post.preferred_start)
+    end = update_data.get("preferred_end", post.preferred_end)
+    if start is not None and end is not None and end <= start:
+        raise HTTPException(status_code=422, detail="结束时间必须晚于开始时间")
+    if {"latitude", "longitude"} & update_data.keys():
+        latitude = update_data.get("latitude", post.latitude)
+        longitude = update_data.get("longitude", post.longitude)
+        if (latitude is None) != (longitude is None):
+            raise HTTPException(status_code=422, detail="活动地点经纬度须同时填写")
     if "booking_id" in update_data or "venue_id" in update_data:
         booking_id = update_data.get("booking_id", post.booking_id)
         venue_id = update_data.get("venue_id", post.venue_id)
@@ -344,6 +353,15 @@ async def update_post(
         venue = await db.get(Venue, post.venue_id)
         if venue:
             update_data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
+    approved = await db.scalar(select(func.count(MatchRegistration.id)).where(
+        MatchRegistration.post_id == post.id, MatchRegistration.status == RegistrationStatus.approved)) or 0
+    capacity = update_data.get("players_needed", post.players_needed)
+    if capacity < approved:
+        raise HTTPException(422, "人数不能少于已通过报名人数")
+    requested_status = update_data.get("status", _v(post.status))
+    if _v(post.status) == "closed" and requested_status != "closed":
+        raise HTTPException(409, "已关闭活动不能重新开放")
+    update_data["status"] = MatchPostStatus.closed if requested_status == "closed" else (MatchPostStatus.full if approved >= capacity else MatchPostStatus.open)
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -364,13 +382,13 @@ async def update_post(
         preferred_end=post.preferred_end,
         players_needed=post.players_needed,
         level_required=post.level_required,
-        status=post.status.value,
+        status=_v(post.status),
         approval_required=post.approval_required,
         created_at=post.created_at,
         user_nickname=user.nickname or _fallback_nickname(user.id, user.phone),
         user_avatar=user.avatar_url,
         club_name=club.name if club else None,
-        registration_count=0,
+        registration_count=approved,
         price=post.price,
         images=post.images,
         venue_id=post.venue_id, booking_id=post.booking_id,
@@ -378,7 +396,7 @@ async def update_post(
 
 
 @router.get("/{post_id}", response_model=PostDetail)
-async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
+async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Optional[User] = Depends(get_optional_user)):
     post_id = await resolve_activity_id(db, post_id, "post")
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
@@ -413,7 +431,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
     for r, r_nick, r_av, r_phone in reg_rows:
         r_nick = r_nick or _fallback_nickname(r.user_id, r_phone)
         registrations.append(RegistrationBrief(
-            id=r.id, user_id=r.user_id, message=r.message, status=r.status.value,
+            id=r.id, user_id=r.user_id, message=r.message, status=_v(r.status),
             user_nickname=r_nick, user_avatar=r_av,
         ))
 
@@ -445,7 +463,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         club = club_result.scalar_one_or_none()
         if club:
             cover_image = cover_image or club.cover_image
-            club_documents = club.documents
+            club_documents = club.documents if await can_view_club_documents(db, club, viewer) else None
 
     # Get user phone
     user_phone = None
@@ -454,7 +472,9 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
     )
     user_row = user_result.one_or_none()
     if user_row:
-        user_phone = user_row[0]
+        permitted = isinstance(viewer, User) and (viewer.id == post.user_id or _v(viewer.role) == "platform_admin" or any(
+            r.user_id == viewer.id and _v(r.status) == "approved" for r, *_ in reg_rows))
+        user_phone = user_row[0] if permitted else None
 
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
@@ -465,7 +485,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db)):
         preferred_end=post.preferred_end,
         players_needed=post.players_needed,
         level_required=post.level_required,
-        status=post.status.value,
+        status=_v(post.status),
         approval_required=post.approval_required,
         created_at=post.created_at,
         user_nickname=nickname or _fallback_nickname(post.user_id, phone), user_avatar=avatar,
@@ -588,9 +608,9 @@ async def review_registration(
         raise HTTPException(status_code=409, detail="活动已关闭，不能审核报名")
 
     result = await db.execute(
-        select(MatchRegistration).where(
+        select(MatchRegistration).join(User, MatchRegistration.user_id == User.id).where(
             MatchRegistration.post_id == post_id,
-            MatchRegistration.user_id == user_id,
+            User.public_id == user_id,
         )
     )
     reg = result.scalar_one_or_none()
@@ -623,7 +643,7 @@ async def review_registration(
     }
     if new_status in title_map:
         notif = Notification(
-            user_id=user_id,
+            user_id=reg.user_id,
             type=NotificationType.match,
             title=title_map[new_status],
             content=content_map[new_status] + (f"：{req.reason}" if req.reason else ""),
@@ -668,6 +688,9 @@ async def list_comments(
         raise HTTPException(status_code=404, detail="Post not found")
 
     # Top-level comments
+    total = await db.scalar(select(func.count(Comment.id)).where(
+        Comment.post_id == post_id, Comment.parent_id.is_(None),
+    )) or 0
     result = await db.execute(
         select(Comment, User.nickname, User.avatar_url)
         .join(User, Comment.user_id == User.id)
@@ -675,43 +698,36 @@ async def list_comments(
             Comment.post_id == post_id,
             Comment.parent_id.is_(None),
         )
-        .order_by(Comment.created_at.desc())
+        .order_by(Comment.created_at.desc(), Comment.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     rows = result.all()
 
+    from collections import defaultdict
+    from sqlalchemy.orm import aliased
+    parent_ids = [c.id for c, *_ in rows]
+    replies_by_parent = defaultdict(list)
+    reply_counts = {}
+    if parent_ids:
+        ranked = select(Comment, func.row_number().over(partition_by=Comment.parent_id,
+            order_by=(Comment.created_at, Comment.id)).label("reply_rank")).where(Comment.parent_id.in_(parent_ids)).subquery()
+        reply = aliased(Comment, ranked)
+        reply_rows = (await db.execute(select(reply, User.nickname, User.avatar_url)
+            .join(User, reply.user_id == User.id).where(ranked.c.reply_rank <= 3)
+            .order_by(reply.parent_id, reply.created_at, reply.id))).all()
+        for r, nickname, avatar in reply_rows:
+            replies_by_parent[r.parent_id].append(_comment_to_brief(r, nickname, avatar))
+        reply_counts = dict((await db.execute(select(Comment.parent_id, func.count(Comment.id))
+            .where(Comment.parent_id.in_(parent_ids)).group_by(Comment.parent_id))).all())
     items = []
     for comment, nickname, avatar in rows:
-        # Fetch up to 3 recent replies
-        reply_result = await db.execute(
-            select(Comment, User.nickname, User.avatar_url)
-            .join(User, Comment.user_id == User.id)
-            .where(
-                Comment.parent_id == comment.id,
-            )
-            .order_by(Comment.created_at.asc())
-            .limit(3)
-        )
-        reply_rows = reply_result.all()
-        replies = []
-        for r, r_nick, r_avatar in reply_rows:
-            replies.append(_comment_to_brief(r, r_nick, r_avatar))
-
-        # Count total replies
-        count_result = await db.execute(
-            select(func.count(Comment.id)).where(
-                Comment.parent_id == comment.id,
-            )
-        )
-        reply_count = count_result.scalar() or 0
-
         brief = _comment_to_brief(comment, nickname, avatar)
-        brief.reply_count = reply_count
-        brief.replies = replies
+        brief.reply_count = reply_counts.get(comment.id, 0)
+        brief.replies = replies_by_parent[comment.id]
         items.append(brief)
 
-    return PaginatedResponse(items=items, total=len(items), page=page, page_size=page_size)
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/{post_id}/comments")
@@ -778,30 +794,6 @@ async def create_comment(
             db.add(reply_notif)
 
     return _comment_to_brief(comment, current_user.nickname, current_user.avatar_url)
-
-
-@router.delete("/{post_id}")
-async def delete_post(
-    post_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    post_id = await resolve_activity_id(db, post_id, "post")
-    result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
-    post = result.scalar_one_or_none()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
-        raise HTTPException(status_code=403, detail="Only post owner can delete")
-    # Delete related data
-    await db.execute(delete(MatchRegistration).where(MatchRegistration.post_id == post_id))
-    # Replies reference their parent comment; delete them before root comments.
-    await db.execute(delete(Comment).where(
-        Comment.post_id == post_id, Comment.parent_id.is_not(None)
-    ))
-    await db.execute(delete(Comment).where(Comment.post_id == post_id))
-    await db.delete(post)
-    return {"msg": "ok"}
 
 
 @router.post("/{post_id}/close")

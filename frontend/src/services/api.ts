@@ -10,6 +10,7 @@ export interface PageResult<T> {
 }
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 let refreshPromise: Promise<void> | null = null;
+let sessionGeneration = 0;
 
 function detailMessage(data: any) {
   const detail = data?.detail;
@@ -20,6 +21,8 @@ function detailMessage(data: any) {
 }
 
 export function clearTokens() {
+  sessionGeneration++;
+  refreshPromise = null;
   uni.removeStorageSync(SESSION_CONTEXT_KEY);
   uni.removeStorageSync("access_token");
   uni.removeStorageSync("refresh_token");
@@ -29,11 +32,13 @@ export function clearTokens() {
 }
 
 async function refreshTokens() {
+  const generation = sessionGeneration;
   const refreshToken = uni.getStorageSync("refresh_token");
   if (!refreshToken) throw new Error("登录已失效");
   const accessToken = uni.getStorageSync("access_token");
   const context = uni.getStorageSync(SESSION_CONTEXT_KEY);
-  const unchanged = () => uni.getStorageSync("refresh_token") === refreshToken
+  const unchanged = () => generation === sessionGeneration
+    && uni.getStorageSync("refresh_token") === refreshToken
     && uni.getStorageSync("access_token") === accessToken
     && uni.getStorageSync(SESSION_CONTEXT_KEY) === context;
   let tokens: any;
@@ -106,15 +111,26 @@ function rawRequest<T>(
 }
 
 async function authenticated<T>(operation: () => Promise<T>, skipAuth = false, preservePage = false): Promise<T> {
+  const generation = sessionGeneration;
+  const assertSameSession = () => {
+    if (generation !== sessionGeneration) throw new Error("登录会话已变化，请重新加载");
+  };
   try { return await operation(); }
   catch (error: any) {
     if (error.statusCode !== 401 || skipAuth) throw error;
+    assertSameSession();
     try {
-      if (!refreshPromise)
-        refreshPromise = refreshTokens().finally(() => { refreshPromise = null; });
+      if (!refreshPromise) {
+        const pending = refreshTokens().finally(() => {
+          if (refreshPromise === pending) refreshPromise = null;
+        });
+        refreshPromise = pending;
+      }
       await refreshPromise;
+      assertSameSession();
       return await operation();
     } catch (refreshError: any) {
+      assertSameSession();
       if (preservePage) {
         if (refreshError.statusCode === 401) throw new Error("登录已过期，请重新登录后重试；已填内容已保留");
         throw refreshError;
@@ -155,7 +171,12 @@ export async function listAll<T = any>(url: string): Promise<T[]> {
 export function currentRoute() {
   const pages = getCurrentPages();
   const page = pages[pages.length - 1] as any;
-  return page ? `/${page.route}` : "/pages/home/index";
+  if (!page) return "/pages/home/index";
+  const query = Object.entries(page.options || page.$page?.options || {})
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  return `/${page.route}${query ? `?${query}` : ""}`;
 }
 
 export function uploadFile(filePath: string, fileType = "upload"): Promise<{ url: string }> {

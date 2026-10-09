@@ -52,3 +52,5 @@ scripts/upload-miniprogram.sh
 
 # WorkBuddy local memory (not for version control)
 .workbuddy/
+
+backend/private_uploads/

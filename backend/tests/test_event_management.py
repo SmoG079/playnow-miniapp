@@ -10,6 +10,49 @@ from tests.test_tournaments import db, event, register
 POST = dict(title="约球", preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", players_needed=2, price=0)
 TOURNAMENT = dict(title="比赛", club_id=1, address="网球公园", max_participants=8, start_time="2026-11-01T09:00:00+08:00", end_time="2026-11-01T17:00:00+08:00")
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    {"preferred_start": "12:00"}, {"preferred_end": "08:00"},
+    {"preferred_start": "12:00", "preferred_end": "11:00"},
+    {"latitude": 32.4},
+])
+async def test_post_partial_edits_validate_merged_time_and_coordinates(db, payload):
+    from fastapi import HTTPException
+    from app.schemas.schemas import PostUpdate
+    owner = await db.get(User, 2)
+    post = await posts.create_post(PostCreate(**POST), owner, db)
+    with pytest.raises(HTTPException) as exc:
+        await posts.update_post(post.id, PostUpdate(**payload), owner, db)
+    assert exc.value.status_code == 422
+    updated = await posts.update_post(post.id, PostUpdate(preferred_end="12:00"), owner, db)
+    assert updated.preferred_end.hour == 12
+
+
+@pytest.mark.parametrize("payload", [{"price": -1}, {"status": "invalid"}, {"status": None}, {"title": "x" * 257}])
+def test_invalid_post_edits_are_rejected_before_database(payload):
+    from app.schemas.schemas import PostUpdate
+    with pytest.raises(ValidationError):
+        PostUpdate(**payload)
+
+
+@pytest.mark.asyncio
+async def test_comment_total_covers_all_pages_without_counting_replies(db):
+    from app.models.models import Comment
+    from datetime import datetime
+    owner = await db.get(User, 2)
+    post = await posts.create_post(PostCreate(**POST), owner, db)
+    comments = [Comment(post_id=post.id, user_id=owner.id, content=f"评论{i}",
+                        created_at=datetime(2026, 10, 8)) for i in range(23)]
+    db.add_all(comments)
+    await db.flush()
+    db.add(Comment(post_id=post.id, user_id=owner.id, content="回复", parent_id=comments[0].id))
+    first = await posts.list_comments(post.id, 1, 20, db)
+    second = await posts.list_comments(post.id, 2, 20, db)
+    assert first.total == second.total == 23
+    assert len(first.items) == 20 and len(second.items) == 3
+    assert len({c.id for c in first.items + second.items}) == 23
+
 @pytest.mark.parametrize("schema,data,field", [(PostCreate,POST,f) for f in ("title","preferred_date","preferred_start","preferred_end","players_needed")]+[(TournamentCreate,TOURNAMENT,f) for f in ("title","start_time","end_time","max_participants","address")])
 @pytest.mark.parametrize("missing", [True, False])
 def test_missing_or_null_required_fields_rejected_before_database(schema, data, field, missing):

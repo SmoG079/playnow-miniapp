@@ -97,6 +97,26 @@ describe("session token state", () => {
     expect(storage.has("access_token")).toBe(false);
     expect(session.user).toBeNull();
   });
+  it("旧账号延迟的 401 不会以新账号重试写入或清空新登录", async () => {
+    let respond: any;
+    (uni as any).request = vi.fn((options: any) => { respond = options.success; });
+    const { useSession } = await import("../src/stores/session");
+    const { request } = await import("../src/services/api");
+    const session = useSession();
+    session.setTokens("old", "old-refresh");
+    const pending = request("/posts", { method: "POST", data: { title: "旧账号活动" } });
+    session.setTokens("new", "new-refresh");
+    respond({ statusCode: 401, data: { detail: "expired" } });
+    await expect(pending).rejects.toThrow("登录会话已变化");
+    expect(uni.request).toHaveBeenCalledOnce();
+    expect(storage.get("access_token")).toBe("new");
+    expect(uni.reLaunch).not.toHaveBeenCalled();
+  });
+  it("登录恢复地址保留活动编号及查询参数", async () => {
+    vi.stubGlobal("getCurrentPages", () => [{ route: "pages/common/post-detail", options: { id: 42, title: "约球 & 报名" } }]);
+    const { currentRoute } = await import("../src/services/api");
+    expect(currentRoute()).toBe(`/pages/common/post-detail?id=42&title=${encodeURIComponent("约球 & 报名")}`);
+  });
   it.each([
     ["user", [], true, false],
     ["user", [7], true, false],

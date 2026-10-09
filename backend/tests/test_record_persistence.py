@@ -20,6 +20,88 @@ from app.schemas.schemas import (
 
 
 @pytest.mark.asyncio
+async def test_daily_slots_use_club_hours_half_hours_and_preserve_existing_intervals(db, monkeypatch):
+    from datetime import date, timedelta
+    from app.models.models import VenueTimeSlot
+    from app.tasks import tasks
+
+    class ShanghaiMidnight(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 0, 15, tzinfo=tz)
+
+    monkeypatch.setattr(tasks, "datetime", ShanghaiMidnight)
+    club = await db.get(Club, 1)
+    club.opening_time, club.closing_time = time(9, 30), time(11)
+    (await db.get(Venue, 2)).status = "closed"
+    db.add(VenueTimeSlot(venue_id=1, date=date(2030, 1, 2), start_time=time(9, 30), end_time=time(10, 30)))
+    await db.commit()
+    monkeypatch.setattr(tasks, "async_session_factory", async_sessionmaker(db.bind, expire_on_commit=False))
+    assert await tasks._generate_daily_slots_impl() == 7
+    assert await tasks._generate_daily_slots_impl() == 0
+    slots = (await db.execute(select(VenueTimeSlot).order_by(VenueTimeSlot.date, VenueTimeSlot.start_time))).scalars().all()
+    assert len(slots) == 8 and all(s.venue_id == 1 for s in slots)
+    assert [(s.start_time, s.end_time) for s in slots[:2]] == [(time(9, 30), time(10, 30)), (time(10, 30), time(11))]
+    assert slots[-1].date == date(2030, 1, 2) + timedelta(days=2)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_keeps_legacy_and_all_json_order_slots(db, monkeypatch):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from app.models.models import VenueTimeSlot, BookingOrder
+    from app.tasks import tasks
+
+    old = datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=40)
+    for ident in range(1, 6):
+        db.add(VenueTimeSlot(id=ident, venue_id=1, date=old, start_time=time(ident), end_time=time(ident, 30)))
+    await db.flush()
+    legacy = await db.get(BookingOrder, 1)
+    legacy.slot_id = 1
+    legacy.status = "cancelled"
+    db.add(BookingOrder(order_no="review-multi", user_id="1", venue_id=1, club_id=1,
+                        slot_id=2, slot_ids=[2, 3], amount=100, status="cancelled"))
+    (await db.get(VenueTimeSlot, 5)).status = "booked"
+    await db.commit()
+    monkeypatch.setattr(tasks, "async_session_factory", async_sessionmaker(db.bind, expire_on_commit=False))
+    assert await tasks._cleanup_old_slots_impl() == 1
+    assert set((await db.execute(select(VenueTimeSlot.id))).scalars()) == {1, 2, 3, 5}
+    assert await tasks._cleanup_old_slots_impl() == 0
+
+
+@pytest.mark.parametrize("payload", [
+    {"price_per_hour": -1}, {"price_per_hour": 0}, {"max_capacity": 0},
+    {"name": None}, {"status": None}, {"price_per_hour": None}, {"status": "booked"},
+])
+def test_invalid_venue_edits_are_rejected_before_database(payload):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        VenueUpdate(**payload)
+
+
+@pytest.mark.asyncio
+async def test_club_daily_stats_use_shanghai_day_for_utc_timestamps(db, monkeypatch):
+    from app.models.models import BookingOrder
+
+    class ShanghaiMorning(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2030, 1, 2, 1, tzinfo=tz)
+
+    monkeypatch.setattr(clubs, "datetime", ShanghaiMorning)
+    (await db.get(BookingOrder, 1)).created_at = datetime(2029, 1, 1)
+    for ident, created in enumerate([
+        datetime(2030, 1, 1, 15, 59, 59), datetime(2030, 1, 1, 16),
+        datetime(2030, 1, 2, 15, 59, 59), datetime(2030, 1, 2, 16),
+    ]):
+        db.add(BookingOrder(order_no=f"daily-stats-{ident}", user_id="1", club_id=1,
+                            venue_id=1, amount=10, status="paid", created_at=created))
+    await db.flush()
+    result = await clubs.club_stats(1, await db.get(User, 1), db)
+    assert result.today_orders == 2 and result.today_revenue == 20
+
+
+@pytest.mark.asyncio
 async def test_personal_records_paginate_and_isolate_accounts_without_local_state(db):
     db.add_all([Activity(id=i, kind="post") for i in range(1, 54)])
     await db.flush()
@@ -62,7 +144,7 @@ async def test_cancel_keeps_record_reopens_capacity_and_can_register_again(db):
     owned = await users.my_posts(1, 50, await db.get(User, 2), db)
     assert owned.items[0].registration_count == 0
     with pytest.raises(HTTPException) as exc:
-        await posts.review_registration(1, 1, ReviewRegistrationRequest(status="approved"),
+        await posts.review_registration(1, user.public_id, ReviewRegistrationRequest(status="approved"),
                                         await db.get(User, 2), db)
     assert exc.value.status_code == 409
     await posts.register_post(1, RegisterPostRequest(message="重新报名"), user, db)
@@ -89,11 +171,16 @@ async def test_venue_configuration_survives_new_session_and_partial_edit(db):
 @pytest.mark.asyncio
 async def test_club_data_round_trip_and_edit_preserves_other_fields(db):
     user = await db.get(User, 1)
+    from app.models.models import PrivateUpload
+    from app.core.config import get_settings
+    filename = "review-private-rules.pdf"
+    db.add(PrivateUpload(id=filename, user_id=user.id, backend="local", content_type="application/pdf"))
+    await db.flush()
     created = await clubs.create_club(ClubCreate(
         name="新俱乐部", sport_types=["tennis"], rules="请穿网球鞋",
         description="介绍", contact_phone="13800138000", address="地址",
         opening_time="09:30", closing_time="20:30", images=["https://test/image.png"],
-        documents=[{"name": "规则", "url": "https://test/rules.pdf"}],
+        documents=[{"name": "规则", "url": f"{get_settings().PUBLIC_BASE_URL}/api/v1/media/doc/{filename}"}],
     ), user, db)
     assert (created.rules, created.opening_time, created.closing_time) == ("请穿网球鞋", "09:30", "20:30")
     assert created.approval_status == "pending" and user.role == UserRole.user

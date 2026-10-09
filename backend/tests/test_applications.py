@@ -65,7 +65,7 @@ async def test_post_reviews_are_creator_only_and_repeated_actions_are_rejected(d
     await api.review_application('post',r.id,api.ClubReview(approved=True,reason='欢迎'),await db.get(User,'2'),db)
     assert r.status.value=='approved' and r.review_reason=='欢迎'
     assert (await inbox(db,'2')).total==0 and (await inbox(db,'2','done')).items[0]['reason']=='欢迎'
-    with pytest.raises(HTTPException) as error: await posts.review_registration(100,'3',ReviewRegistrationRequest(status='rejected'),await db.get(User,'2'),db)
+    with pytest.raises(HTTPException) as error: await posts.review_registration(100,(await db.get(User,'3')).public_id,ReviewRegistrationRequest(status='rejected'),await db.get(User,'2'),db)
     assert error.value.status_code==409
 
 @pytest.mark.asyncio

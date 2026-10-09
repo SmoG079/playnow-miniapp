@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+import { businessDate } from "../../utils/date";
 const selectedCity = ref("");
 const clubId = ref(""),
   club = ref<any>(null),
@@ -24,39 +25,42 @@ const total = computed(() =>
   selected.value.reduce((n, s) => n + Number(s.price || 0), 0).toFixed(2),
 );
 function init() {
-  const d = new Date();
+  const now = Date.now();
   dates.value = [0, 1, 2].map((i) => {
-    const x = new Date(d);
-    x.setDate(x.getDate() + i);
+    const value = businessDate(now + i * 86400000);
     return {
       label:
         i === 0
           ? "今天"
           : i === 1
             ? "明天"
-            : `${x.getMonth() + 1}/${x.getDate()}`,
-      value: `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`,
+            : `${Number(value.slice(5, 7))}/${Number(value.slice(8, 10))}`,
+      value,
     };
   });
   date.value = dates.value[0].value;
 }
+let loadVersion = 0;
 async function load() {
+  const version = ++loadVersion;
   loading.value = true;
   selected.value = [];
+  rows.value = [];
   try {
     const [c, r] = await Promise.all([
       request<any>(`/clubs/${clubId.value}`),
       request<any>(`/clubs/${clubId.value}/venue-slots?date=${date.value}`),
     ]);
+    if (version !== loadVersion) return;
     club.value = c;
     const allVenues = r.venues || c.venues || [];
     venues.value = selectedCity.value ? allVenues.filter((v: any) => v.city === selectedCity.value) : allVenues;
     const ids = new Set(venues.value.map(v => v.id));
     rows.value = (r.rows || []).map((row: any) => ({ ...row, cells: row.cells.filter((cell: any) => ids.has(cell.venue_id)) }));
   } catch (e: any) {
-    uni.showToast({ title: e.message, icon: "none" });
+    if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
 }
 onLoad((q) => {
@@ -70,6 +74,7 @@ function selectedCell(c: any) {
   return selected.value.some((s) => s.slot_id === c.slot_id);
 }
 function choose(c: any) {
+  if (loading.value) return;
   if (c.status !== "available" || !c.slot_id) return;
   const idx = selected.value.findIndex((s) => s.slot_id === c.slot_id);
   if (idx >= 0) {
@@ -91,6 +96,7 @@ function courtLocation(v: any) {
   else uni.showModal({ title: v.name, content: v.address || "球场位置尚未补充，请联系管理员", showCancel: false });
 }
 function book() {
+  if (loading.value) return;
   if (duration.value < 60)
     return uni.showToast({ title: "请至少选择 1 小时", icon: "none" });
   const first = selected.value[0],

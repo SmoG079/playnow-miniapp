@@ -11,7 +11,7 @@ const s = useSession(),
   booking = ref<any>(null),
   paying = ref(false);
 const slots = computed(() =>
-  String(q.value.slot_ids || q.value.slot_id || "")
+  String(q.value.slot_ids || "")
     .split(",")
     .filter(Boolean)
     .map(Number),
@@ -33,6 +33,10 @@ onLoad(async (x) => {
 });
 async function pay() {
   if (paying.value) return;
+  if (slots.value.length < 2 || slots.value.some((id) => !Number.isInteger(id) || id <= 0)) {
+    uni.showToast({ title: "请选择至少两个连续时段", icon: "none" });
+    return;
+  }
   if (!s.user?.phone) {
     uni.showModal({
       title: "需要手机号",
@@ -48,10 +52,7 @@ async function pay() {
       booking.value ||
       (await request("/bookings", {
         method: "POST",
-        data:
-          slots.value.length > 1
-            ? { slot_ids: slots.value }
-            : { slot_id: slots.value[0] },
+        data: { slot_ids: slots.value },
       }));
     await request(`/bookings/${booking.value.id}/pay`, { method: "POST" });
     uni.showToast({ title: "支付成功", icon: "success" });
@@ -73,8 +74,9 @@ async function pay() {
         url: `/pages/booking/success?booking_id=${booking.value.id}&order_no=${booking.value.order_no}`,
       });
   } catch (e: any) {
+    if (e.statusCode === 409) booking.value = null;
     uni.showToast({
-      title: e.statusCode === 409 ? "该时段已被锁定" : e.message || "支付失败",
+      title: e.message || "支付失败",
       icon: "none",
     });
   } finally {

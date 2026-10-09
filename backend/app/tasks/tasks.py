@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone, date, time, timedelta
+from zoneinfo import ZoneInfo
 from sqlalchemy import select, update, delete
 from app.core.config import get_settings
 from app.core.database import async_session_factory
@@ -17,111 +18,59 @@ from app.models.models import (
 from app.services.payment_callback import process_callback
 from app.services.settlement import _to_cents
 from app.tasks.worker import celery_app
-from asgiref.sync import async_to_sync
+from app.tasks.runtime import run_async_task, task_session_factory
 
 logger = logging.getLogger(__name__)
 
 
 async def _release_expired_locks_impl():
-    """Release venue time slots that have been locked but not paid within TTL."""
-    settings = get_settings()
-    released_count = 0
-    async with async_session_factory() as session:
-        now = datetime.utcnow()  # UTC naive (consistent with DB timestamp convention)
-        cutoff = now - timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS)
-        result = await session.execute(
-            select(VenueTimeSlot).where(
-                VenueTimeSlot.status == SlotStatus.locked,
-                VenueTimeSlot.locked_at.isnot(None),
-                VenueTimeSlot.locked_at <= cutoff,
-            )
-        )
-        expired_slots = result.scalars().all()
-
-        for slot in expired_slots:
-            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            # P0-8: Only release lock if we know who owns it, BEFORE clearing locked_by
-            owner_id = slot.locked_by
-            if owner_id is not None:
-                await release_lock(lock_key, str(owner_id))
-
-            slot.status = SlotStatus.available
-            slot.locked_by = None
-            slot.locked_at = None
-
-            # Cancel pending bookings associated with expired slots
-            expired_slot_ids = {slot.id for slot in expired_slots}
-            pending_bookings_result = await session.execute(
-                select(BookingOrder).where(BookingOrder.status == OrderStatus.pending)
-            )
-            for booking in pending_bookings_result.scalars().all():
-                booking_slot_ids = booking.slot_ids or ([booking.slot_id] if booking.slot_id else [])
-                if any(sid in expired_slot_ids for sid in booking_slot_ids):
-                    booking.status = OrderStatus.cancelled
-                    booking.cancel_reason = "Payment timeout"
-            released_count += 1
-
+    from app.services.booking_locks import release_order_slots
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        cutoff = datetime.utcnow() - timedelta(seconds=get_settings().BOOKING_LOCK_TTL_SECONDS)
+        ids = (await session.execute(select(BookingOrder.id).where(
+            BookingOrder.business_type == "booking", BookingOrder.status == OrderStatus.pending,
+            BookingOrder.created_at <= cutoff).order_by(BookingOrder.id))).scalars().all()
+        released = 0
+        for ident in ids:
+            order = (await session.execute(select(BookingOrder).where(BookingOrder.id == ident)
+                .with_for_update().execution_options(populate_existing=True))).scalar_one()
+            if _v(order.status) != "pending" or order.created_at > cutoff:
+                continue
+            slots = await release_order_slots(session, order)
+            released += len(slots)
+            order.status = OrderStatus.cancelled
+            order.cancel_reason = "Payment timeout"
+            order.cancel_time = datetime.utcnow()
         await session.commit()
-        return released_count
+        return released
 
 
 @celery_app.task(name="app.tasks.tasks.release_expired_locks")
 def release_expired_locks():
-    released = async_to_sync(_release_expired_locks_impl)()
+    released = run_async_task(_release_expired_locks_impl)
     return f"Released {released} expired locks"
 
 
 async def _generate_daily_slots_impl():
-    """Generate time slots for all active venues for the next 7 days."""
-    async with async_session_factory() as session:
-        from app.models.models import Venue, VenueStatus
-
-        result = await session.execute(
-            select(Venue).where(Venue.status == VenueStatus.active)
-        )
-        venues = result.scalars().all()
-
-        created_total = 0
-        today = date.today()
-        for venue in venues:
-            opening = venue.opening_time or time(8, 0)
-            closing = venue.closing_time or time(22, 0)
-            interval = venue.slot_interval_minutes or 60
-
-            for day_offset in range(7):
-                current_date = today + timedelta(days=day_offset)
-                slot_start = datetime.combine(current_date, opening)
-                slot_end = datetime.combine(current_date, closing)
-
-                while slot_start + timedelta(minutes=interval) <= slot_end:
-                    next_time = slot_start + timedelta(minutes=interval)
-                    existing = await session.execute(
-                        select(VenueTimeSlot).where(
-                            VenueTimeSlot.venue_id == venue.id,
-                            VenueTimeSlot.date == current_date,
-                            VenueTimeSlot.start_time == slot_start.time(),
-                        )
-                    )
-                    if not existing.scalars().first():
-                        slot = VenueTimeSlot(
-                            venue_id=venue.id,
-                            date=current_date,
-                            start_time=slot_start.time(),
-                            end_time=next_time.time(),
-                            status=SlotStatus.available,
-                        )
-                        session.add(slot)
-                        created_total += 1
-                    slot_start = next_time
-
+    from app.models.models import Venue, VenueStatus
+    from app.services.slots import ensure_slots
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        venues = (await session.execute(select(Venue.id).where(Venue.status == VenueStatus.active)
+            .order_by(Venue.id))).scalars().all()
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        total = 0
+        for ident in venues:
+            for offset in range(3):
+                created, _ = await ensure_slots(session, ident, today + timedelta(days=offset))
+                total += created
         await session.commit()
-        return created_total
+        return total
 
 
 async def _cleanup_old_slots_impl():
     """Delete available slots older than 30 days (not referenced by bookings)."""
-    async with async_session_factory() as session:
-        cutoff = date.today() - timedelta(days=30)
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        cutoff = datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=30)
         result = await session.execute(
             select(VenueTimeSlot.id).where(
                 VenueTimeSlot.status == SlotStatus.available,
@@ -131,6 +80,19 @@ async def _cleanup_old_slots_impl():
         ids = [r[0] for r in result.all()]
         if not ids:
             return 0
+        # JSON slot_ids has no foreign key: protect every slot in historical
+        # orders, including cancelled orders and legacy single-slot bookings.
+        referenced = set()
+        orders = await session.stream(select(BookingOrder.slot_id, BookingOrder.slot_ids))
+        async for slot_id, slot_ids in orders:
+            if slot_id is not None:
+                referenced.add(slot_id)
+            referenced.update(slot_ids or [])
+        from app.models.models import BookingSlot
+        detail_ids = await session.stream(select(BookingSlot.slot_id))
+        async for row in detail_ids:
+            referenced.add(row[0])
+        ids = [slot_id for slot_id in ids if slot_id not in referenced]
         # Delete in batches of 1000
         count = 0
         for i in range(0, len(ids), 1000):
@@ -143,13 +105,13 @@ async def _cleanup_old_slots_impl():
 
 @celery_app.task(name="app.tasks.tasks.cleanup_old_slots")
 def cleanup_old_slots():
-    count = async_to_sync(_cleanup_old_slots_impl)()
+    count = run_async_task(_cleanup_old_slots_impl)
     return f"Cleaned up {count} old slots"
 
 
 @celery_app.task(name="app.tasks.tasks.generate_daily_slots")
 def generate_daily_slots():
-    created = async_to_sync(_generate_daily_slots_impl)()
+    created = run_async_task(_generate_daily_slots_impl)
     return f"Generated {created} slots"
 
 
@@ -158,7 +120,7 @@ async def _execute_pending_settlements_impl():
     from app.services.settlement import execute_settlement, query_settlement_status
 
     settings = get_settings()
-    async with async_session_factory() as session:
+    async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
         result = await session.execute(
             select(SettlementRecord.id)
@@ -195,7 +157,7 @@ async def _execute_pending_settlements_impl():
 
 @celery_app.task(name="app.tasks.tasks.execute_pending_settlements")
 def execute_pending_settlements():
-    return async_to_sync(_execute_pending_settlements_impl)()
+    return run_async_task(_execute_pending_settlements_impl)
 
 
 def _refund_backoff_seconds(attempt: int) -> int:
@@ -273,7 +235,7 @@ async def _retry_failed_refunds_impl():
     from app.core.wechat_pay import get_wxpay
 
     settings = get_settings()
-    async with async_session_factory() as session:
+    async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
         result = await session.execute(
             select(RefundRecord)
@@ -363,14 +325,14 @@ async def _retry_failed_refunds_impl():
 
 @celery_app.task(name="app.tasks.tasks.retry_failed_refunds")
 def retry_failed_refunds():
-    return async_to_sync(_retry_failed_refunds_impl)()
+    return run_async_task(_retry_failed_refunds_impl)
 
 
 async def _poll_processing_refunds_impl():
     """Poll WeChat for refunds stuck in PROCESSING status."""
     from app.core.wechat_pay import get_wxpay
 
-    async with async_session_factory() as session:
+    async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
         one_min_ago = now - timedelta(minutes=1)
         result = await session.execute(
@@ -416,12 +378,12 @@ async def _poll_processing_refunds_impl():
 
 @celery_app.task(name="app.tasks.tasks.poll_processing_refunds")
 def poll_processing_refunds():
-    return async_to_sync(_poll_processing_refunds_impl)()
+    return run_async_task(_poll_processing_refunds_impl)
 
 
 async def _process_wx_callback_impl(event_type: str, data: dict):
     """Process WeChat Pay callback asynchronously after immediate acknowledgment."""
-    async with async_session_factory() as session:
+    async with (task_session_factory.get() or async_session_factory)() as session:
         try:
             result = await process_callback(event_type, data, session)
             await session.commit()
@@ -434,10 +396,10 @@ async def _process_wx_callback_impl(event_type: str, data: dict):
 
 @celery_app.task(name="app.tasks.tasks.process_wx_callback", acks_late=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def process_wx_callback(event_type: str, data: dict):
-    return async_to_sync(_process_wx_callback_impl)(event_type, data)
+    return run_async_task(_process_wx_callback_impl, event_type, data)
 
 
 @celery_app.task(name="app.tasks.tasks.maintain_tournaments")
 def maintain_tournaments():
     from app.services.tournament_maintenance import maintain
-    return async_to_sync(maintain)()
+    return run_async_task(maintain)

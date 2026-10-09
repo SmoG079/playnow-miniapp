@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
+import { onPullDownRefresh, onReachBottom, onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
 import DiscoveryCityButton from "../../components/DiscoveryCityButton.vue";
 import AppShell from "../../components/AppShell.vue";
@@ -14,22 +14,50 @@ const tab = ref(0), mode = ref(0), date = ref(""), ntrp = ref(0), sort = ref(0);
 const posts = ref<any[]>([]), tournaments = ref<any[]>([]), loading = ref(false);
 const types = ["全部约球", "自由约球", "定场约球"];
 let loadVersion = 0;
+const pages = [1, 1], hasMore = [false, false];
 const visiblePosts = computed(() => posts.value.filter(p => p.status !== "closed"));
+function listingPath(kind: number, page: number) {
+  const extra = discoveryQuery(location.city, sortValues[sort.value], date.value, location.latitude, location.longitude);
+  return kind === 0
+    ? `/posts?page=${page}&page_size=20&${extra}&activity_type=${["all","free","venue"][mode.value]}${ntrp.value ? "&ntrp_levels=" + levelOptions[ntrp.value] : ""}`
+    : `/tournaments?status=open&page=${page}&page_size=20&${extra}`;
+}
+function canLoadMore(result: PageResult<any>, count: number) {
+  return typeof result.total === "number" ? count < result.total : result.items.length === 20;
+}
 async function load() {
   const version = ++loadVersion;
   posts.value = []; tournaments.value = [];
+  pages.fill(1); hasMore.fill(false);
   if (!location.city) { loading.value = false; return; }
   loading.value = true;
   try {
-    const extra = discoveryQuery(location.city, sortValues[sort.value], date.value, location.latitude, location.longitude);
     const [p, t] = await Promise.all([
-      request<PageResult<any>>(`/posts?page=1&page_size=20&${extra}&activity_type=${["all","free","venue"][mode.value]}${ntrp.value ? "&ntrp_levels=" + levelOptions[ntrp.value] : ""}`),
-      request<PageResult<any>>(`/tournaments?status=open&page=1&page_size=20&${extra}`),
+      request<PageResult<any>>(listingPath(0, 1)),
+      request<PageResult<any>>(listingPath(1, 1)),
     ]);
     if (version !== loadVersion) return;
     posts.value = p.items || []; tournaments.value = t.items || [];
+    hasMore[0] = canLoadMore(p, posts.value.length);
+    hasMore[1] = canLoadMore(t, tournaments.value.length);
   } catch (e: any) {
     if (version === loadVersion) uni.showToast({ title: e.message || "加载失败", icon: "none" });
+  } finally { if (version === loadVersion) loading.value = false; }
+}
+async function loadMore() {
+  const kind = tab.value;
+  if (loading.value || !hasMore[kind] || !location.city) return;
+  const version = loadVersion, page = pages[kind] + 1;
+  loading.value = true;
+  try {
+    const result = await request<PageResult<any>>(listingPath(kind, page));
+    if (version !== loadVersion) return;
+    const target = kind === 0 ? posts : tournaments;
+    target.value = [...target.value, ...(result.items || [])];
+    pages[kind] = page;
+    hasMore[kind] = canLoadMore(result, page * 20);
+  } catch (error: any) {
+    if (version === loadVersion) uni.showToast({ title: error.message || "加载失败", icon: "none" });
   } finally { if (version === loadVersion) loading.value = false; }
 }
 async function locateCity() {
@@ -64,6 +92,7 @@ onShow(async () => {
   await load();
 });
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
+onReachBottom(loadMore);
 </script>
 <template>
   <AppShell active="home"

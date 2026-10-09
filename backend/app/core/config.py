@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from functools import lru_cache
 
 
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     OSS_ACCESS_KEY_ID: str = ""
     OSS_ACCESS_KEY_SECRET: str = ""
     OSS_BUCKET_NAME: str = ""
+    COS_PRIVATE_BUCKET_NAME: str = ""  # Separate bucket with public access disabled for certification materials.
     COS_REGION: str = "ap-shanghai"
     # 仅当使用 STS 临时凭证时需要（永久密钥留空）
     OSS_SESSION_TOKEN: str = ""
@@ -85,6 +87,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_BOOKING_PER_MINUTE: int = 10
     RATE_LIMIT_CANCEL_PER_MINUTE: int = 10
     RATE_LIMIT_REFUND_PER_MINUTE: int = 5
+
+    @model_validator(mode="after")
+    def require_production_secret(self):
+        if not self.DEBUG and (self.JWT_SECRET_KEY.startswith("generate-a-random-secret-key-here") or len(self.JWT_SECRET_KEY) < 32):
+            raise ValueError("生产 JWT_SECRET_KEY 必须显式配置为至少 32 字符的独立随机密钥")
+        return self
 
     class Config:
         env_file = ".env"

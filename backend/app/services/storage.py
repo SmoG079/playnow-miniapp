@@ -3,7 +3,7 @@
 配置与注意事项见 docs/cos-media-storage.md。
 
 设计取舍：COS 密钥未配置时**回退本地磁盘**而非直接报错。
-- 生产 .env 已配置 `OSS_ACCESS_KEY_ID/SECRET/BUCKET_NAME`，因此生产一律走 COS；
+- 生产应配置 `OSS_ACCESS_KEY_ID/SECRET/BUCKET_NAME`，实际后端取决于配置；认证材料另需独立私有桶；
 - CI（项目惯例不注入云凭证）与本地开发无需密钥即可跑通上传链路，
   `tests/http_fullflow.py` 会真实 GET 返回的 URL 并比对字节，回退后依然成立；
 - 回退时每次上传都打 WARNING，避免生产密钥失效后被静默降级而无人察觉。
@@ -29,16 +29,19 @@ MIME = {
     ".webp": "image/webp",
     ".gif": "image/gif",
     ".mp4": "video/mp4",
+    ".pdf": "application/pdf",
 }
 
 # 对象前缀白名单，见 docs/cos-media-storage.md
-# doc/ 存放俱乐部认证材料等敏感文件，当前与图片同样公开可读，后续应加桶策略收紧
+# doc/ 仅走私有上传；已公开的旧 COS 对象需另行迁移并撤销公读权限。
 PREFIXES = {"avatar", "court", "post", "video", "doc", "upload"}
 
 # 回退目录，同时也是 /uploads 静态挂载的根目录（main.py 复用此常量，避免两处路径不一致）
 LOCAL_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 )
+
+PRIVATE_LOCAL_DIR = os.path.join(os.path.dirname(LOCAL_DIR), "private_uploads")
 
 _client: Optional[CosS3Client] = None
 
@@ -100,6 +103,8 @@ def _local_path(key: str) -> str:
 
 def put_object(key: str, content: bytes, ext: str = "") -> str:
     """上传对象并返回 URL；活动图片强制 COS，其余类型兼容本地回退。"""
+    if key.startswith("doc/"):
+        raise StorageUnavailable("认证材料必须通过私有上传接口")
     if not is_configured():
         if key.startswith("post/"):
             raise StorageUnavailable("活动图片存储暂不可用，请稍后重试")
@@ -121,6 +126,31 @@ def put_object(key: str, content: bytes, ext: str = "") -> str:
         ContentType=MIME.get(ext.lower(), "application/octet-stream"),
     )
     return public_url(key)
+
+
+
+def put_private_document(filename, content, ext):
+    key = f"doc/{filename}"
+    if is_configured():
+        if not settings.COS_PRIVATE_BUCKET_NAME or settings.COS_PRIVATE_BUCKET_NAME == settings.OSS_BUCKET_NAME:
+            raise StorageUnavailable("认证材料需配置独立私有 COS 桶")
+        _get_client().put_object(Bucket=settings.COS_PRIVATE_BUCKET_NAME, Key=key, Body=content,
+            ACL="private", ContentType=MIME[ext])
+        return "cos"
+    os.makedirs(PRIVATE_LOCAL_DIR, mode=0o700, exist_ok=True)
+    descriptor = os.open(os.path.join(PRIVATE_LOCAL_DIR, filename), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as f:
+        f.write(content)
+    return "local"
+
+
+def read_private_document(filename):
+    stream = _get_client().get_object(Bucket=settings.COS_PRIVATE_BUCKET_NAME,
+        Key=f"doc/{filename}")["Body"].get_raw_stream()
+    try:
+        return stream.read()
+    finally:
+        stream.close()
 
 
 def delete_object(key: str) -> None:

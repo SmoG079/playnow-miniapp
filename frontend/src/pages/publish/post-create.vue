@@ -8,6 +8,7 @@ import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import { listAll, request } from "../../services/api";
 import { useSession } from "../../stores/session";
+import { businessDate } from "../../utils/date";
 const discovery = useDiscovery();
 const s = useSession(),
   loading = ref(false),
@@ -22,7 +23,7 @@ const s = useSession(),
   clubIndex = ref(-1),
   images = ref<string[]>([]);
 const tournamentDisabledReason = computed(() => "请先登录后创建比赛");
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessDate();
 const form = reactive<any>({
   city: discovery.city,
   address: "",

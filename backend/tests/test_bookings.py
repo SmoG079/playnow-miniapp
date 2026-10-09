@@ -49,6 +49,10 @@ class FakeSession:
 
     async def execute(self, stmt):
         stmt_str = str(stmt)
+        if stmt_str.startswith("SELECT DISTINCT venue_time_slots.venue_id"):
+            values = self.rows_map.get("VenueTimeSlot", [])
+            values = values if isinstance(values, list) else [values]
+            return FakeResult(list({slot.venue_id for slot in values}))
         # Try exact key match first (longer keys first for specificity)
         exact_match = None
         for key in sorted(self.rows_map.keys(), key=len, reverse=True):
@@ -111,7 +115,8 @@ def club():
         id=1,
         name="Test Club",
         sport_types=["badminton"],
-        split_ratio=Decimal("0.100"),
+        split_ratio=Decimal("0.100"), status="active", approval_status="approved",
+        opening_time=time(8), closing_time=time(22),
     )
 
 
@@ -125,6 +130,13 @@ def settings_mock():
 # ---------------------------------------------------------------------------
 # P1-2: reject past slots
 # ---------------------------------------------------------------------------
+
+def _booking_pair(slot):
+    slot.end_time = (datetime.combine(slot.date, slot.start_time) + timedelta(minutes=30)).time()
+    return [slot, VenueTimeSlot(id=2, venue_id=slot.venue_id, date=slot.date,
+        start_time=slot.end_time, end_time=(datetime.combine(slot.date, slot.start_time) + timedelta(hours=1)).time(),
+        status=slot.status)]
+
 
 def _make_end_time(d: date, t: time) -> time:
     """Return a time one hour after the given date+time."""
@@ -153,11 +165,13 @@ async def test_create_booking_rejects_yesterday(user, venue, club, settings_mock
         "Club": club,
     })
 
-    req = BookingCreateRequest(slot_id=1)
+    req = BookingCreateRequest(slot_ids=[1, 2])
+    session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await create_booking(req, current_user=user, db=session)
 
@@ -187,11 +201,13 @@ async def test_create_booking_rejects_today_past_time(user, venue, club, setting
         "Club": club,
     })
 
-    req = BookingCreateRequest(slot_id=1)
+    req = BookingCreateRequest(slot_ids=[1, 2])
+    session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await create_booking(req, current_user=user, db=session)
 
@@ -204,7 +220,7 @@ async def test_create_booking_accepts_today_future_time(user, venue, club, setti
     """P1-2: accept a slot from today whose start time is still in the future."""
     tz = ZoneInfo("Asia/Shanghai")
     today = datetime.now(tz).date()
-    future_time = time(23, 59)  # near end of day, almost always in the future
+    future_time = time(20, 0)  # near end of day, almost always in the future
 
     slot = VenueTimeSlot(
         id=1,
@@ -221,11 +237,13 @@ async def test_create_booking_accepts_today_future_time(user, venue, club, setti
         "Club": club,
     })
 
-    req = BookingCreateRequest(slot_id=1)
+    req = BookingCreateRequest(slot_ids=[1, 2])
+    session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
@@ -254,11 +272,13 @@ async def test_create_booking_accepts_tomorrow(user, venue, club, settings_mock)
         "Club": club,
     })
 
-    req = BookingCreateRequest(slot_id=1)
+    req = BookingCreateRequest(slot_ids=[1, 2])
+    session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
@@ -318,7 +338,8 @@ async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     assert result["refund_amount"] == "100.00"
@@ -361,7 +382,8 @@ async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     # Decimal("100.00") * Decimal("0.5") = Decimal("50.000"), cast to str gives "50.000"
@@ -405,7 +427,8 @@ async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await cancel_booking(1, req, current_user=user, db=session)
 
@@ -450,7 +473,8 @@ async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     assert result["refund_amount"] == "100.00"
@@ -493,7 +517,8 @@ async def test_cancel_booking_half_refund_12_hours_before(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await cancel_booking(1, req, current_user=user, db=session)
 
     # Decimal("100.00") * Decimal("0.5") = Decimal("50.000"), cast to str gives "50.000"
@@ -537,7 +562,8 @@ async def test_cancel_booking_rejects_after_start_time(user, venue, club):
     req = CancelRequest(reason="test")
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.release_lock", new=AsyncMock()), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await cancel_booking(1, req, current_user=user, db=session)
 
@@ -737,7 +763,8 @@ async def test_pay_booking_rejects_past_slot(user, venue, club):
         "VenueTimeSlot": slot,
     })
 
-    with patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+    with patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await pay_booking(1, current_user=user, db=session)
 
@@ -786,7 +813,8 @@ async def test_pay_booking_idempotency_rejects_expired_lock(user, venue, club):
     settings_mock.BOOKING_LOCK_TTL_SECONDS = 600
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         with pytest.raises(HTTPException) as exc_info:
             await pay_booking(1, current_user=user, db=session)
 
@@ -800,8 +828,8 @@ async def test_pay_booking_idempotency_rejects_expired_lock(user, venue, club):
 
 
 @pytest.mark.asyncio
-async def test_create_booking_price_for_30min_slot(user, venue, club, settings_mock):
-    """A 30-minute slot should cost half the hourly price."""
+async def test_create_booking_price_for_two_30min_slots(user, venue, club, settings_mock):
+    """Two consecutive 30-minute slots should cost the hourly price."""
     tz = ZoneInfo("Asia/Shanghai")
     future_date = (datetime.now(tz) + timedelta(days=1)).date()
     start_time = time(10, 0)
@@ -820,15 +848,17 @@ async def test_create_booking_price_for_30min_slot(user, venue, club, settings_m
         "Venue": venue,
         "Club": club,
     })
-    req = BookingCreateRequest(slot_id=1)
+    req = BookingCreateRequest(slot_ids=[1, 2])
+    session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
     with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
-         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()):
+         patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
+         patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
-    assert result.amount == Decimal("50.00")
+    assert result.amount == Decimal("100.00")
 
 
 # ---------------------------------------------------------------------------
@@ -869,7 +899,10 @@ async def test_get_club_venue_slots_hides_past_slots(club, venue):
     mock_datetime.now.return_value = mock_now
     mock_datetime.combine = dt.datetime.combine
 
-    with patch("app.api.v1.clubs.datetime", mock_datetime):
+    with patch("app.api.v1.clubs.datetime", mock_datetime), \
+         patch("app.services.slots.datetime", mock_datetime), \
+         patch("app.api.v1.clubs.ensure_slots", new=AsyncMock(return_value=(0, 0))), \
+         patch("app.services.booking_locks.expire_slot_orders", new=AsyncMock()):
         result = await get_club_venue_slots(1, query_date=today, db=session)
 
     time_labels = [row.time_label for row in result.rows]

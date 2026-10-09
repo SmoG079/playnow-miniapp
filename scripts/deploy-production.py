@@ -64,6 +64,8 @@ def main():
         if not args.bootstrap and not ready.exists():
             raise RuntimeError("First deployment requires manual bootstrap; no services were stopped")
         reference = "ghcr.io/smog079/playnow-miniapp-api:" + args.sha
+        private_directory = PROJECT / "backend/private_uploads"
+        private_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         candidate = release / ".env.candidate"
         source_env = PROJECT / (".env.production.next" if args.bootstrap else ".env.production")
         candidate.write_text(replace_image(source_env.read_text(), reference))
@@ -158,7 +160,7 @@ def main():
             redis_info = json.loads(run(["docker", "inspect", "club-redis"], "redis-inspect"))[0]
             redis_path = next(m["Source"] for m in redis_info["Mounts"] if m["Destination"] == "/data")
             with tarfile.open(backup / "persistent-files-and-config.tar.gz", "w:gz") as archive:
-                for path in [PROJECT / "backend/uploads", PROJECT / "backend/celerybeat", PROJECT / "backend/.env",
+                for path in [PROJECT / "backend/uploads", PROJECT / "backend/private_uploads", PROJECT / "backend/celerybeat", PROJECT / "backend/.env",
                     PROJECT / "docker-compose.yml", PROJECT / "docker-compose.prod.yml", PROJECT / "compose.production.yml",
                     PROJECT / ".env.production", candidate, Path(redis_path), Path("/etc/nginx")]:
                     if path.exists():
@@ -177,7 +179,7 @@ def main():
             external = run(["curl", "--fail", "--silent", "--show-error", "--max-time", "15", "https://www.tennisplaynow.site:8443/health"], "external-health")
             if json.loads(external).get("status") != "ok":
                 raise RuntimeError("External HTTPS response is not the expected API")
-            uploads = sorted(p for p in (PROJECT / "backend/uploads").rglob("*") if p.is_file())
+            uploads = sorted(p for p in (PROJECT / "backend/uploads").rglob("*") if p.is_file() and p.relative_to(PROJECT / "backend/uploads").parts[0] != "doc")
             if uploads:
                 sample = uploads[0]
                 url = "https://www.tennisplaynow.site:8443/uploads/" + quote(str(sample.relative_to(PROJECT / "backend/uploads")))

@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime, time
 from sqlalchemy import (
     Column, BigInteger, String, Text, Integer, DateTime, Date, Time,
@@ -21,6 +22,7 @@ class User(Base):
 
     id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), primary_key=True, default=lambda context: context.get_current_parameters()["openid"])
     openid = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), nullable=False, unique=True)
+    public_id = Column(String(36), nullable=False, unique=True, default=lambda context: str(uuid.uuid5(uuid.NAMESPACE_URL, "playnow:user:" + str(context.get_current_parameters().get("id") or context.get_current_parameters()["openid"]))))
     unionid = Column(String(64))
     nickname = Column(String(64))
     avatar_url = Column(String(512))
@@ -38,6 +40,15 @@ class User(Base):
     managed_clubs = relationship("ClubMember", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     comments = relationship("Comment", back_populates="user")
+
+
+class PrivateUpload(Base):
+    __tablename__ = "private_uploads"
+    id = Column(String(64), primary_key=True)  # Object filename, unguessable UUID.
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
+    backend = Column(String(16), nullable=False)
+    content_type = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ClubStatus(str, enum.Enum):
@@ -154,6 +165,7 @@ class VenueTimeSlot(Base):
     price_override = Column(DECIMAL(10, 2))
     status = Column(Enum(SlotStatus), default=SlotStatus.available, nullable=False)
     locked_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
+    booking_order_id = Column(BigInteger, ForeignKey("booking_orders.id", name="fk_slot_booking_order", use_alter=True), nullable=True, index=True)
     locked_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -163,7 +175,7 @@ class VenueTimeSlot(Base):
     )
 
     venue = relationship("Venue", back_populates="time_slots")
-    bookings = relationship("BookingOrder", back_populates="slot")
+    bookings = relationship("BookingOrder", back_populates="slot", foreign_keys="BookingOrder.slot_id")
 
 
 class OrderStatus(str, enum.Enum):
@@ -213,10 +225,20 @@ class BookingOrder(Base):
 
     user = relationship("User", back_populates="bookings")
     venue = relationship("Venue", back_populates="bookings")
-    slot = relationship("VenueTimeSlot", back_populates="bookings")
+    slot = relationship("VenueTimeSlot", back_populates="bookings", foreign_keys=[slot_id])
     club = relationship("Club", back_populates="bookings")
     settlement = relationship("SettlementRecord", back_populates="order", uselist=False)
     refund_records = relationship("RefundRecord", back_populates="order")
+    __table_args__ = (Index("idx_pending_order_recovery", "business_type", "status", "updated_at", "id"),)
+
+
+class BookingSlot(Base):
+    __tablename__ = "booking_slots"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=False)
+    slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=False)
+    amount = Column(DECIMAL(10, 2), nullable=True)  # Historical per-slot quotes cannot be reconstructed.
+    __table_args__ = (UniqueConstraint("order_id", "slot_id", name="uq_booking_slot"),)
 
 
 class SettlementStatus(str, enum.Enum):
@@ -230,7 +252,7 @@ class SettlementRecord(Base):
     __tablename__ = "settlement_records"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=False)
+    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=False, unique=True)
     total_amount = Column(DECIMAL(10, 2), nullable=False)
     platform_amount = Column(DECIMAL(10, 2), nullable=False)
     club_amount = Column(DECIMAL(10, 2), nullable=False)
@@ -539,6 +561,7 @@ class TournamentTeam(Base):
     group_no = Column(Integer, nullable=False)
     name = Column(String(128), nullable=False)
     origin_group = Column(Integer)
+    __table_args__ = (UniqueConstraint("id", "draw_id", name="uq_team_draw"),)
 
 
 class TournamentTeamMember(Base):
@@ -547,7 +570,8 @@ class TournamentTeamMember(Base):
     draw_id = Column(BigInteger, ForeignKey("tournament_draws.id"), nullable=False)
     team_id = Column(BigInteger, ForeignKey("tournament_teams.id"), nullable=False)
     user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
-    __table_args__ = (UniqueConstraint("draw_id", "user_id", name="uq_draw_member"),)
+    __table_args__ = (UniqueConstraint("draw_id", "user_id", name="uq_draw_member"),
+        ForeignKeyConstraint(["team_id", "draw_id"], ["tournament_teams.id", "tournament_teams.draw_id"], name="fk_member_team_draw"))
 
 
 class TournamentMatch(Base):
@@ -571,7 +595,13 @@ class TournamentMatch(Base):
     court = Column(String(64))
     scheduled_at = Column(DateTime)
     scheduled_end = Column(DateTime)
-    __table_args__ = (UniqueConstraint("draw_id", "group_no", "round_no", "position", "kind", name="uq_draw_match"),)
+    __table_args__ = (UniqueConstraint("draw_id", "group_no", "round_no", "position", "kind", name="uq_draw_match"),
+        UniqueConstraint("id", "draw_id", name="uq_match_draw"),
+        ForeignKeyConstraint(["team_a_id", "draw_id"], ["tournament_teams.id", "tournament_teams.draw_id"], name="fk_match_team_a_draw"),
+        ForeignKeyConstraint(["team_b_id", "draw_id"], ["tournament_teams.id", "tournament_teams.draw_id"], name="fk_match_team_b_draw"),
+        ForeignKeyConstraint(["winner_id", "draw_id"], ["tournament_teams.id", "tournament_teams.draw_id"], name="fk_match_winner_draw"),
+        ForeignKeyConstraint(["source_a_id", "draw_id"], ["tournament_matches.id", "tournament_matches.draw_id"], name="fk_match_source_a_draw"),
+        ForeignKeyConstraint(["source_b_id", "draw_id"], ["tournament_matches.id", "tournament_matches.draw_id"], name="fk_match_source_b_draw"))
 
 
 class TournamentAudit(Base):

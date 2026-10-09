@@ -40,6 +40,11 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ./backend/private_uploads
+        target: /app/private_uploads
+        bind:
+          create_host_path: false
+      - type: bind
         source: ./backend/logs/api
         target: /app/logs
         bind:

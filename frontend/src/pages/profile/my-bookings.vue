@@ -27,19 +27,25 @@ const names: any = {
   refunding: "退款中",
   refunded: "已退款",
 };
+let loadVersion = 0;
 async function load(reset = true) {
+  if (!reset && (loading.value || !more.value)) return;
   if (!s.requireLogin("/pages/profile/my-bookings")) return;
+  const version = ++loadVersion;
   loading.value = true;
   try {
     const p = reset ? 1 : page.value;
     const r = await request<PageResult<any>>(
       `/users/me/bookings?page=${p}&page_size=20${active.value ? "&status=" + active.value : ""}`,
     );
+    if (version !== loadVersion) return;
     items.value = reset ? r.items : [...items.value, ...r.items];
     page.value = p + 1;
     more.value = r.items.length === 20;
+  } catch (error: any) {
+    if (version === loadVersion) uni.showToast({ title: error.message || "预约加载失败", icon: "none" });
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
 }
 onShow(() => load());

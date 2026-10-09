@@ -113,7 +113,8 @@ async def review_application(kind: Literal["post", "tournament"], application_id
         from app.schemas.schemas import ReviewRegistrationRequest
         registration = await db.get(MatchRegistration, application_id)
         if not registration: raise HTTPException(404, "报名不存在")
-        return await review_registration(registration.post_id, registration.user_id,
+        public_id = await db.scalar(select(User.public_id).where(User.id == registration.user_id))
+        return await review_registration(registration.post_id, public_id,
             ReviewRegistrationRequest(status="approved" if req.approved else "rejected", reason=req.reason), user, db)
     from app.api.v1.tournaments import review
     from app.schemas.tournament import ReviewCommand

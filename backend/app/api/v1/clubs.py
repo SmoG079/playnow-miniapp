@@ -1,4 +1,4 @@
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.services.tencent_map import GEOCODER_URL, geocoder_params
 from app.services.discovery import distance_expr, city_name
 from app.services.pricing import slot_charge
+from app.services.slots import ensure_slots, validate_booking_date
 from app.core.config import get_settings
 from app.api.deps import get_current_user, get_optional_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord, Notification, NotificationType
@@ -187,6 +188,8 @@ async def create_club(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.privacy import validate_certification_documents
+    await validate_certification_documents(db, req.documents, current_user)
     opening = _parse_time(req.opening_time)
     closing = _parse_time(req.closing_time)
     if opening is None or closing is None or closing <= opening:
@@ -233,7 +236,10 @@ async def get_club(club_id: int, db: AsyncSession = Depends(get_db), user: Optio
     club.view_count += 1
     await db.flush()
 
-    return await _club_to_detail_async(club, db)
+    detail = await _club_to_detail_async(club, db)
+    from app.services.privacy import can_view_club_documents
+    if not await can_view_club_documents(db, club, user): detail.documents = None
+    return detail
 
 
 @router.put("/{club_id}", response_model=ClubDetail)
@@ -248,6 +254,9 @@ async def update_club(
     if not club:
         raise HTTPException(status_code=404, detail="Club not found")
 
+    if "documents" in req.model_fields_set:
+        from app.services.privacy import validate_certification_documents
+        await validate_certification_documents(db, req.documents, _, previous=club.documents)
     update_data = req.model_dump(exclude_unset=True)
     for key in ("opening_time", "closing_time"):
         if key in update_data:
@@ -321,8 +330,10 @@ async def club_stats(
     _: User = Depends(get_club_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    from datetime import date as date_type
-    today = date_type.today()
+    local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc = day_start.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = start_utc + timedelta(days=1)
 
     # Load club for view/exposure counts
     club_result = await db.execute(select(Club).where(Club.id == club_id))
@@ -354,7 +365,7 @@ async def club_stats(
     today_orders_result = await db.execute(
         select(func.count(BookingOrder.id))
         .where(BookingOrder.club_id == club_id)
-        .where(func.date(BookingOrder.created_at) == today)
+        .where(BookingOrder.created_at >= start_utc, BookingOrder.created_at < end_utc)
     )
     today_orders = today_orders_result.scalar() or 0
 
@@ -362,7 +373,7 @@ async def club_stats(
     today_rev_result = await db.execute(
         select(func.coalesce(func.sum(BookingOrder.amount), 0))
         .where(BookingOrder.club_id == club_id)
-        .where(func.date(BookingOrder.created_at) == today)
+        .where(BookingOrder.created_at >= start_utc, BookingOrder.created_at < end_utc)
         .where(BookingOrder.status.in_(("paid", "completed")))
     )
     today_revenue = today_rev_result.scalar() or 0
@@ -388,6 +399,7 @@ async def get_club_venue_slots(
 ):
     """Return all venues for a club and their time slots for a specific date,
     formatted as a grid (rows = time, columns = venues)."""
+    validate_booking_date(query_date)
     # Get club
     club_result = await db.execute(select(Club).where(Club.id == club_id))
     club = club_result.scalar_one_or_none()
@@ -401,9 +413,9 @@ async def get_club_venue_slots(
     )
     if venue_id:
         v_query = v_query.where(Venue.id == venue_id)
-    v_query = v_query.order_by(Venue.sort_order)
+    v_query = v_query.order_by(Venue.id).with_for_update()
     v_result = await db.execute(v_query)
-    venues = v_result.scalars().all()
+    venues = sorted(v_result.scalars().all(), key=lambda v: (v.sort_order or 0, v.id))
     if not venues:
         return VenueSlotGridResponse(
             club={"id": club.id, "name": club.name, "address": club.address,
@@ -412,33 +424,10 @@ async def get_club_venue_slots(
             rows=[],
         )
 
-    # Auto-generate slots for any venue that has none for the requested date
-    _ot = club.opening_time or time(8, 0)
-    _ct = club.closing_time or time(22, 0)
-    open_t = _ot if isinstance(_ot, time) else (datetime.min + _ot).time()
-    close_t = _ct if isinstance(_ct, time) else (datetime.min + _ct).time()
-
-    for venue in venues:
-        existing = await db.execute(
-            select(func.count(VenueTimeSlot.id)).where(
-                VenueTimeSlot.venue_id == venue.id,
-                VenueTimeSlot.date == query_date,
-            )
-        )
-        if existing.scalar() == 0 and open_t < close_t:
-            slots_batch = []
-            slot_start = datetime.combine(query_date, open_t)
-            slot_end = datetime.combine(query_date, close_t)
-            while slot_start + timedelta(minutes=30) <= slot_end:
-                next_time = slot_start + timedelta(minutes=30)
-                slots_batch.append(VenueTimeSlot(
-                    venue_id=venue.id,
-                    date=query_date,
-                    start_time=slot_start.time(),
-                    end_time=next_time.time(),
-                ))
-                slot_start = next_time
-            db.add_all(slots_batch)
+    from app.services.booking_locks import expire_slot_orders
+    await expire_slot_orders(db, venue_ids=[v.id for v in venues], day=query_date)
+    for venue in sorted(venues, key=lambda v: v.id):
+        await ensure_slots(db, venue.id, query_date)
 
     # Get all slots for all venues on the date
     venue_ids = [v.id for v in venues]
@@ -448,7 +437,7 @@ async def get_club_venue_slots(
             VenueTimeSlot.venue_id.in_(venue_ids),
             VenueTimeSlot.date == query_date,
         )
-        .order_by(VenueTimeSlot.start_time)
+        .order_by(VenueTimeSlot.id).with_for_update()
     )
     slots = slot_result.scalars().all()
 
@@ -460,15 +449,6 @@ async def get_club_venue_slots(
         slot_datetime = datetime.combine(slot.date, slot.start_time).replace(tzinfo=tz, microsecond=0)
         if slot_datetime <= now_local:
             continue
-        # Release expired Redis locks
-        if slot.status == SlotStatus.locked:
-            from app.core.redis import redis_client as _redis
-            lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            ttl = await _redis.ttl(lock_key)
-            if ttl <= 0:
-                slot.status = SlotStatus.available
-                slot.locked_by = None
-                slot.locked_at = None
         filtered_slots.append(slot)
     slots = filtered_slots
 

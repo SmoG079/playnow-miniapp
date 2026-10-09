@@ -3,14 +3,15 @@ import { reactive, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+import { businessDate } from "../../utils/date";
 const clubId = ref(0),
   venues = ref<any[]>([]),
   index = ref(0),
   slots = ref<any[]>([]),
   loading = ref(false),
-  intervals = [30, 60, 90, 120],
-  intervalIndex = ref(1);
-const fmt = (d: Date) => d.toISOString().slice(0, 10),
+  intervals = [30],
+  intervalIndex = ref(0);
+const fmt = businessDate,
   form = reactive({
     date_from: fmt(new Date()),
     date_to: fmt(new Date(Date.now() + 7 * 86400000)),

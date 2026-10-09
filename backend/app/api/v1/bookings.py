@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
 from app.services.pricing import slot_charge
+from app.services.slots import validate_booking_date
+from app.services.booking_locks import release_order_slots, locked_order_slots, lock_owner, expire_slot_orders
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock, redis_client
 from app.core.rate_limit import check_rate_limit
@@ -18,7 +20,7 @@ from app.core.wechat_pay import get_wxpay, build_jsapi_params
 from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _v
 from app.models.models import (
     User, UserRole, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
-    SettlementRecord, SettlementStatus, Notification, NotificationType, Club, ClubMember,
+    BookingSlot, SettlementRecord, SettlementStatus, Notification, NotificationType, Club, ClubMember,
     Tournament, TournamentRegistration, TournamentRegStatus, RefundRecord, RefundStatus, PaymentLog,
 )
 from app.schemas.schemas import (
@@ -84,14 +86,22 @@ async def create_booking(
         raise HTTPException(status_code=422, detail=str(e))
 
     if not slot_ids:
-        raise HTTPException(status_code=422, detail="slot_id or slot_ids is required")
+        raise HTTPException(status_code=422, detail="slot_ids is required")
 
     if len(slot_ids) > 1 and len(set(slot_ids)) != len(slot_ids):
         raise HTTPException(status_code=422, detail="Duplicate slot IDs")
 
+    # Schedule generation also takes venue -> order -> slot locks; follow that
+    # order before inserting FK-backed orders to avoid a venue/slot deadlock.
+    venue_ids = (await db.execute(select(VenueTimeSlot.venue_id).where(VenueTimeSlot.id.in_(slot_ids)).distinct())).scalars().all()
+    await db.execute(select(Venue).where(Venue.id.in_(venue_ids)).order_by(Venue.id)
+        .with_for_update().execution_options(populate_existing=True))
+    await expire_slot_orders(db, slot_ids=slot_ids)
+
     # Acquire DB row locks ordered by slot id to prevent deadlock
     result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids)).with_for_update()
+        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
+        .order_by(VenueTimeSlot.id).with_for_update().execution_options(populate_existing=True)
     )
     slots = result.scalars().all()
     if len(slots) != len(slot_ids):
@@ -118,6 +128,8 @@ async def create_booking(
         if _v(slot.status) != "available":
             raise HTTPException(status_code=409, detail="One or more slots are not available")
 
+    validate_booking_date(slot_date)
+
     # Get venue + club
     venue_result = await db.execute(select(Venue).where(Venue.id == venue_id))
     venue = venue_result.scalar_one_or_none()
@@ -126,18 +138,30 @@ async def create_booking(
 
     club_result = await db.execute(select(Club).where(Club.id == venue.club_id))
     club = club_result.scalar_one_or_none()
+    if not club or _v(club.status) != "active" or club.approval_status != "approved":
+        raise HTTPException(409, "俱乐部暂不可预订")
+    opening, closing = club.opening_time or time(8), club.closing_time or time(22)
+    if isinstance(opening, timedelta): opening = (datetime.min + opening).time()
+    if isinstance(closing, timedelta): closing = (datetime.min + closing).time()
+    if any(slot.start_time < opening or slot.end_time > closing or slot.end_time <= slot.start_time for slot in slots):
+        raise HTTPException(422, "请选择俱乐部营业时间内的时段")
+    duration = sum((s.end_time.hour * 60 + s.end_time.minute) - (s.start_time.hour * 60 + s.start_time.minute) for s in slots)
+    if duration < 60:
+        raise HTTPException(422, "至少预订连续一小时")
+
 
     # Acquire Redis locks for all slots
     acquired_lock_keys = []
-    lock_owner = str(current_user.id)
+    order_no = _generate_order_no()
+    lock_value = lock_owner(order_no)
     try:
         for slot in slots:
             lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-            acquired = await acquire_lock(lock_key, lock_owner, settings.BOOKING_LOCK_TTL_SECONDS)
+            acquired = await acquire_lock(lock_key, lock_value, settings.BOOKING_LOCK_TTL_SECONDS)
             if not acquired:
                 # Release any locks we already acquired
                 for released_key in acquired_lock_keys:
-                    await release_lock(released_key, lock_owner)
+                    await release_lock(released_key, lock_value)
                 raise HTTPException(status_code=409, detail="One or more slots are being booked by another user")
             acquired_lock_keys.append(lock_key)
 
@@ -149,9 +173,12 @@ async def create_booking(
             slot.locked_at = _utc_now()
             total_price += slot_charge(venue, slot)
 
+        if total_price > Decimal("99999999.99"):
+            raise HTTPException(422, "订单金额超出允许范围")
+
         # Create order
         order = BookingOrder(
-            order_no=_generate_order_no(),
+            order_no=order_no,
             user_id=current_user.id,
             venue_id=venue.id,
             slot_id=first_slot.id,
@@ -163,14 +190,17 @@ async def create_booking(
         db.add(order)
         await db.flush()
         await db.refresh(order)
+        for slot in slots:
+            slot.booking_order_id = order.id
+            db.add(BookingSlot(order_id=order.id, slot_id=slot.id, amount=slot_charge(venue, slot)))
         await db.commit()
     except HTTPException:
         for released_key in acquired_lock_keys:
-            await release_lock(released_key, lock_owner)
+            await release_lock(released_key, lock_value)
         raise
     except Exception:
         for released_key in acquired_lock_keys:
-            await release_lock(released_key, lock_owner)
+            await release_lock(released_key, lock_value)
         raise
 
     return BookingDetail(
@@ -291,7 +321,7 @@ async def pay_booking(
 ):
     """Placeholder: mark order as paid directly (WeChat Pay V3 pending)."""
     result = await db.execute(
-        select(BookingOrder).where(BookingOrder.id == booking_id)
+        select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
     )
     order = result.scalar_one_or_none()
     if not order:
@@ -307,22 +337,23 @@ async def pay_booking(
     if _v(order.status) != "pending":
         raise HTTPException(status_code=400, detail="Order is not pending")
 
-    # Mark order as paid
+    slots = await locked_order_slots(db, order)
+    now = _utc_now()
+    expected_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+    if not slots or {slot.id for slot in slots} != set(expected_ids) or order.created_at is None or now >= order.created_at + timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS):
+        raise HTTPException(409, "订单锁定已过期，请重新预订")
+    for slot in slots:
+        local_start = datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+        if slot.booking_order_id != order.id or _v(slot.status) != "locked" or slot.locked_by != order.user_id or local_start <= datetime.now(ZoneInfo("Asia/Shanghai")):
+            raise HTTPException(409, "订单时段已失效，请重新预订")
     order.status = OrderStatus.paid
-    order.payment_time = _utc_now()
+    order.payment_time = now
     order.wx_transaction_id = f"dev_{order.order_no}"
-
-    # Release locks, mark slots as booked
-    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
-    slots_result = await db.execute(
-        select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
-    )
-    for slot in slots_result.scalars().all():
+    for slot in slots:
         slot.status = SlotStatus.booked
         slot.locked_by = None
         slot.locked_at = None
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key)
+        await release_lock(f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}", lock_owner(order.order_no))
 
     # Create settlement record
     import logging
@@ -434,7 +465,7 @@ async def cancel_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id))
+    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update())
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -445,10 +476,6 @@ async def cancel_booking(
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
 
-    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
-    slots_result = await db.execute(select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids)))
-    slots = slots_result.scalars().all()
-
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
 
@@ -456,13 +483,7 @@ async def cancel_booking(
     order.cancel_reason = req.reason
     order.cancel_time = _utc_now()
 
-    # Release all slots
-    for slot in slots:
-        slot.status = SlotStatus.available
-        slot.locked_by = None
-        slot.locked_at = None
-        lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-        await release_lock(lock_key)
+    await release_order_slots(db, order)
 
     return {"msg": "ok"}
 

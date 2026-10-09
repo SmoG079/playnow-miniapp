@@ -10,6 +10,7 @@ engine = create_async_engine(
     max_overflow=10,
     pool_pre_ping=False,
     echo=False,  # SQL logging controlled via LOG_MYSQL_LEVEL in logger.py
+    hide_parameters=True,  # SQL errors/logs must not expose phone numbers or session keys.
 )
 
 async_session_factory = async_sessionmaker(

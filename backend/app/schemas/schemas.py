@@ -1,7 +1,8 @@
 from datetime import datetime, date, time
-from typing import Optional, Any, List, Annotated
+from typing import Optional, Any, List, Annotated, Literal
 from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator
 from decimal import Decimal
+from app.services.public_identity import public_user_id
 
 
 def _parse_flexible_time(value: Any) -> Any:
@@ -17,6 +18,9 @@ DecimalAsFloat = Annotated[
     Decimal,
     PlainSerializer(lambda v: float(v) if v is not None else None, return_type=float, when_used="json"),
 ]
+
+
+PublicUserID = Annotated[str, PlainSerializer(public_user_id, return_type=str, when_used="json")]
 
 
 # ── Auth ──
@@ -39,7 +43,7 @@ class PhoneRequest(BaseModel):
 # ── User ──
 
 class UserProfile(BaseModel):
-    id: str
+    id: PublicUserID
     nickname: Optional[str]
     avatar_url: Optional[str]
     phone: Optional[str]
@@ -50,9 +54,9 @@ class UserProfile(BaseModel):
         from_attributes = True
 
 class UserUpdate(BaseModel):
-    nickname: Optional[str] = None
-    avatar_url: Optional[str] = None
-    phone: Optional[str] = None
+    nickname: Optional[str] = Field(None, max_length=64)
+    avatar_url: Optional[str] = Field(None, max_length=512)
+    phone: Optional[str] = Field(None, max_length=20)
     ntrp_level: Optional[Decimal] = Field(None, ge=1.0, le=7.0)
 
 class UserMeResponse(UserProfile):
@@ -202,24 +206,62 @@ class VenueLocation(BaseModel):
             raise ValueError("经纬度必须同时填写")
         return self
 
-class VenueCreate(VenueLocation):
+class VenuePriceRules(BaseModel):
+    @field_validator("price_rules", check_fields=False)
+    @classmethod
+    def validate_price_rules(cls, rules):
+        if rules is None:
+            return rules
+        for rule in rules:
+            if rule.get("type") not in ("date_range", "daily_time", "time_range"):
+                raise ValueError("不支持的价格规则类型")
+            try:
+                price = Decimal(str(rule["price"]))
+                if not price.is_finite() or price < 0 or price > Decimal("99999999.99") or price.as_tuple().exponent < -2:
+                    raise ValueError()
+                start, end = rule.get("start_time"), rule.get("end_time")
+                if start: time.fromisoformat(start)
+                if end: time.fromisoformat(end)
+                if start and end and time.fromisoformat(start) >= time.fromisoformat(end):
+                    raise ValueError()
+                if rule["type"] != "date_range" and (not start or not end):
+                    raise ValueError()
+                if rule["type"] == "date_range":
+                    if date.fromisoformat(rule["start_date"]) > date.fromisoformat(rule["end_date"]):
+                        raise ValueError()
+                # Normalize strings for lexicographic pricing comparisons.
+                if start: rule["start_time"] = time.fromisoformat(start).strftime("%H:%M")
+                if end: rule["end_time"] = time.fromisoformat(end).strftime("%H:%M")
+            except (ValueError, TypeError, KeyError, ArithmeticError):
+                raise ValueError("价格规则需包含有效日期/时段及非负有限价格")
+        return rules
+
+
+class VenueCreate(VenueLocation, VenuePriceRules):
     name: str = Field(..., min_length=1, max_length=64)
     sport_type: str = "tennis"
-    price_per_hour: Decimal = Field(..., gt=0)
+    price_per_hour: Decimal = Field(..., gt=0, max_digits=10, decimal_places=2)
     max_capacity: int = Field(default=4, ge=1)
     cover_image: Optional[str] = None
     sort_order: int = 0
     price_rules: Optional[list[dict]] = None
 
-class VenueUpdate(VenueLocation):
-    name: Optional[str] = None
-    sport_type: Optional[str] = None
-    price_per_hour: Optional[Decimal] = None
-    max_capacity: Optional[int] = None
+class VenueUpdate(VenueLocation, VenuePriceRules):
+    name: Optional[str] = Field(None, min_length=1, max_length=64)
+    sport_type: Optional[str] = Field(None, min_length=1, max_length=32)
+    price_per_hour: Optional[Decimal] = Field(None, gt=0, max_digits=10, decimal_places=2)
+    max_capacity: Optional[int] = Field(None, ge=1)
     cover_image: Optional[str] = None
     sort_order: Optional[int] = None
-    status: Optional[str] = None
+    status: Optional[Literal["active", "maintenance", "closed"]] = None
     price_rules: Optional[list[dict]] = None
+
+    @model_validator(mode="after")
+    def preserve_required_fields(self):
+        for name in ("name", "sport_type", "price_per_hour", "max_capacity", "sort_order", "status"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError("场地必填字段不可清空")
+        return self
 
 class VenueBrief(VenueLocation):
     id: int
@@ -247,7 +289,7 @@ class VenueDetail(VenueBrief):
 class SlotPriceRule(BaseModel):
     start_time: FlexibleTime
     end_time: FlexibleTime
-    price: Decimal = Field(gt=0)
+    price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
 
 
 class SlotGenerateRequest(BaseModel):
@@ -255,8 +297,22 @@ class SlotGenerateRequest(BaseModel):
     date_to: date
     start_time: FlexibleTime = time(8, 0)
     end_time: FlexibleTime = time(22, 0)
-    interval_minutes: int = Field(default=60, ge=30)
+    interval_minutes: Literal[30] = 30
     price_rules: list[SlotPriceRule] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.date_to < self.date_from or (self.date_to - self.date_from).days > 30:
+            raise ValueError("排期日期范围须为 1 至 31 天")
+        if self.start_time >= self.end_time:
+            raise ValueError("排期结束时间必须晚于开始时间")
+        for value in (self.start_time, self.end_time):
+            if value.second or value.microsecond or value.minute % 30:
+                raise ValueError("排期须对齐 30 分钟边界")
+        if any(rule.start_time >= rule.end_time for rule in self.price_rules):
+            raise ValueError("价格规则结束时间必须晚于开始时间")
+        return self
+
 
 class SlotBrief(BaseModel):
     id: int
@@ -302,20 +358,16 @@ class SlotStatusUpdateRequest(BaseModel):
 # ── Booking ──
 
 class BookingCreateRequest(BaseModel):
-    slot_id: Optional[int] = None
-    slot_ids: Optional[list[int]] = None
+    model_config = {"extra": "forbid"}
+    slot_ids: list[int] = Field(min_length=2, max_length=48)
 
     def resolved_slot_ids(self) -> list[int]:
-        if self.slot_ids:
-            return self.slot_ids
-        if self.slot_id:
-            return [self.slot_id]
-        raise ValueError("slot_id or slot_ids is required")
+        return self.slot_ids
 
 class BookingDetail(BaseModel):
     id: int
     order_no: str
-    user_id: str
+    user_id: PublicUserID
     venue_id: int
     slot_id: int
     slot_ids: Optional[list[int]] = None
@@ -423,14 +475,14 @@ class PostUpdate(BaseModel):
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=256)
     sport_type: Optional[str] = None
     preferred_date: Optional[date] = None
     preferred_start: Optional[time] = None
     preferred_end: Optional[time] = None
     players_needed: Optional[int] = Field(default=None, ge=1)
-    price: Optional[Decimal] = None
-    status: Optional[str] = None
+    price: Optional[Decimal] = Field(None, ge=0)
+    status: Optional[Literal["open", "closed", "full"]] = None
     level_required: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
@@ -441,7 +493,7 @@ class PostUpdate(BaseModel):
 
     @model_validator(mode="after")
     def preserve_required_information(self):
-        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "players_needed"):
+        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "players_needed", "status", "approval_required"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError("活动名称、时间和人数不可清空")
         if self.title is not None:
@@ -472,7 +524,7 @@ class PostBrief(BaseModel):
     notes: Optional[str] = None
     id: int
     club_id: Optional[int] = None
-    user_id: str
+    user_id: PublicUserID
     title: str
     sport_type: Optional[str]
     preferred_date: Optional[date]
@@ -501,7 +553,7 @@ class MyPostRegistration(BaseModel):
     id: int
     activity_id: int
     post_id: int
-    user_id: str
+    user_id: PublicUserID
     status: str
     message: Optional[str] = None
     created_at: datetime
@@ -534,7 +586,7 @@ class PostDetail(PostBrief):
 
 class RegistrationBrief(BaseModel):
     id: int
-    user_id: str
+    user_id: PublicUserID
     message: Optional[str]
     status: str
     user_nickname: Optional[str] = None
@@ -570,7 +622,7 @@ class CommentCreate(BaseModel):
 class CommentBrief(BaseModel):
     id: int
     post_id: int
-    user_id: str
+    user_id: PublicUserID
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None
     content: str
@@ -645,7 +697,7 @@ class TournamentDetail(TournamentBrief):
 
 class TournamentRegBrief(BaseModel):
     id: int
-    user_id: str
+    user_id: PublicUserID
     status: str
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None

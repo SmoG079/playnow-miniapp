@@ -1,13 +1,15 @@
+from app.services.slots import ensure_slots
 import logging
 from datetime import datetime, timedelta, date, time
 from datetime import date as date_type
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.services.pricing import hourly_slot_price
+from app.services.pricing import slot_charge
 from app.api.deps import get_current_user, get_club_admin, _v
 from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, VenueStatus, MatchPost, Tournament
 from app.schemas.schemas import (
@@ -51,31 +53,9 @@ async def create_venue_for_club(
     await db.flush()
     await db.refresh(venue)
 
-    # Auto-generate 30-min slots for next 3 days using club hours
-    slots_batch = []
-    today = date.today()
-    # Load club hours
-    club_result = await db.execute(select(Club).where(Club.id == club_id))
-    club = club_result.scalar_one_or_none()
-    _ot = club.opening_time if club else time(8, 0)
-    _ct = club.closing_time if club else time(22, 0)
-    open_t = _ot if isinstance(_ot, time) else (datetime.min + _ot).time()
-    close_t = _ct if isinstance(_ct, time) else (datetime.min + _ct).time()
-    for day_offset in range(3):
-        slot_date = today + timedelta(days=day_offset)
-        slot_start = datetime.combine(slot_date, open_t)
-        slot_end = datetime.combine(slot_date, close_t)
-        while slot_start + timedelta(minutes=30) <= slot_end:
-            next_time = slot_start + timedelta(minutes=30)
-            slots_batch.append(VenueTimeSlot(
-                venue_id=venue.id,
-                date=slot_date,
-                start_time=slot_start.time(),
-                end_time=next_time.time(),
-            ))
-            slot_start = next_time
-    if slots_batch:
-        db.add_all(slots_batch)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    for offset in range(3):
+        await ensure_slots(db, venue.id, today + timedelta(days=offset))
 
     return VenueBrief.model_validate(venue)
 
@@ -175,7 +155,7 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
         date=slot.date,
         start_time=slot.start_time,
         end_time=slot.end_time,
-        price=hourly_slot_price(slot.venue, slot),
+        price=slot_charge(slot.venue, slot),
         status=_v(slot.status),
     )
 
@@ -232,41 +212,19 @@ async def generate_slots(
         logger.warning("generate_slots: venue %s not found", venue_id)
         raise HTTPException(status_code=404, detail="Venue not found")
 
+    club = await db.get(Club, venue.club_id)
+    opening, closing = club.opening_time or time(8), club.closing_time or time(22)
+    if isinstance(opening, timedelta): opening = (datetime.min + opening).time()
+    if isinstance(closing, timedelta): closing = (datetime.min + closing).time()
+    if req.start_time < opening or req.end_time > closing:
+        raise HTTPException(422, "排期须位于俱乐部营业时间内")
     current_date = req.date_from
-    created = 0
-    skipped = 0
+    created = skipped = 0
     while current_date <= req.date_to:
-        slot_start = datetime.combine(current_date, req.start_time)
-        slot_end = datetime.combine(current_date, req.end_time)
-        logger.debug(
-            "generate_slots: processing date=%s slot_start=%s slot_end=%s",
-            current_date, slot_start, slot_end,
-        )
-        while slot_start + timedelta(minutes=req.interval_minutes) <= slot_end:
-            next_time = slot_start + timedelta(minutes=req.interval_minutes)
-            existing = await db.execute(
-                select(VenueTimeSlot).where(
-                    VenueTimeSlot.venue_id == venue_id,
-                    VenueTimeSlot.date == current_date,
-                    VenueTimeSlot.start_time == slot_start.time(),
-                )
-            )
-            if not existing.scalar_one_or_none():
-                price = _effective_price_for_slot(
-                    slot_start.time(), req.price_rules, venue.price_per_hour
-                )
-                slot = VenueTimeSlot(
-                    venue_id=venue_id,
-                    date=current_date,
-                    start_time=slot_start.time(),
-                    end_time=next_time.time(),
-                    price_override=price if price != venue.price_per_hour else None,
-                )
-                db.add(slot)
-                created += 1
-            else:
-                skipped += 1
-            slot_start = next_time
+        new, old = await ensure_slots(db, venue.id, current_date, req.start_time, req.end_time,
+            lambda start: _effective_price_for_slot(start, req.price_rules, venue.price_per_hour))
+        created += new
+        skipped += old
         current_date += timedelta(days=1)
 
     await db.commit()
@@ -287,7 +245,7 @@ async def update_slot_status(
         select(VenueTimeSlot).where(
             VenueTimeSlot.id == slot_id,
             VenueTimeSlot.venue_id == venue_id,
-        )
+        ).with_for_update()
     )
     slot = result.scalar_one_or_none()
     if not slot:

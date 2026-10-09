@@ -139,9 +139,9 @@ def main():
             env_path.chmod(0o600)
         finally:
             os.umask(old_mask)
-        for rel in ["uploads", "logs/api", "logs/celery-worker", "logs/celery-beat", "certs", "pay-certs", "celerybeat"]:
+        for rel in ["uploads", "private_uploads", "logs/api", "logs/celery-worker", "logs/celery-beat", "certs", "pay-certs", "celerybeat"]:
             path = project / "backend" / rel
-            path.mkdir(parents=True, exist_ok=True, mode=0o700 if rel in ("certs", "pay-certs", "celerybeat") else 0o755)
+            path.mkdir(parents=True, exist_ok=True, mode=0o700 if rel in ("certs", "pay-certs", "celerybeat", "private_uploads") else 0o755)
         print("Pending environment written with mode 600; persistent directories prepared")
     result = sync_container_files("club-api", "/app/uploads", project / "backend/uploads")
     print("UPLOAD_COPY", json.dumps(result))
