@@ -5,13 +5,13 @@ Only NTRP is assessed. The separate reserved UTR field is never written here.
 """
 from decimal import Decimal, ROUND_HALF_UP
 
-VERSION = "playnow_self_v1"
+VERSION = "playnow_self_v2"
 LEVELS = [Decimal("2.0") + Decimal("0.5") * index for index in range(8)]
 QUICK_LEVELS = [
-    {"value": 2, "name": "初识", "description": "能把球打过网，懂基本计分；连续回合较少，发球还不稳定。"},
-    {"value": 3, "name": "入门", "description": "能进行慢节奏底线对拉，正手逐渐稳定，反手和发球仍需练习。"},
-    {"value": 4, "name": "会打", "description": "正反手底线击球较稳定，能控制方向，一发和二发都能可靠进区。"},
-    {"value": 5, "name": "熟练", "description": "能运用旋转、落点和网前战术，在比赛压力下仍能稳定执行。"},
+    {"value": 1.5, "name": "初识", "description": "能把球打过网，懂基本计分；连续回合较少，发球还不稳定。"},
+    {"value": 2.5, "name": "入门", "description": "能进行慢节奏底线对拉，正手逐渐稳定，反手和发球仍需练习。"},
+    {"value": 3.5, "name": "会打", "description": "正反手底线击球较稳定，能控制方向，一发和二发都能可靠进区。"},
+    {"value": 4.5, "name": "熟练", "description": "能运用旋转、落点和网前战术，在比赛压力下仍能稳定执行。"},
 ]
 
 
@@ -69,12 +69,12 @@ def catalog():
 
 def validate_answers(mode, answers):
     if mode == "quick":
-        if set(answers) != {"level"} or answers["level"] not in (2, 3, 4, 5):
+        if set(answers) != {"level"} or answers["level"] not in (1.5, 2.5, 3.5, 4.5):
             raise ValueError("请选择一个有效的快速定级档位")
     elif mode == "full":
         if set(answers) != {q["id"] for q in QUESTIONS}:
             raise ValueError("请完成全部定级问题")
-        if any(value not in range(len(LEVELS)) for value in answers.values()):
+        if any(type(value) is not int or value not in range(len(LEVELS)) for value in answers.values()):
             raise ValueError("问卷选项无效")
     else:
         raise ValueError("问卷模式无效")
@@ -83,7 +83,7 @@ def validate_answers(mode, answers):
 def assess(mode, answers):
     validate_answers(mode, answers)
     if mode == "quick":
-        return Decimal(answers["level"])
+        return Decimal(str(answers["level"]))
     else:
         # Equal skill weights avoid rating solely by years played or one best stroke.
         level = sum((LEVELS[value] for value in answers.values()), Decimal("0")) / len(QUESTIONS)

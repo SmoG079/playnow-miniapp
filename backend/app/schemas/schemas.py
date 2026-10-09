@@ -1,6 +1,6 @@
 from datetime import datetime, date, time
 from typing import Optional, Any, List, Annotated, Literal
-from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator, StrictInt, ConfigDict
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, field_validator, computed_field, model_validator, StrictInt, StrictFloat, ConfigDict
 from decimal import Decimal
 from app.services.public_identity import public_user_id
 
@@ -68,9 +68,9 @@ class UserMeResponse(UserProfile):
 
 class RatingAssessmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    version: Literal["playnow_self_v1"]
+    version: Literal["playnow_self_v2"]
     mode: Literal["quick", "full"]
-    answers: dict[str, StrictInt] = Field(..., min_length=1, max_length=6)
+    answers: dict[str, StrictInt | StrictFloat] = Field(..., min_length=1, max_length=6)
 
     @model_validator(mode="after")
     def complete_answers(self):

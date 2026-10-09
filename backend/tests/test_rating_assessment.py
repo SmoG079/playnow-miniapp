@@ -17,9 +17,11 @@ def full(value=3):
     return {question["id"]: value for question in QUESTIONS}
 
 
-@pytest.mark.parametrize("level", [2, 3, 4, 5])
+@pytest.mark.parametrize("level", [1.5, 2.5, 3.5, 4.5])
 def test_quick_grade_matches_selected_card(level):
-    assert assess("quick", {"level": level}) == Decimal(level)
+    assert assess("quick", {"level": level}) == Decimal(str(level))
+    card = next(card for card in catalog()["quick_levels"] if card["value"] == level)
+    assert card["value"] == level
 
 
 def test_full_questionnaire_rounds_skill_average_to_half_a_point():
@@ -38,10 +40,14 @@ def test_full_questionnaire_rounds_skill_average_to_half_a_point():
     {"mode": "full", "answers": {"rally": 0}},
     {"mode": "full", "answers": full(-1)},
     {"mode": "full", "answers": full(8)},
+    {"mode": "full", "answers": full(3.5)},
+    {"mode": "full", "answers": full(3.0)},
+    {"mode": "quick", "answers": {"level": 2}},
     {"mode": "full", "answers": {**full(), "unknown": 0}},
-    {"mode": "quick", "answers": {"level": 3}, "utr_rating": 9},
-    {"mode": "quick", "answers": {"level": 3}, "ntrp_level": 7},
-    {"mode": "quick", "answers": {"level": 3}, "version": "future"},
+    {"mode": "quick", "answers": {"level": 2.5}, "utr_rating": 9},
+    {"mode": "quick", "answers": {"level": 2.5}, "ntrp_level": 7},
+    {"mode": "quick", "answers": {"level": 2.5}, "version": "future"},
+    {"mode": "quick", "answers": {"level": 2.5}, "version": "playnow_self_v1"},
 ])
 def test_incomplete_unknown_and_client_scored_payloads_are_rejected(payload):
     with pytest.raises(ValidationError):
@@ -49,7 +55,7 @@ def test_incomplete_unknown_and_client_scored_payloads_are_rejected(payload):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode,answers,expected", [("quick", {"level": 4}, "4.0"), ("full", full(3), "3.5")])
+@pytest.mark.parametrize("mode,answers,expected", [("quick", {"level": 3.5}, "3.5"), ("full", full(3), "3.5")])
 async def test_http_assessment_persists_only_ntrp_and_answers(db, mode, answers, expected):
     user = await db.get(User, "1")
     app = FastAPI(); app.include_router(users.router, prefix="/api/v1")
@@ -80,11 +86,11 @@ async def test_reserved_utr_survives_assessment_and_manual_ntrp_changes(db):
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/api/v1/users/me/rating-assessment", json={"version": VERSION, "mode": "quick", "answers": {"level": 3}})
+        response = await client.post("/api/v1/users/me/rating-assessment", json={"version": VERSION, "mode": "quick", "answers": {"level": 2.5}})
         assert response.status_code == 200
         await db.refresh(user); assessment = user.rating_assessment
         assert user.utr_rating == Decimal("8.25")
-        response = await client.put("/api/v1/users/me", json={"nickname": "保留资料", "ntrp_level": 3})
+        response = await client.put("/api/v1/users/me", json={"nickname": "保留资料", "ntrp_level": 2.5})
         assert response.status_code == 200
         await db.refresh(user); assert user.rating_assessment == assessment
         response = await client.put("/api/v1/users/me", json={"ntrp_level": 4.5})
@@ -101,7 +107,7 @@ async def test_anonymous_and_invalid_answers_cannot_modify_profile(db):
     app.dependency_overrides[get_db] = lambda: db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.get("/api/v1/users/me/rating-questionnaire")).status_code == 401
-        assert (await client.post("/api/v1/users/me/rating-assessment", json={"version": VERSION, "mode": "quick", "answers": {"level": 3}})).status_code == 401
+        assert (await client.post("/api/v1/users/me/rating-assessment", json={"version": VERSION, "mode": "quick", "answers": {"level": 2.5}})).status_code == 401
         app.dependency_overrides[get_current_user] = lambda: user
         assert (await client.post("/api/v1/users/me/rating-assessment", json={"version": VERSION, "mode": "full", "answers": {"rally": 7}})).status_code == 422
         await db.refresh(user)
