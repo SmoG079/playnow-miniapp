@@ -37,7 +37,7 @@ onUnmounted(() => clearTimeout(timer));
       ><view v-if="booking" class="result-panel"
         ><view class="success-mark"
           ><wd-icon
-            :name="booking.status === 'paid' ? 'check' : 'time'"
+            :name="booking.status === 'paid' ? 'check' : 'time-line'"
             size="30px" /></view
         ><text class="page-title">{{
           status[booking.status] || booking.status

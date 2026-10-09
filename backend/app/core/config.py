@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     REFUND_POLL_INTERVAL_MINUTES: int = 5
     REFUND_BATCH_SIZE: int = 50
 
-    # Tencent Map (optional: used for address geocoding)
+    # Tencent Map (optional: address/city resolution and current city weather)
     TENCENT_MAP_KEY: str = ""
     TENCENT_MAP_SK: str = ""
 

@@ -7,7 +7,7 @@
     }
   },
   "pages": [
-    { "path": "pages/home/index" },
+    { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/booking/club-list" },
     { "path": "pages/booking/venue-detail" },
     { "path": "pages/booking/confirm" },
@@ -24,8 +24,8 @@
     { "path": "pages/profile/edit" },
     { "path": "pages/profile/my-bookings" },
     { "path": "pages/profile/my-posts" },
-    { "path": "pages/profile/my-activities" },
-    { "path": "pages/profile/applications" },
+    { "path": "pages/profile/my-activities", "style": { "enablePullDownRefresh": true } },
+    { "path": "pages/profile/applications", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/profile/my-registrations" },
     {
       "path": "pages/profile/club-dashboard",
@@ -37,7 +37,7 @@
     { "path": "pages/admin/venue-manage" },
     { "path": "pages/admin/order-manage" },
     { "path": "pages/common/login" },
-    { "path": "pages/common/post-detail" },
+    { "path": "pages/common/post-detail", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/common/tournament-detail" },
     { "path": "pages/common/user-profile" }
   ],
@@ -83,6 +83,7 @@
   },
   "globalStyle": {
     "navigationStyle": "custom",
+    "navigationBarTextStyle": "black",
     "backgroundColor": "#f5f7f6",
     "navigationBarTitleText": "PlayNow"
   }

@@ -30,7 +30,7 @@ onShow(async () => {
             height="64px"
             :src="c.cover_image"
             fallback="/static/court.jpg"
-          /><view
+          /><view class="record-copy"
             ><text class="strong">{{ c.name }}</text
             ><text class="muted small">{{ c.address }}</text></view
           ></view
@@ -45,7 +45,7 @@ onShow(async () => {
           >编辑</wd-button
         ></view
       ><wd-empty v-if="!loading && !clubs.length" tip="暂无可管理的俱乐部" />
-      ><wd-button
+      <wd-button
         block
         @click="uni.navigateTo({ url: '/pages/publish/club-create' })"
         >创建俱乐部</wd-button

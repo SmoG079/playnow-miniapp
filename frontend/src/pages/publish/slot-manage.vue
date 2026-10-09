@@ -4,6 +4,7 @@ import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { businessDate } from "../../utils/date";
+const statusNames: Record<string, string> = { available: "可预订", locked: "锁定中", booked: "已预订", maintenance: "维护中" };
 const clubId = ref(0),
   venues = ref<any[]>([]),
   index = ref(0),
@@ -71,7 +72,7 @@ async function toggle(x: any) {
 </script>
 <template>
   <AppShell back title="时段管理"
-    ><view class="content publish-content"
+    ><view class="content publish-content slot-manage-content"
       ><text class="field-label">场地</text
       ><picker
         :range="venues.map((v) => v.name)"
@@ -107,6 +108,7 @@ async function toggle(x: any) {
           ><view class="picker-field">{{ form.end_time }}</view></picker
         ></view
       ><picker
+        class="slot-interval"
         :range="intervals.map((x) => x + ' 分钟')"
         :value="intervalIndex"
         @change="intervalIndex = Number($event.detail.value)"
@@ -120,7 +122,7 @@ async function toggle(x: any) {
           ><text class="strong"
             >{{ x.date_label }} {{ x.start_time }}–{{ x.end_time }}</text
           ><text class="muted small"
-            >¥{{ x.price }} · {{ x.status }}</text
+            >¥{{ x.price }} · {{ statusNames[x.status] || "状态待确认" }}</text
           ></view
         ><wd-switch
           :model-value="x.status === 'available'"
@@ -129,3 +131,9 @@ async function toggle(x: any) {
       ><wd-empty v-if="!slots.length" tip="该范围暂无时段" /></view
   ></AppShell>
 </template>
+
+<style scoped>
+.slot-manage-content .form-two { margin-bottom: 12px; }
+.slot-interval { display: block; margin-bottom: 16px; }
+.record-card > view > .muted.small { display: block; margin-top: 6px; }
+</style>

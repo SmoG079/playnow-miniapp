@@ -36,3 +36,17 @@ async def location_city(request:Request,lat:float=Query(...,ge=-90,le=90),lng:fl
         logger.error('City lookup provider failed')
         raise HTTPException(502,'城市定位失败，请手动选择城市')
     return dict(**parse_city(data),latitude=lat,longitude=lng)
+
+
+@router.get('/weather')
+async def weather(request: Request, city: str = Query(..., min_length=1, max_length=64),
+                  province: str = Query('', max_length=64)):
+    from app.services.weather import city_weather
+    city, province = city.strip(), province.strip()
+    if not city:
+        raise HTTPException(422, '请选择城市')
+    settings = get_settings()
+    if not settings.TENCENT_MAP_KEY:
+        raise HTTPException(503, '天气暂不可用')
+    await check_rate_limit('discovery:weather:' + (request.client.host if request.client else 'unknown'), 30, 60)
+    return await city_weather(city, province, settings.TENCENT_MAP_KEY, getattr(settings, 'TENCENT_MAP_SK', ''))

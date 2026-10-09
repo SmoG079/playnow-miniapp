@@ -101,7 +101,7 @@ function cancel(o: any) {
             >取消</wd-button
           ></view
         ></view
-      ><wd-empty v-if="!loading && !items.length" tip="暂无订单" /> ></view
+      ><wd-empty v-if="!loading && !items.length" tip="暂无订单" /> </view
     ></AppShell
   >
 </template>

@@ -5,6 +5,7 @@ import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 const s = useSession();
+const statusNames: Record<string, string> = { active: "正常", maintenance: "维护中", closed: "已关闭" };
 const clubId = ref(0),
   items = ref<any[]>([]),
   loading = ref(false),
@@ -54,7 +55,7 @@ function remove(v: any) {
       ><view v-for="v in items" :key="v.id" class="record-card"
         ><view class="row between"
           ><text class="strong">{{ v.name }}</text
-          ><text class="tag">{{ v.status }}</text></view
+          ><text class="tag">{{ statusNames[v.status] || "状态待确认" }}</text></view
         ><text class="muted">{{ v.city || "城市待补充" }} · {{ v.address || "球场地址待补充" }}</text
         ><text class="price">¥{{ v.price_per_hour }}/小时</text
         ><view class="row gap8"
@@ -84,7 +85,7 @@ function remove(v: any) {
             >删除</wd-button
           ></view
         ></view
-      ><wd-empty v-if="!loading && !items.length" tip="暂无场地" /> ><wd-button
+      ><wd-empty v-if="!loading && !items.length" tip="暂无场地" /> <wd-button
         block
         @click="
           uni.navigateTo({

@@ -1,17 +1,11 @@
 <script setup lang="ts">
-import { backOrHome } from "../utils/navigation";
-defineProps<{ active?: string; back?: boolean; title?: string }>();
-const statusHeight = Number(uni.getSystemInfoSync().statusBarHeight || 0);
+import MainHeader from "./MainHeader.vue";
+defineProps<{ active?: string; back?: boolean; title?: string; simpleHeader?: boolean }>();
 </script>
 <template>
   <wd-config-provider>
     <view class="app-shell">
-      <view v-if="back" class="topbar" :style="{ paddingTop: statusHeight + 'px', height: statusHeight + 54 + 'px' }"
-        ><button class="icon-button" aria-label="返回" @click="backOrHome">
-          <wd-icon name="arrow-left" size="22px" /></button
-        ><text class="topbar-title">{{ title }}</text
-        ><view class="topbar-spacer"
-      /></view>
+      <MainHeader v-if="back" :title="title || '详情'" back :context="!simpleHeader" />
       <slot />
       <wd-toast />
       <wd-dialog />

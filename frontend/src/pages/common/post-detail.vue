@@ -9,6 +9,9 @@ import { postLocation } from "../../domain/post-location";
 const s = useSession(),
   id = ref(""),
   post = ref<any>(null),
+  postFailed = ref(false),
+  postLoading = ref(true),
+  commentsFailed = ref(false),
   comments = ref<any[]>([]),
   input = ref(""),
   reply = ref<any>(null),
@@ -32,13 +35,24 @@ const full = computed(
     post.value && post.value.registration_count >= post.value.players_needed,
 );
 async function load() {
+  if (postLoading.value && post.value) return;
+  postLoading.value = true;
+  postFailed.value = false;
   try {
     post.value = await request(`/posts/${id.value}`);
-    comments.value =
-      (await request<any>(`/posts/${id.value}/comments?page=1&page_size=50`))
-        .items || [];
+    await loadComments();
   } catch (e: any) {
-    uni.showToast({ title: e.message, icon: "none" });
+    postFailed.value = true;
+  } finally {
+    postLoading.value = false;
+  }
+}
+async function loadComments() {
+  commentsFailed.value = false;
+  try {
+    comments.value = (await request<any>(`/posts/${id.value}/comments?page=1&page_size=50`)).items || [];
+  } catch {
+    commentsFailed.value = true;
   }
 }
 onLoad((q) => {
@@ -137,7 +151,10 @@ function remove(c: any) {
           fallback="/static/tennis.jpg"
           mode="aspectFill" /></view
       ><view class="content detail-content"
-        ><view class="row gap8 section-head"
+        ><view v-if="postFailed" class="row between section-head">
+          <text class="muted small">刷新失败，当前显示上次加载的内容</text>
+          <wd-button size="small" variant="text" @click="load">重试</wd-button>
+        </view><view class="row gap8 section-head"
           ><text class="tag">{{ post.venue_id ? "订场约球" : "自由约球" }}</text
           ><text v-if="post.level_required" class="tag yellow"
             >NTRP {{ post.level_required }}</text
@@ -184,7 +201,10 @@ function remove(c: any) {
           ></view
         ><view class="section-head"
           ><text class="section-title">评论</text></view
-        ><view
+        ><view v-if="commentsFailed" class="row between">
+          <text class="muted small">评论加载失败</text>
+          <wd-button size="small" variant="text" @click="loadComments">重试</wd-button>
+        </view><view
           v-for="c in comments"
           :key="c.id"
           class="comment"
@@ -234,8 +254,14 @@ function remove(c: any) {
             :value="r.status === 'pending' ? '待审核' : r.status === 'approved' ? '已通过' : r.status === 'cancelled' ? '已取消' : '未通过'" /><wd-empty
             v-if="!post.registrations?.length"
             tip="还没有人报名" /></view></wd-popup></template
-    ><wd-loading v-else
-  /></AppShell>
+    ><view v-else-if="postFailed" class="content empty-state">
+      <wd-icon name="info-circle" size="44px" color="#728178" />
+      <text class="section-title">活动信息加载失败</text>
+      <text class="muted">请检查网络后重新加载</text>
+      <wd-button size="small" @click="load">重新加载</wd-button>
+    </view>
+    <view v-else class="page-loading"><wd-loading text="正在加载活动信息" /></view>
+  </AppShell>
 </template>
 
 <style scoped>

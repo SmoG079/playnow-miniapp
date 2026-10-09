@@ -23,7 +23,7 @@ const menus = computed(() => {
       ["home", "俱乐部管理", "/pages/profile/club-dashboard"],
     );
   if (s.isPlatformAdmin)
-    common.push(["money-circle", "分账记录", "/pages/profile/settlement-list"]);
+    common.push(["history", "分账记录", "/pages/profile/settlement-list"]);
   return common;
 });
 function logout() {

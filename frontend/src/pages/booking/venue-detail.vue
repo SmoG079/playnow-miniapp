@@ -12,6 +12,9 @@ const clubId = ref(""),
   selected = ref<any[]>([]),
   date = ref(""),
   dates = ref<any[]>([]),
+  clubLoading = ref(false),
+  clubFailed = ref(false),
+  slotsFailed = ref(false),
   loading = ref(false),
   returnMode = ref("");
 const duration = computed(() => bookingDuration(selected.value));
@@ -35,22 +38,31 @@ function init() {
   date.value = dates.value[0].value;
 }
 let loadVersion = 0;
-async function load() {
+async function loadClub() {
+  if (clubLoading.value) return;
+  clubLoading.value = true;
+  clubFailed.value = false;
+  try {
+    club.value = await request<any>(`/clubs/${clubId.value}`);
+  } catch (e: any) {
+    clubFailed.value = true;
+  } finally {
+    clubLoading.value = false;
+  }
+}
+async function loadSlots() {
   const version = ++loadVersion;
   loading.value = true;
+  slotsFailed.value = false;
   selected.value = [];
   rows.value = [];
   try {
-    const [c, r] = await Promise.all([
-      request<any>(`/clubs/${clubId.value}`),
-      request<any>(`/clubs/${clubId.value}/venue-slots?date=${date.value}`),
-    ]);
+    const r = await request<any>(`/clubs/${clubId.value}/venue-slots?date=${date.value}`);
     if (version !== loadVersion) return;
-    club.value = c;
     venues.value = r.venues || [];
     rows.value = r.rows || [];
   } catch (e: any) {
-    if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
+    if (version === loadVersion) slotsFailed.value = true;
   } finally {
     if (version === loadVersion) loading.value = false;
   }
@@ -59,8 +71,13 @@ onLoad((q) => {
   clubId.value = String(q?.id || q?.club_id || "");
   returnMode.value = String(q?.return_mode || "");
   init();
-  load();
+  void loadClub();
+  void loadSlots();
 });
+function retryClub() {
+  void loadClub();
+  void loadSlots();
+}
 function selectedCell(c: any) {
   return selected.value.some((s) => s.slot_id === c.slot_id);
 }
@@ -107,13 +124,21 @@ function book() {
             :class="{ chosen: date === d.value }"
             @click="
               date = d.value;
-              load();
+              loadSlots();
             "
           >
             <text>{{ d.label }}</text
             ><text class="small">{{ d.value.slice(5) }}</text>
           </button></view
-        ><scroll-view scroll-x class="slot-scroll"
+        ><view v-if="loading" class="page-loading"><wd-loading text="正在加载可订时段" /></view>
+        <view v-else-if="slotsFailed" class="empty-state">
+          <wd-icon name="info-circle" size="36px" color="#728178" />
+          <text class="section-title">时段加载失败</text>
+          <text class="muted small">请检查网络后重新加载</text>
+          <wd-button size="small" variant="plain" @click="loadSlots">重新加载</wd-button>
+        </view>
+        <wd-empty v-else-if="!venues.length || !rows.length" tip="当天暂无可订时段" />
+        <scroll-view v-else scroll-x class="slot-scroll"
           ><view class="slot-table" :style="`--cols:${venues.length}`"
             ><view class="slot-header"
               ><text>时间</text
@@ -145,7 +170,7 @@ function book() {
               </button></view
             ></view
           ></scroll-view
-        ><wd-loading v-if="loading" /><view class="booking-rules"
+        ><view class="booking-rules"
           ><text class="strong">预订须知</text
           ><text class="muted small"
             >1 小时起订，首次点击自动选择后续连续时段；之后可按半小时追加。</text
@@ -157,10 +182,17 @@ function book() {
           ><text class="small muted">{{
             duration ? duration + " 分钟" : "请选择时段"
           }}</text></view
-        ><wd-button :disabled="duration < 60" @click="book"
+        ><wd-button :disabled="loading || slotsFailed || duration < 60" @click="book"
           >确认时段</wd-button
         ></view
       ></template
-    ></AppShell
+    ><view v-else-if="clubFailed" class="content empty-state">
+      <wd-icon name="info-circle" size="44px" color="#728178" />
+      <text class="section-title">球场信息加载失败</text>
+      <text class="muted">请检查网络后重新加载</text>
+      <wd-button size="small" @click="retryClub">重新加载</wd-button>
+    </view>
+    <view v-else class="page-loading"><wd-loading text="正在加载球场信息" /></view>
+    </AppShell
   >
 </template>

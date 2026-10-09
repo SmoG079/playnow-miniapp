@@ -6,17 +6,26 @@ body,
   --wot-primary-6: #147553;
   --wot-primary-7: #105c42;
   --wot-button-height-medium: 46px;
-  --wot-button-radius-main: 6px;
+  --wot-button-radius-main: 10px;
   --wot-color-theme: #147553;
   --wot-color-success: #147553;
   --wot-button-primary-bg-color: #147553;
   --wot-button-primary-border-color: #147553;
   --wot-button-border-radius: 6px;
   --wot-button-medium-height: 46px;
-  --wot-input-bg: #f0f3f1;
+  --wot-input-bg: #fff;
+  --wot-input-inner-color: #1d2d25;
+  --wot-input-inner-placeholder-color: #87968b;
+  --wot-textarea-inner-color: #1d2d25;
+  --wot-textarea-inner-placeholder-color: #87968b;
+  --wot-empty-icon-color: #becbc3;
+  --wot-empty-text-color: #536b5d;
+  --wot-empty-text-font-size: 15px;
+  --wot-empty-text-font-weight: 500;
   --wot-input-border-color: #e2e8e4;
   --playnow-card-radius: 16px;
   --playnow-card-border: #e4ebe6;
+  --playnow-field-radius: 10px;
   color: #1d2d25;
   background: #e8eeea;
   font-family:
@@ -456,7 +465,9 @@ image {
   gap: 10px;
 }
 .venue-card-body .section-title {
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #24382d;
 }
 .venue-card-body .price {
   font-size: 17px;
@@ -801,17 +812,29 @@ image {
   gap: 8px;
   background: #fff;
   border: 1px solid #e0e7e2;
-  padding: 14px;
+  padding: 12px 14px;
   min-height: 48px;
-  border-radius: 5px;
+  border-radius: var(--playnow-field-radius);
+  font-size: 14px;
+  line-height: 22px;
 }
 .publish-action {
   margin-top: 24px;
 }
-.publish-content .wd-input {
-  border-radius: 5px;
-  border: 1px solid #e0e7e2;
+.publish-content {
+  --wot-input-padding: 13px 14px;
+  --wot-input-inner-height: 22px;
+  --wot-input-inner-font-size: 14px;
+  --wot-textarea-padding: 13px 14px;
+  --wot-textarea-inner-font-size: 14px;
+  --wot-textarea-inner-line-height: 24px;
+}
+.publish-content .wd-input,
+.publish-content .wd-textarea {
+  border-radius: var(--playnow-field-radius);
+  border: 1px solid var(--playnow-card-border);
   background: white;
+  overflow: hidden;
 }
 .publish-content .summary-row {
   margin-top: 20px;
@@ -892,6 +915,13 @@ image {
 }
 .menu-list {
   background: #fff;
+  --wot-cell-title-font-size: 16px;
+  --wot-cell-padding: 16px;
+  --wot-cell-icon-spacing-right: 12px;
+  --wot-cell-icon-color: #647d70;
+  --wot-cell-arrow-size: 16px;
+  --wot-cell-arrow-color: #a0ada5;
+  --wot-cell-title-color: #304238;
 }
 .record {
   display: flex;
@@ -907,6 +937,23 @@ image {
   align-items: center;
   text-align: center;
   gap: 15px;
+}
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 40px 20px;
+  --wot-loading-color: #147553;
+}
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 180px;
+  padding: 40px 20px;
 }
 .message-empty {
   padding-top: 120px;
@@ -941,6 +988,8 @@ image {
 .record-card > .row:last-child {
   justify-content: flex-end;
 }
+.record-copy { flex: 1; min-width: 0; }
+.record-copy > text { display: block; line-height: 1.6; }
 .message-card.unread {
   border-left: 3px solid #147553;
 }
@@ -1009,15 +1058,16 @@ image {
   padding: 0 14px;
   background: #fff;
   border: 1px solid #e0e7e2;
-  border-radius: 5px;
+  border-radius: var(--playnow-field-radius);
 }
 .login-page {
-  min-height: 80vh;
-  padding: 90px 28px 30px;
+  min-height: calc(100vh - 110px);
+  padding: 32px 28px calc(24px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
+.login-page .page-title { font-size: 22px; font-weight: 650; }
 .agreement {
   display: flex;
   align-items: center;
@@ -1069,11 +1119,20 @@ image {
 }
 
 /* Shared main-page spacing and card surfaces. */
-.main-header { margin-bottom: 20px; }
-.main-header .page-title { margin: 6px 0; }
-.city-header { display:flex; align-items:center; margin-bottom:16px; }
-.city-pill { margin:0; display:flex; align-items:center; justify-content:center; gap:2px; width:68px; background:#123b2c; color:#fff; padding:7px 4px; border-radius:20px; font-size:11px; font-weight:600; line-height:16px; }
-.city-pill text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+/* Navigation follows the native capsule; heading and context have separate emphasis. */
+.main-header { margin-bottom: 20px; padding-bottom: 20px; background: #f5f7f6; border-bottom: 1px solid #e1e8e3; }
+.header-nav { display: flex; align-items: center; }
+.header-nav .city-pill { max-width: 100%; }
+.header-heading { display: flex; align-items: center; gap: 6px; margin-top: 22px; }
+.main-header .page-title { margin: 0; font-size: 30px; font-weight: 800; line-height: 1.3; color: #192d23; letter-spacing: -0.5px; }
+.header-context { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: #7b887f; font-size: 13px; font-weight: 500; line-height: 1.6; }
+.header-divider { color: #a7b1aa; }
+.header-back { width: 30px; height: 34px; display: flex; align-items: center; justify-content: flex-start; flex: none; }
+.main-header-back .header-heading { margin-top: 18px; }
+.main-header-back .page-title { font-size: 24px; font-weight: 750; letter-spacing: 0; }
+.main-header-back .header-context { padding-left: 36px; }
+.city-pill { margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-width: 100px; max-width: 180px; height: 32px; background: #183f30; color: #fff; padding: 0 13px; border-radius: 18px; font-size: 13px; font-weight: 650; line-height: 20px; }
+.city-pill text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .city-options { padding:30px 20px; display:flex; flex-direction:column; gap:16px; }
 .filter-pill { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border:1px solid var(--playnow-card-border); border-radius:12px; font-size:13px; background:#fff; color:#283e32; }
 .activity-card, .venue-card, .record-card, .summary-card, .message-card, .list-card, .profile-header, .menu-list, .conv-item, .stats-grid > view {
@@ -1088,3 +1147,25 @@ image {
 
 .city-pill::after { border:0; }
 .search-card { border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); background:#fff; overflow:hidden; margin-bottom:12px; }
+.search-card,
+.activity-search {
+  --wot-search-padding: 6px 8px;
+  --wot-search-input-height: 40px;
+  --wot-search-input-font-size: 14px;
+  --wot-search-placeholder-font-size: 14px;
+  --wot-search-field-padding: 0 8px;
+  --wot-search-input-radius: 10px;
+  --wot-search-icon-color: #728178;
+  --wot-search-placeholder-color: #87968b;
+}
+
+/* Card titles lead; organizers and contextual metadata stay quiet. */
+.activity-card > .row:first-child .strong { font-size: 13px; font-weight: 550; color: #50665a; }
+.activity-card > .row:first-child .small { display: block; font-size: 11px; color: #8a968e; }
+.activity-title { font-size: 18px; font-weight: 700; color: #24382d; margin: 14px 0 10px; }
+.venue-card-body > .muted { font-size: 12px; line-height: 1.65; }
+.topbar-title { font-size: 16px; }
+
+.main-header-simple { padding-bottom: 16px; }
+.main-header-simple .header-heading { margin-top: 0; }
+.main-header-simple .page-title { font-size: 20px; font-weight: 650; }

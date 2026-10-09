@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { onPullDownRefresh, onReachBottom, onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
-import DiscoveryCityButton from "../../components/DiscoveryCityButton.vue";
+import ActivityCard from "../../components/ActivityCard.vue";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
 import { openPage } from "../../utils/navigation";
@@ -96,11 +96,8 @@ onReachBottom(loadMore);
 </script>
 <template>
   <AppShell active="home"
-    ><MainHeader title="今天，球场见。" /><view class="content"
-      ><view class="city-header">
-        <DiscoveryCityButton @change="load" />
-      </view>
-<view class="text-tabs section-head"
+    ><MainHeader title="首页" @city-change="load" /><view class="content"
+      ><view class="text-tabs section-head"
         ><button :class="{ selected: tab === 0 }" @click="tab = 0">
           约球广场</button
         ><button :class="{ selected: tab === 1 }" @click="tab = 1">
@@ -118,68 +115,19 @@ onReachBottom(loadMore);
           <button v-if="date" class="clear-date" @click="date = ''; load()">清除日期</button>
         </view>
       </view>
-      <template v-if="tab === 0"
-        ><view
-          v-for="p in visiblePosts"
-          :key="p.id"
-          class="activity-card"
-          @click="openPage('/pages/common/post-detail?id=' + p.id)"
-          ><view class="row between"
-            ><view class="row gap8"
-              ><Photo
-                round
-                width="40px"
-                height="40px"
-                :src="p.user_avatar"
-                fallback="/static/tennis.jpg"
-              /><view
-                ><text class="strong">{{ p.user_nickname || "匿名球友" }}</text
-                ><text class="muted small">{{ p.created_at }}</text></view
-              ></view
-            ><text class="tag">{{ p.venue_id ? "订场" : "自由" }}</text></view
-          ><text class="activity-title">{{ p.title }}</text
-          ><text v-if="p.address" class="muted small post-address">{{ p.address }}</text
-          ><view class="row between"
-            ><text class="muted small"
-              >{{ p.preferred_date }} {{ p.preferred_start }}–{{
-                p.preferred_end
-              }}</text
-            ><text class="link"
-              >{{ p.registration_count || 0 }}/{{ p.players_needed }} 人</text
-            ></view
-          ></view
-        ><wd-empty
-          v-if="!loading && !visiblePosts.length"
-          tip="暂无约球帖" /><wd-loading v-if="loading" /></template
-      ><template v-else
-        ><view
-          v-for="t in tournaments"
-          :key="t.id"
-          class="venue-card"
-          @click="openPage('/pages/common/tournament-detail?id=' + t.id)"
-          ><Photo
-            width="100%"
-            height="170px"
-            :src="t.cover_image"
-            fallback="/static/tennis.jpg"
-            mode="aspectFill"
-          /><view class="venue-card-body"
-            ><text class="section-title">{{ t.title }}</text
-            ><text class="muted">{{ t.club_name }} · {{ t.start_time }}</text
-            ><text class="link"
-              >{{ t.current_participants }}/{{ t.max_participants }} 人</text
-            ></view
-          ></view
-        ><wd-empty
-          v-if="!loading && !tournaments.length"
-          tip="暂无比赛" /></template></view
+      <template v-if="tab === 0">
+        <ActivityCard v-for="p in visiblePosts" :key="p.id" :item="p" kind="post" @open="openPage('/pages/common/post-detail?id=' + p.id)" />
+        <wd-empty v-if="!loading && !visiblePosts.length" tip="暂无约球帖" />
+      </template>
+      <template v-else>
+        <ActivityCard v-for="t in tournaments" :key="t.id" :item="t" kind="tournament" @open="openPage('/pages/common/tournament-detail?id=' + t.id)" />
+        <wd-empty v-if="!loading && !tournaments.length" tip="暂无比赛" />
+      </template>
+      <wd-loading v-if="loading" /></view
     ></AppShell>
 </template>
 
 <style scoped>
-.city-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .discovery-filters{margin-bottom:20px}.filter-line{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .my-level,.clear-date{margin:0;padding:9px 12px;line-height:20px;font-size:12px;border-radius:12px;background:#e5f0e8;color:#285f40}.my-level::after,.clear-date::after{border:0}
 </style>
-
-<style scoped>.post-address { display:block; margin:0 0 10px; line-height:1.5; }</style>

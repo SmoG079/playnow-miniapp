@@ -9,7 +9,7 @@ onLoad((q) => {
 </script>
 <template>
   <AppShell back title="球友资料"
-    ><view class="content"
+    ><view class="content list-content"
       ><view class="profile-header"
         ><view class="profile-avatar">{{ name.slice(0, 1) }}</view
         ><view

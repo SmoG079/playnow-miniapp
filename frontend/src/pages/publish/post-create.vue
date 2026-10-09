@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
+import MainHeader from "../../components/MainHeader.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
 import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
@@ -15,7 +16,6 @@ const s = useSession(),
   loading = ref(false),
   coverUploading = ref(false),
   locationSelecting = ref(false),
-  statusBarHeight = ref(0),
   editingPost = ref(false),
   showPostComparison = ref(false),
   choosingVenue = ref(false),
@@ -58,7 +58,6 @@ onHide(cacheDraft); onUnload(cacheDraft);
 watch([form, images, clubIndex, choosingVenue, venueName, editingPost], cacheDraft, { deep: true, flush: "sync" });
 onShow(async () => {
   draftReady.value = false;
-  statusBarHeight.value = uni.getWindowInfo().statusBarHeight || 0;
   if (!s.requireLogin("/pages/publish/post-create")) return;
   await s.fetchUser().catch(() => {});
   if (!s.user?.id) return;
@@ -221,57 +220,44 @@ function goBook() {
 }
 </script>
 <template>
-  <AppShell active="publish"
-    ><view
-      class="content publish-content"
-      :class="{ 'entry-content': !editingPost }"
-      ><view
-        class="page-heading"
-        :style="{ paddingTop: `${26 + statusBarHeight}px` }"
-        ><text class="eyebrow">MAKE THE NEXT GAME</text
-        ><text class="page-title">好球局，由你发起</text></view
-      ><view v-if="!editingPost" class="publish-entries">
-        <view class="publish-entry post-entry">
-          <view class="entry-heading"
-            ><text class="entry-title">发布约球</text
-            ><text class="entry-kind">日常约球</text></view
-          >
-          <text class="entry-description">找球友一起练球、打友谊局。</text>
-          <view class="entry-action"
-            ><wd-button variant="plain" :disabled="!draftReady" @click="goPost"
-              >创建约球</wd-button
-            ></view
-          >
-        </view>
-        <view class="publish-entry tournament-entry">
-          <view class="entry-heading"
-            ><text class="entry-title">发布比赛</text
-            ><text class="entry-kind">正式比赛</text></view
-          >
-          <text class="entry-description"
-            >设置赛制，管理报名、抽签和晋级。</text
-          >
-          <view class="entry-action"
-            ><wd-button
-              variant="plain"
-              :disabled="!s.canPublishTournament"
-              @click="goTournament"
-              >创建比赛</wd-button
-            >
-            <text v-if="!s.canPublishTournament" class="permission-note">{{
-              tournamentDisabledReason
-            }}</text>
+  <AppShell active="publish">
+    <MainHeader :title="editingPost ? '发布约球' : '发布'" />
+    <view class="content publish-content">
+      <view v-if="!editingPost" class="publish-entries">
+        <text class="entry-intro muted">约上球友，或组织一场属于你的比赛。</text>
+        <button class="publish-entry" :disabled="!draftReady" hover-class="entry-pressed" @click="goPost">
+          <view class="entry-icon"><wd-icon name="user-group" size="26px" /></view>
+          <view class="entry-copy">
+            <view class="entry-heading"><text class="entry-title">发布约球</text><wd-tag type="primary" variant="light" size="small">日常约球</wd-tag></view>
+            <text class="entry-description">找球友一起练球、打友谊局。</text>
+            <text v-if="!draftReady" class="permission-note">正在准备发布信息…</text>
           </view>
-        </view>
+          <wd-icon name="arrow-right" size="16px" color="#a0ada5" />
+        </button>
+        <button class="publish-entry" :disabled="!s.canPublishTournament" hover-class="entry-pressed" @click="goTournament">
+          <view class="entry-icon"><wd-icon name="trophy" size="26px" /></view>
+          <view class="entry-copy">
+            <view class="entry-heading"><text class="entry-title">发布比赛</text><wd-tag type="primary" variant="light" size="small">正式比赛</wd-tag></view>
+            <text class="entry-description">设置赛制，管理报名、抽签和晋级。</text>
+            <text v-if="!s.canPublishTournament" class="permission-note">{{ tournamentDisabledReason }}</text>
+          </view>
+          <wd-icon name="arrow-right" size="16px" color="#a0ada5" />
+        </button>
+        <button class="publish-entry" hover-class="entry-pressed" @click="goClub">
+          <view class="entry-icon"><wd-icon name="company" size="26px" /></view>
+          <view class="entry-copy">
+            <text class="entry-title">创建俱乐部</text>
+            <text class="entry-description">让球友相聚，管理你的俱乐部和球场。</text>
+          </view>
+          <wd-icon name="arrow-right" size="16px" color="#a0ada5" />
+        </button>
       </view>
-      <view v-if="!editingPost" class="create-club-entry"><wd-button variant="text" size="small" custom-style="color:#147553;font-size:13px" @click="goClub">创建俱乐部</wd-button></view>
       <view v-else class="post-form">
         <wd-button variant="text" @click="editingPost = false"
           >返回发布入口</wd-button
         >
         <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
-        <text class="form-title">发布约球</text>
-        <text class="muted">场地可选，未关联即为自由约球。</text>
+        <text class="subtitle muted">场地可选，未关联即为自由约球。</text>
         <text class="field-label">标题 *</text
         ><wd-input
           v-model="form.title"
@@ -420,70 +406,36 @@ function goBook() {
 </template>
 
 <style scoped>
-.entry-content {
-  min-height: calc(100vh - 80px - env(safe-area-inset-bottom));
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
 .publish-entries {
-  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  margin: auto 0;
-  padding: 32px 0 40px;
+  gap: 14px;
+  padding-bottom: 24px;
 }
-.create-club-entry { text-align:center; padding:8px 0 16px; }
+.entry-intro { display: block; margin: 0 0 6px; font-size: 13px; line-height: 1.7; }
 .venue-empty { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px 0; }
 .selected-address { display:block; font-size:14px; line-height:1.6; color:#304238; margin-bottom:12px; }
 .linked-location { display:flex; align-items:center; gap:10px; padding:14px; border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); background:#fff; }
 .linked-location > view { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; font-size:14px; }
 .publish-entry {
-  padding: 0 8px;
-}
-.entry-heading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  width: 100%;
+  padding: 22px 16px;
+  border: 1px solid var(--playnow-card-border);
+  border-radius: var(--playnow-card-radius);
+  background: #fff;
+  text-align: left;
+  line-height: 1.5;
 }
-.entry-title {
-  font-size: 23px;
-  font-weight: 600;
-  color: #20362c;
-}
-.entry-kind {
-  font-size: 11px;
-  color: #547363;
-  background: #eaf2ed;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-.entry-description {
-  display: block;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #728178;
-  margin: 8px 0 14px;
-}
-.entry-action {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-}
-.permission-note {
-  font-size: 11px;
-  line-height: 1.6;
-  color: #728178;
-  flex: 1;
-}
-.form-title {
-  display: block;
-  margin: 16px 0 8px;
-  font-size: 22px;
-  font-weight: 600;
-}
+.entry-pressed { background: #edf5ef; }
+.entry-icon { display: flex; align-items: center; justify-content: center; flex: none; width: 48px; height: 48px; border-radius: 14px; background: #e8f1ec; color: #147553; }
+.entry-copy { flex: 1; min-width: 0; }
+.entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.entry-title { display: block; font-size: 18px; font-weight: 650; color: #20362c; }
+.entry-description { display: block; margin-top: 8px; font-size: 13px; line-height: 1.7; color: #728178; }
+.permission-note { display: block; margin-top: 8px; font-size: 12px; line-height: 1.6; color: #728178; }
 .venue-association {
   display: flex;
   flex-wrap: wrap;

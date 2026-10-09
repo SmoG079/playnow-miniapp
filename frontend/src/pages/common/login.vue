@@ -71,11 +71,9 @@ async function login() {
 }
 </script>
 <template>
-  <AppShell back title="登录"
+  <AppShell back title="登录" simple-header
     ><view class="login-page"
-      ><text class="brand">PlayNow<text class="brand-dot">.</text></text
-      ><text class="page-title">登录后，上场见。</text
-      ><text class="muted">微信快捷登录，安全保存你的预约与活动记录</text
+      ><text class="muted">微信快捷登录，保存你的预约与活动记录</text
       ><label class="agreement" @click="agreed = !agreed"
         ><checkbox :checked="agreed" color="#147553" /><text
           >我已阅读并同意《用户协议》和《隐私政策》</text

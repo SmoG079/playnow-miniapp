@@ -4,6 +4,7 @@ import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request, listAll } from "../../services/api";
 import { useSession } from "../../stores/session";
+const statusNames: Record<string, string> = { active: "正常", maintenance: "维护中", closed: "已关闭" };
 const s = useSession(),
   clubs = ref<any[]>([]),
   index = ref(0),
@@ -54,7 +55,7 @@ function callClub() {
 </script>
 <template>
   <AppShell back title="俱乐部工作台"
-    ><view class="content"
+    ><view class="content list-content"
       ><picker
         v-if="clubs.length > 1"
         :range="clubs.map((c) => c.name)"
@@ -103,7 +104,7 @@ function callClub() {
             v-for="venue in club.venues || []"
             :key="venue.id"
             :title="venue.name"
-            :label="`¥${venue.price_per_hour}/小时 · ${venue.status === 'active' ? '正常' : venue.status}`"
+            :label="`¥${venue.price_per_hour}/小时 · ${statusNames[venue.status] || '状态待确认'}`"
             is-link
             @click="
               uni.navigateTo({

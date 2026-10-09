@@ -2,13 +2,19 @@
 import { ref } from "vue";
 import { onReachBottom, onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
-import DiscoveryCityButton from "../../components/DiscoveryCityButton.vue";
 import { useDiscovery } from "../../stores/discovery";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
 import { openPage } from "../../utils/navigation";
 const location = useDiscovery();
 let loadVersion = 0;
+let cachedSignature = "", loadedAt = 0;
+const cacheTTL = 2 * 60 * 1000;
+function querySignature() {
+  return JSON.stringify([location.city, keyword.value, sort.value,
+    sort.value === "distance" ? location.latitude : null,
+    sort.value === "distance" ? location.longitude : null]);
+}
 const clubs = ref<any[]>([]),
   keyword = ref(""),
   sort = ref("default"),
@@ -18,7 +24,8 @@ const clubs = ref<any[]>([]),
 async function load(append = false) {
   if (append && loading.value) return;
   const version = ++loadVersion;
-  if (!append) clubs.value = [];
+  const signature = querySignature();
+  if (!append) { clubs.value = []; cachedSignature = ""; loadedAt = 0; }
   if (!location.city) { loading.value = false; return; }
   loading.value = true;
   try {
@@ -32,6 +39,7 @@ async function load(append = false) {
     clubs.value = append ? [...clubs.value, ...r.items] : r.items;
     page.value = p;
     more.value = r.items.length === 20;
+    if (!append) { cachedSignature = signature; loadedAt = Date.now(); }
   } catch (e: any) {
     if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
   } finally {
@@ -50,17 +58,18 @@ onShow(async () => {
     try { await location.locate(); }
     catch { uni.showToast({ title: "请手动选择城市", icon: "none" }); }
   }
+  if (cachedSignature === querySignature() && Date.now() - loadedAt < cacheTTL) return;
   await load();
 });
 onReachBottom(() => more.value && load(true));
 </script>
 <template>
   <AppShell active="clubs"
-    ><MainHeader title="找球场" /><view class="content main-content"
-      ><view class="city-header"><DiscoveryCityButton @change="load()" /></view
+    ><MainHeader title="订场" @city-change="load()" /><view class="content main-content"
       ><view class="search-card"><wd-search
         v-model="keyword"
         placeholder="搜索俱乐部"
+        placeholder-left
         cancel-txt="搜索"
         @search="load()"
         @cancel="load()" /></view><view class="filter-row"

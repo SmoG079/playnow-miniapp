@@ -42,7 +42,7 @@ onShow(refreshClubs);
 </script>
 <template>
   <AppShell back title="经营统计"
-    ><view class="content"
+    ><view class="content list-content"
       ><picker
         v-if="clubs.length > 1"
         :range="clubs.map((club) => club.name)"
@@ -77,6 +77,9 @@ onShow(refreshClubs);
       ><view v-if="clubs.length" class="menu-list"
         ><wd-cell
           title="订单管理"
+          prefix-icon="list"
+          icon-size="22px"
+          title-width="calc(100% - 40px)"
           is-link
           @click="
             uni.navigateTo({
@@ -84,6 +87,9 @@ onShow(refreshClubs);
             })
           " /><wd-cell
           title="场地管理"
+          prefix-icon="location"
+          icon-size="22px"
+          title-width="calc(100% - 40px)"
           is-link
           @click="
             uni.navigateTo({

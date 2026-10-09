@@ -17,6 +17,7 @@ import {
 import { request } from "../../services/api";
 import { payTournament } from "../../services/payment";
 import { useSession } from "../../stores/session";
+import { tournamentPollDelay } from "../../domain/activity-polling";
 import {
   getTournament,
   command,
@@ -43,8 +44,10 @@ const s = useSession(),
   mineOnly = ref(false);
 const previewOpen = ref(false),
   schedulePreview = ref<ReturnType<typeof buildSchedulePreview> | null>(null);
-let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let refreshing = false;
+let visible = false;
+let loadVersion = 0;
 const myPosition = computed(() =>
   personalDraw(
     t.value?.teams?.length
@@ -128,36 +131,51 @@ const title = computed(() =>
           : "立即报名",
 );
 async function load() {
+  const version = ++loadVersion;
   try {
-    t.value = await getTournament(id.value);
+    const result = await getTournament(id.value);
+    if (version !== loadVersion || !visible) return;
+    t.value = result;
     error.value = "";
     if (previewOpen.value) showSchedulePreview();
   } catch (e) {
+    if (version !== loadVersion || !visible) return;
     error.value = "赛事加载失败，请重试";
+  } finally {
+    if (version === loadVersion) scheduleRefresh();
   }
 }
-onLoad(async (q) => {
+onLoad((q) => {
   id.value = Number(q?.id);
   invite.value = String(q?.invite || "");
-  await s.fetchUser().catch(() => {});
-  await load();
+  void s.fetchUser().catch(() => {});
 });
 function stopRefresh() {
-  if (refreshTimer) clearInterval(refreshTimer);
+  visible = false;
+  loadVersion++;
+  if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = undefined;
 }
-onShow(() => {
-  stopRefresh();
-  if (id.value) load();
-  refreshTimer = setInterval(async () => {
-    if (busy.value || refreshing || !id.value) return;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = undefined;
+  const delay = tournamentPollDelay(t.value);
+  if (!visible || !id.value || delay === null) return;
+  refreshTimer = setTimeout(async () => {
+    if (!visible) return;
+    if (busy.value || refreshing) { scheduleRefresh(); return; }
     refreshing = true;
     try {
       await load();
     } finally {
       refreshing = false;
     }
-  }, 5000);
+  }, delay);
+}
+onShow(() => {
+  stopRefresh();
+  visible = true;
+  if (id.value) void load();
 });
 onHide(stopRefresh);
 onUnload(stopRefresh);
@@ -311,16 +329,28 @@ async function draw(stage = "initial") {
     ))
   )
     return;
-  const r = await run("draw", {
-    archive_results: !!hasResults,
-    publish: redrawing,
-    stage,
-    reason: why,
-    expected_version: t.value?.draw_version || 0,
-    idempotency_key: `draw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  });
-  if (r?.overflows)
-    uni.showModal({ title: "需调整排场", content: r.note, showCancel: false });
+  try {
+    const r = await run("draw", {
+      archive_results: !!hasResults,
+      publish: redrawing,
+      stage,
+      reason: why,
+      expected_version: t.value?.draw_version || 0,
+      idempotency_key: `draw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    });
+    if (r?.overflows)
+      uni.showModal({ title: "需调整排场", content: r.note, showCancel: false });
+  } catch (err) {
+    uni.showModal({
+      title: redrawing ? "重新抽签失败" : "生成抽签失败",
+      content:
+        err instanceof Error && err.message
+          ? err.message
+          : "抽签失败，请稍后重试",
+      showCancel: false,
+      confirmText: "知道了",
+    });
+  }
 }
 async function publish() {
   if (await confirm("发布后所有用户将看到当前正式签表"))
@@ -419,10 +449,12 @@ function tie() {
 </script>
 <template>
   <AppShell back title="赛事详情">
-    <view v-if="error" class="content"
-      ><text>{{ error }}</text
-      ><wd-button @click="load">重试</wd-button></view
-    >
+    <view v-if="error" class="content empty-state">
+      <wd-icon name="info-circle" size="44px" color="#728178" />
+      <text class="section-title">赛事信息加载失败</text>
+      <text class="muted">请检查网络后重新加载</text>
+      <wd-button size="small" @click="load">重新加载</wd-button>
+    </view>
     <template v-else-if="t">
       <Photo
         width="100%"
@@ -799,6 +831,7 @@ function tie() {
               "
               size="small"
               :loading="busy"
+              custom-class="draw-draft-button"
               @click="draw()"
               >{{ t.draw_version ? "重新抽签" : "生成抽签草稿" }}</wd-button
             ><wd-button
@@ -924,7 +957,7 @@ function tie() {
           }}</wd-button
         ></view
       > </template
-    ><wd-loading v-else />
+    ><view v-else class="page-loading"><wd-loading text="正在加载赛事信息" /></view>
     <wd-popup v-model="popup" position="bottom" closable
       ><view class="edit-popup">
         <text class="section-title">{{
