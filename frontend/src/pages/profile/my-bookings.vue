@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { onReachBottom, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
-import { payBooking } from "../../services/payment";
+import { payBooking, confirmBookingPaid, syncBookingPayment, syncBookingRefund } from "../../services/payment";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   tabs = [
@@ -19,6 +19,7 @@ const s = useSession(),
   items = ref<any[]>([]),
   page = ref(1),
   more = ref(true),
+  refreshing = ref<any>(""),
   loading = ref(false);
 const names: any = {
   pending: "待支付",
@@ -80,9 +81,52 @@ async function pay(b: any) {
     });
     return;
   }
+  // 收银台返回 ≠ 后端已记账（回调可能延迟或不可达），主动查单确认
+  await confirmBookingPaid(b.id);
   uni.redirectTo({
     url: `/pages/booking/success?booking_id=${b.id}&order_no=${b.order_no}`,
   });
+}
+
+/** 待支付订单：请后端主动向微信查单，命中成功即刷新为已支付 */
+async function refreshStatus(b: any) {
+  if (refreshing.value) return;
+  refreshing.value = b.id;
+  try {
+    const res = await syncBookingPayment(b.id);
+    if (res?.status && res.status !== "pending") {
+      uni.showToast({ title: "已更新为已支付", icon: "success" });
+      load();
+    } else {
+      uni.showToast({ title: "尚未查询到支付结果", icon: "none" });
+    }
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "刷新失败", icon: "none" });
+  } finally {
+    refreshing.value = "";
+  }
+}
+
+/** 退款中订单：请后端主动向微信查退款进度，命中终态即刷新 */
+async function refreshRefund(b: any) {
+  if (refreshing.value) return;
+  refreshing.value = b.id;
+  try {
+    const res = await syncBookingRefund(b.id);
+    if (res?.status && res.status !== "refunding") {
+      uni.showToast({
+        title: res.status === "refunded" ? "退款已到账" : "状态已更新",
+        icon: "success",
+      });
+      load();
+    } else {
+      uni.showToast({ title: "退款处理中，请稍后查看", icon: "none" });
+    }
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "刷新失败", icon: "none" });
+  } finally {
+    refreshing.value = "";
+  }
 }
 </script>
 <template>
@@ -117,6 +161,20 @@ async function pay(b: any) {
               size="small"
               @click="pay(b)"
               >支付</wd-button
+            ><wd-button
+              v-if="b.status === 'pending'"
+              size="small"
+              variant="plain"
+              :disabled="refreshing === b.id"
+              @click="refreshStatus(b)"
+              >刷新状态</wd-button
+            ><wd-button
+              v-if="b.status === 'refunding'"
+              size="small"
+              variant="plain"
+              :disabled="refreshing === b.id"
+              @click="refreshRefund(b)"
+              >刷新退款</wd-button
             ><wd-button
               v-if="['pending', 'paid'].includes(b.status)"
               size="small"

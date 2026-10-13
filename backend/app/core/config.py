@@ -32,8 +32,14 @@ class Settings(BaseSettings):
     WX_MCH_PRIVATE_KEY_PATH: str = ""
     WX_PAY_NOTIFY_URL: str = ""
     WX_PAY_CERT_DIR: str = "/app/certs"
-    # 真实订场支付暂缓：保留未来接入配置，当前入口使用占位确认。
-    # 即使配置为 true 也不会启用已注释的真实预支付流程。
+    # 微信支付公钥（抖音式「平台证书」已被微信下线，2024-10 起新商户只能申请
+    # 微信支付公钥）。两者都配置时才启用公钥模式：SDK 不再尝试下载平台证书，
+    # 回调验签改用该公钥。见 https://pay.weixin.qq.com/doc/v3/merchant/4012153196
+    WX_PAY_PUBLIC_KEY_PATH: str = ""
+    WX_PAY_PUBLIC_KEY_ID: str = ""
+    # 真实订场支付总开关。false 时 POST /bookings/{id}/pay 走占位确认
+    # （直接标 paid 且无任何真实交易，等于免费订场），仅供本地/CI 使用。
+    # 生产必须为 true；启动日志会打印实际状态。
     WX_PAY_ENABLED: bool = False
     # 微信支付账单里展示的商品描述
     WX_PAY_DESCRIPTION: str = "网球场地预订"
@@ -93,9 +99,13 @@ class Settings(BaseSettings):
 
     # Rate limiting (per-minute limits for sensitive booking endpoints)
     RATE_LIMIT_PAY_PER_MINUTE: int = 10
+    # 主动查单比下单频繁得多（支付结果页会轮询），因此单独给一个更宽的上限。
+    RATE_LIMIT_SYNC_PAY_PER_MINUTE: int = 30
     RATE_LIMIT_BOOKING_PER_MINUTE: int = 10
     RATE_LIMIT_CANCEL_PER_MINUTE: int = 10
     RATE_LIMIT_REFUND_PER_MINUTE: int = 5
+    # 主动查退款：与查支付同理，属于只读轮询，单独给一个更宽的上限。
+    RATE_LIMIT_SYNC_REFUND_PER_MINUTE: int = 30
 
     @model_validator(mode="after")
     def require_production_secret(self):

@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import _v
 from app.core.config import get_settings
-from app.core.wechat_pay import get_wxpay
+from app.core.wechat_pay import get_wxpay, wx_request
 from app.models.models import SettlementRecord, SettlementStatus, BookingOrder, OrderStatus, Club
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,9 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
     )
 
     try:
-        resp = wxpay.profitsharing_order(
+        resp = wx_request(
+            wxpay,
+            "profitsharing_order",
             transaction_id=order.wx_transaction_id,
             out_order_no=settlement.out_order_no,
             receivers=receivers,
@@ -157,7 +159,9 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
                 logger.info("Profit-sharing order finished (SUCCESS): %s", settlement.wx_split_order_no)
                 # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
                 try:
-                    wxpay.profitsharing_unfreeze(
+                    wx_request(
+                        wxpay,
+                        "profitsharing_unfreeze",
                         transaction_id=order.wx_transaction_id,
                         out_order_no=settlement.out_order_no,
                         description="解冻剩余未分账资金",
@@ -217,7 +221,9 @@ async def query_settlement_status(session: AsyncSession, settlement_id: int) -> 
         return settlement
 
     try:
-        resp = wxpay.profitsharing_order_query(
+        resp = wx_request(
+            wxpay,
+            "profitsharing_order_query",
             transaction_id=order.wx_transaction_id,
             out_order_no=settlement.out_order_no,
             sub_mchid=club.sub_merchant_id,
@@ -232,7 +238,9 @@ async def query_settlement_status(session: AsyncSession, settlement_id: int) -> 
             settlement.fail_reason = None
             # Unfreeze remaining unsplit funds now that profit-sharing is confirmed
             try:
-                wxpay.profitsharing_unfreeze(
+                wx_request(
+                    wxpay,
+                    "profitsharing_unfreeze",
                     transaction_id=order.wx_transaction_id,
                     out_order_no=settlement.out_order_no,
                     description="解冻剩余未分账资金",

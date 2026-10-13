@@ -3,6 +3,7 @@ import { ref, onUnmounted } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+import { syncBookingPayment } from "../../services/payment";
 const booking = ref<any>(null),
   id = ref(""),
   loading = ref(true);
@@ -18,6 +19,13 @@ const status: any = {
 };
 async function load() {
   try {
+    // 微信回调可能延迟或不可达（如回调域名未备案），订单会停在 pending。
+    // 这里顺带请后端主动向微信查单，命中成功即落库，避免一直显示"处理中"。
+    try {
+      await syncBookingPayment(id.value);
+    } catch {
+      // 查单失败不阻断展示，下一轮轮询再试
+    }
     booking.value = await request(`/bookings/${id.value}`);
     if (booking.value.status === "pending" && count++ < 20)
       timer = setTimeout(load, 3000);

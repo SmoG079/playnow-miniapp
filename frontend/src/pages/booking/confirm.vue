@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
-import { payBooking } from "../../services/payment";
+import { payBooking, confirmBookingPaid } from "../../services/payment";
 import { useSession } from "../../stores/session";
 import { returnToActivityForm, decodeRouteText } from "../../utils/navigation";
 const s = useSession(),
@@ -56,7 +56,15 @@ async function pay() {
         data: { slot_ids: slots.value },
       }));
     await payBooking(booking.value.id);
-    uni.showToast({ title: "支付成功", icon: "success" });
+    // 收银台返回成功 ≠ 后端已记账：微信回调可能延迟或不可达（如回调域名未备案），
+    // 因此主动查单确认，避免订单停留在待支付。
+    const paid = await confirmBookingPaid(booking.value.id);
+    if (paid === "paid") uni.showToast({ title: "支付成功", icon: "success" });
+    else
+      uni.showToast({
+        title: "支付结果确认中，可在「我的预约」查看",
+        icon: "none",
+      });
     if (["post", "tournament"].includes(q.value.return_mode)) {
       uni.setStorageSync("booking_return", {
         booking_id: booking.value.id,

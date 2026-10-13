@@ -199,6 +199,10 @@ async def _update_order_after_refund(session, order_id: int, status: str, refund
 
     if status == "success":
         order.status = OrderStatus.refunded
+        # 与回调路径（payment_callback._handle_refund_callback）保持字段一致，
+        # 否则同一次退款经由不同链路落库后，订单展示的退款状态会不一样。
+        order.refund_status = status
+        order.refund_time = datetime.utcnow()
         slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
         slots_result = await session.execute(
             select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
@@ -236,8 +240,17 @@ async def _update_order_after_refund(session, order_id: int, status: str, refund
 
 
 async def _retry_failed_refunds_impl():
-    """Retry failed or pending refund submissions to WeChat Pay."""
-    from app.core.wechat_pay import get_wxpay
+    """Retry failed or pending refund submissions to WeChat Pay.
+
+    每一步都先向微信确认这笔退款的真实状态，避免在已经退成功的情况下重复提交或误判。
+    两类失败必须区分对待：
+
+    * 状态查询失败（网络等未知异常）→ 保持 ``refunding`` 并延后重试，**绝不回退订单**；
+    * 微信明确拒绝提交（4xx 业务错误）→ 退款确实没成功，订单回退为 ``paid``。
+
+    重复提交退款是安全的：同一 ``out_refund_no`` 在微信侧幂等。
+    """
+    from app.core.wechat_pay import WeChatPayError, get_wxpay, wx_request
 
     settings = get_settings()
     async with (task_session_factory.get() or async_session_factory)() as session:
@@ -259,71 +272,102 @@ async def _retry_failed_refunds_impl():
         errors = 0
         wxpay = get_wxpay()
 
+        def _defer(rec):
+            """延后重试：只调整调度与计数，不触碰业务状态。"""
+            rec.retry_count += 1
+            rec.scheduled_at = now + timedelta(seconds=_refund_backoff_seconds(rec.retry_count))
+
         for rec in records:
+            # 第一步：查询微信侧当前退款状态（只读；失败绝不能改变业务状态）
             try:
-                # First, query current status from WeChat
-                query_result = wxpay.query_refund(out_refund_no=rec.out_refund_no)
-                refund_state = query_result.get("status", "").upper() if query_result else ""
+                query = wx_request(wxpay, "query_refund", out_refund_no=rec.out_refund_no)
+            except WeChatPayError as exc:
+                # 微信明确拒绝（多为 4xx，如单号不存在）→ 视作尚未成功提交，继续走重新提交
+                logger.warning("Refund query rejected for %s: %s", rec.out_refund_no, exc)
+                query = {}
+            except Exception:
+                # 网络等未知异常：款项可能其实已经退成功，保持 refunding 并延后重试。
+                # 绝不可在这里把订单回退成 paid —— 那会造成资金与订单状态不一致。
+                rec.fail_reason = "退款状态查询失败，稍后重试"
+                _defer(rec)
+                await session.commit()
+                logger.exception("Refund query failed for record %s", rec.id)
+                errors += 1
+                continue
 
-                if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                    rec.status = refund_state.lower()
-                    rec.wx_refund_id = query_result.get("refund_id", rec.wx_refund_id)
-                    rec.completed_at = now
-                    await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
-                    await session.commit()
-                    processed += 1
-                    continue
-                elif refund_state == "PROCESSING":
-                    rec.status = "processing"
-                    await session.commit()
-                    processed += 1
-                    continue
+            refund_state = (query.get("status") or "").upper()
 
-                # Not in a terminal state: resubmit refund
-                # Load order to get transaction id
+            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
+                rec.status = refund_state.lower()
+                rec.wx_refund_id = query.get("refund_id", rec.wx_refund_id)
+                rec.completed_at = now
+                rec.fail_reason = None
+                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
+                await session.commit()
+                processed += 1
+                continue
+
+            if refund_state == "PROCESSING":
+                rec.status = "processing"
+                await session.commit()
+                processed += 1
+                continue
+
+            # 第二步：微信侧没有终态记录 → 重新提交退款（同一 out_refund_no 幂等）
+            try:
                 order_result = await session.execute(
                     select(BookingOrder).where(BookingOrder.id == rec.order_id)
                 )
                 order = order_result.scalar_one_or_none()
                 tx_id = order.wx_transaction_id if order else None
-                resp = wxpay.refund(
+                resp = wx_request(
+                    wxpay,
+                    "refund",
                     out_refund_no=rec.out_refund_no,
                     transaction_id=tx_id,
                     out_trade_no=order.order_no if order and not tx_id else None,
                     amount={"refund": _to_cents(rec.amount), "total": _to_cents(order.amount) if order else _to_cents(rec.amount), "currency": "CNY"},
                     reason=rec.reason or "退款重试",
                 )
-                # Handle the response state properly; only set to processing if WeChat says PROCESSING
-                refund_state = (resp.get("status") or "").upper() if resp else ""
-                if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                    rec.status = refund_state.lower()
-                    rec.wx_refund_id = resp.get("refund_id", rec.wx_refund_id)
-                    rec.completed_at = now
-                    await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
-                elif refund_state == "PROCESSING":
-                    rec.status = "processing"
-                    rec.retry_count += 1
-                else:
-                    # Unknown state; treat as failed to avoid spinning
-                    rec.status = "failed"
-                    rec.fail_reason = f"Unexpected refund status from resubmit: {refund_state}"
-                    await _update_order_after_refund(session, rec.order_id, "failed")
+            except WeChatPayError as exc:
+                # 微信明确拒绝这次提交：退款确实没有成功，订单回退为已支付
+                rec.status = "failed"
+                rec.fail_reason = str(exc)[:512]
+                await _update_order_after_refund(session, rec.order_id, "failed")
                 await session.commit()
-                processed += 1
+                logger.exception("Refund resubmit rejected for record %s", rec.id)
+                errors += 1
+                continue
             except Exception as exc:
                 if _is_refund_retryable(exc) and rec.retry_count < settings.REFUND_MAX_RETRIES - 1:
-                    rec.retry_count += 1
-                    rec.scheduled_at = now + timedelta(seconds=_refund_backoff_seconds(rec.retry_count))
+                    _defer(rec)
                     rec.fail_reason = str(exc)[:512]
-                    await session.commit()
                 else:
-                    # Non-retryable or max retries reached: mark failed and revert order
                     rec.status = "failed"
                     rec.fail_reason = str(exc)[:512]
                     await _update_order_after_refund(session, rec.order_id, "failed")
-                    await session.commit()
+                await session.commit()
                 logger.exception("Refund retry failed for record %s", rec.id)
                 errors += 1
+                continue
+
+            # 只认微信明确返回的终态；PROCESSING 表示还在处理
+            refund_state = (resp.get("status") or "").upper()
+            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
+                rec.status = refund_state.lower()
+                rec.wx_refund_id = resp.get("refund_id", rec.wx_refund_id)
+                rec.completed_at = now
+                rec.fail_reason = None
+                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
+            elif refund_state == "PROCESSING":
+                rec.status = "processing"
+                rec.retry_count += 1
+            else:
+                # 未知状态：保持 refunding 延后重试，不武断回退订单
+                rec.fail_reason = f"Unexpected refund status from resubmit: {refund_state}"
+                _defer(rec)
+            await session.commit()
+            processed += 1
 
         return {"processed": processed, "errors": errors}
 
@@ -334,8 +378,13 @@ def retry_failed_refunds():
 
 
 async def _poll_processing_refunds_impl():
-    """Poll WeChat for refunds stuck in PROCESSING status."""
-    from app.core.wechat_pay import get_wxpay
+    """轮询微信侧仍处于 PROCESSING 的退款单，直到拿到终态。
+
+    只认微信明确返回的终态。查询失败或状态未知时保持原状等下一轮，**绝不武断地
+    把订单从 refunding 回退成 paid** —— 那会在款项已退成功的情况下造成资金与订单
+    状态不一致。
+    """
+    from app.core.wechat_pay import WeChatPayError, get_wxpay, wx_request
 
     async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
@@ -357,26 +406,37 @@ async def _poll_processing_refunds_impl():
 
         for rec in records:
             try:
-                query_result = wxpay.query_refund(out_refund_no=rec.out_refund_no)
-                refund_state = query_result.get("status", "").upper() if query_result else ""
-
-                if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                    rec.status = refund_state.lower()
-                    rec.wx_refund_id = query_result.get("refund_id", rec.wx_refund_id)
-                    rec.completed_at = now
-                    await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
-                elif refund_state == "PROCESSING":
-                    rec.status = "processing"
-                else:
-                    rec.status = "failed"
-                    rec.fail_reason = f"Unknown refund status: {refund_state}"
-                    await _update_order_after_refund(session, rec.order_id, "failed")
-                await session.commit()
-                processed += 1
+                query = wx_request(wxpay, "query_refund", out_refund_no=rec.out_refund_no)
+            except WeChatPayError as exc:
+                logger.warning("Refund poll rejected for %s: %s", rec.out_refund_no, exc)
+                await session.rollback()
+                errors += 1
+                continue
             except Exception:
                 logger.exception("Poll failed for refund record %s", rec.id)
                 await session.rollback()
                 errors += 1
+                continue
+
+            refund_state = (query.get("status") or "").upper()
+            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
+                rec.status = refund_state.lower()
+                rec.wx_refund_id = query.get("refund_id", rec.wx_refund_id)
+                rec.completed_at = now
+                rec.fail_reason = None
+                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
+            elif refund_state == "PROCESSING":
+                rec.status = "processing"
+            else:
+                # 状态未知：保持现状等下一轮，不改变订单状态
+                logger.warning(
+                    "Unknown refund status for %s: %s", rec.out_refund_no, refund_state or "(empty)"
+                )
+                await session.rollback()
+                errors += 1
+                continue
+            await session.commit()
+            processed += 1
 
         return {"processed": processed, "errors": errors}
 

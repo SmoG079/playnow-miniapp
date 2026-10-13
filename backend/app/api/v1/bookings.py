@@ -17,7 +17,7 @@ from app.services.booking_locks import release_order_slots, locked_order_slots, 
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock, redis_client
 from app.core.rate_limit import check_rate_limit
-from app.core.wechat_pay import get_wxpay, build_jsapi_params
+from app.core.wechat_pay import get_wxpay, build_jsapi_params, wx_request
 from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _v
 from app.models.models import (
     User, UserRole, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
@@ -315,9 +315,7 @@ async def get_booking(
 
 
 async def _wx_prepay(order: BookingOrder, user: User) -> dict:
-    """保留的真实支付工具，当前订场入口暂停调用。
-
-    Call the WeChat Pay V3 JSAPI unified order API and return the decoded body.
+    """Call the WeChat Pay V3 JSAPI unified order API and return the decoded body.
 
     ``wechatpayv3`` returns ``(http_status, body_text)``. The call is blocking, so
     it runs in a threadpool to keep the event loop free.
@@ -334,7 +332,7 @@ async def _wx_prepay(order: BookingOrder, user: User) -> dict:
         settle_info={"profit_sharing": False},
     )
     status, body = response
-    payload = json.loads(body) if body else {}
+    payload = (json.loads(body) if body else None) or {}
     if status >= 300:
         raise RuntimeError(payload.get("code") or f"WeChat Pay HTTP {status}")
     return payload
@@ -346,10 +344,12 @@ async def pay_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """临时占位确认订场：不调用微信、不产生真实收款。
+    """微信 JSAPI 统一下单：返回 wx.requestPayment 参数给小程序调起收银台。
 
-    保留订单归属、状态、时段锁和幂等校验。真实预支付实现暂时注释，
-    待支付验收恢复后重新接入；环境开关不会启用被暂停的代码。
+    ``WX_PAY_ENABLED=false`` 时为占位确认（不调用微信、不产生任何真实交易），
+    仅用于本地开发与 CI；生产必须是 ``true``，启动日志会打印实际状态。
+
+    订单状态只由 ``/wx-notify`` 回调置为 ``paid`` —— 本接口绝不自行标记已支付。
     """
     await check_rate_limit(
         f"rate:pay:{current_user.id}",
@@ -384,48 +384,282 @@ async def pay_booking(
         if slot.booking_order_id != order.id or _v(slot.status) != "locked" or slot.locked_by != order.user_id or local_start <= datetime.now(ZoneInfo("Asia/Shanghai")):
             raise HTTPException(409, "订单时段已失效，请重新预订")
 
-    # 2026-10-13：按项目要求临时跳过真实支付，订场继续可用。
-    # paid/dev_ 仅代表占位确认，不代表真实资金到账。
-    logger.info("booking placeholder confirmed: order=%s", order.order_no)
-    order.status = OrderStatus.paid
-    order.payment_time = now
-    order.wx_transaction_id = f"dev_{order.order_no}"
-    for slot in slots:
-        slot.status = SlotStatus.booked
-        slot.locked_by = None
-        slot.locked_at = None
-        await release_lock(f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}", lock_owner(order.order_no))
-    return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount), "payment_mode": "placeholder"}
-    # 暂停的真实微信预支付流程。恢复时需一起启用前端收银台、配置商户、
-    # 验收微信回调与退款；不能仅打开 WX_PAY_ENABLED 就恢复收款。
-    # if not current_user.openid or current_user.openid.startswith("dev_"):
-    #     raise HTTPException(status_code=409, detail="需要真实微信登录后才能支付")
-    #
-    # # 复用仍在有效期内的 prepay_id，避免重复向微信下单
-    # prepay_id = order.prepay_id
-    # if (
-    #     not prepay_id
-    #     or order.prepay_id_created_at is None
-    #     or now >= order.prepay_id_created_at + timedelta(seconds=settings.PREPAY_ID_TTL_SECONDS)
-    # ):
-    #     try:
-    #         payload = await _wx_prepay(order, current_user)
-    #     except Exception as e:
-    #         logger.error("WeChat prepay failed for %s: %s", order.order_no, e, exc_info=True)
-    #         raise HTTPException(status_code=502, detail="微信下单失败，请稍后重试")
-    #     prepay_id = payload.get("prepay_id")
-    #     if not prepay_id:
-    #         raise HTTPException(status_code=502, detail="微信未返回预支付信息")
-    #     order.prepay_id = prepay_id
-    #     order.prepay_id_created_at = now
-    #     await db.commit()
-    #
-    # return {
-    #     "msg": "ok",
-    #     "order_no": order.order_no,
-    #     "amount": str(order.amount),
-    #     "pay_params": build_jsapi_params(get_wxpay(), prepay_id),
-    # }
+    if not settings.WX_PAY_ENABLED:
+        # 占位确认：只用于本地开发与 CI，不产生任何真实交易（等于免费订场）。
+        # 生产必须 WX_PAY_ENABLED=true，main.py 启动日志会打印实际状态。
+        logger.warning(
+            "booking placeholder confirmed (WX_PAY_ENABLED=false): order=%s", order.order_no
+        )
+        order.status = OrderStatus.paid
+        order.payment_time = now
+        order.wx_transaction_id = f"dev_{order.order_no}"
+        for slot in slots:
+            slot.status = SlotStatus.booked
+            slot.locked_by = None
+            slot.locked_at = None
+            await release_lock(f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}", lock_owner(order.order_no))
+        return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount), "payment_mode": "placeholder"}
+
+    if not current_user.openid or current_user.openid.startswith("dev_"):
+        raise HTTPException(status_code=409, detail="需要真实微信登录后才能支付")
+
+    # 复用仍在有效期内的 prepay_id，避免重复向微信下单
+    prepay_id = order.prepay_id
+    if (
+        not prepay_id
+        or order.prepay_id_created_at is None
+        or now >= order.prepay_id_created_at + timedelta(seconds=settings.PREPAY_ID_TTL_SECONDS)
+    ):
+        try:
+            payload = await _wx_prepay(order, current_user)
+        except Exception as e:
+            logger.error("WeChat prepay failed for %s: %s", order.order_no, e, exc_info=True)
+            raise HTTPException(status_code=502, detail="微信下单失败，请稍后重试")
+        prepay_id = payload.get("prepay_id")
+        if not prepay_id:
+            raise HTTPException(status_code=502, detail="微信未返回预支付信息")
+        order.prepay_id = prepay_id
+        order.prepay_id_created_at = now
+        await db.commit()
+
+    # 时段仍保持 locked：只有 /wx-notify 回调验签通过后才会转 booked 并释放锁。
+    return {
+        "msg": "ok",
+        "order_no": order.order_no,
+        "amount": str(order.amount),
+        "pay_params": build_jsapi_params(get_wxpay(), prepay_id),
+    }
+
+
+@router.post("/{booking_id:int}/sync-payment")
+async def sync_booking_payment(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """主动查单兜底：向微信查询本单真实支付结果并同步落库。
+
+    正常链路是微信把支付结果回调到 ``/wx-notify``。当回调链路不可达时（例如
+    回调域名尚未完成备案、443 被拦截），订单会一直停在 ``pending``，尽管款项
+    其实已经进入商户号。本接口让前端在收银台返回后、或用户手动刷新时主动向
+    微信查单；命中 ``SUCCESS`` 即复用与回调完全相同的落库逻辑
+    （``payment_callback._handle_payment_success``），从而共用同一套状态机与幂等保护。
+
+    只读操作，绝不自行把订单标成已支付 —— 一律以微信返回的 ``trade_state`` 为准。
+    """
+    await check_rate_limit(
+        f"rate:syncpay:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_SYNC_PAY_PER_MINUTE,
+        window_seconds=60,
+    )
+
+    result = await db.execute(
+        select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if order.business_type == "tournament":
+        raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
+
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your booking")
+
+    current_status = _v(order.status)
+    # 已是终态（paid/cancelled/refunding/refunded）：无需查单，直接回报（幂等）
+    if current_status != "pending":
+        return {"msg": "ok", "order_no": order.order_no, "status": current_status}
+
+    # 占位模式没有真实交易，查单没有意义
+    if not settings.WX_PAY_ENABLED:
+        return {
+            "msg": "ok",
+            "order_no": order.order_no,
+            "status": current_status,
+            "payment_mode": "placeholder",
+        }
+
+    try:
+        status_code, body = await run_in_threadpool(
+            get_wxpay().query, out_trade_no=order.order_no
+        )
+    except Exception as e:
+        logger.error("WeChat order query failed for %s: %s", order.order_no, e, exc_info=True)
+        raise HTTPException(status_code=502, detail="查询支付结果失败，请稍后重试")
+
+    payload = (json.loads(body) if body else None) or {}
+    if status_code >= 300:
+        # 例如 ORDER_NOT_EXIST：微信侧还没有这笔支付，保持 pending，等用户继续支付
+        logger.info(
+            "WeChat order query non-2xx for %s: http=%s code=%s",
+            order.order_no, status_code, payload.get("code"),
+        )
+        return {"msg": "ok", "order_no": order.order_no, "status": current_status}
+
+    trade_state = payload.get("trade_state")
+    if trade_state != "SUCCESS":
+        # NOTPAY / CLOSED / PAYERROR / REVOKED 等：状态不变，由用户重试或锁定超时释放
+        return {
+            "msg": "ok",
+            "order_no": order.order_no,
+            "status": current_status,
+            "trade_state": trade_state,
+        }
+
+    from app.services.payment_callback import _handle_payment_success
+
+    await _handle_payment_success(payload, db)
+    await db.commit()
+
+    refreshed = (
+        await db.execute(select(BookingOrder.status).where(BookingOrder.id == order.id))
+    ).scalar_one()
+    logger.info("booking payment synced via order query: order=%s", order.order_no)
+    return {"msg": "ok", "order_no": order.order_no, "status": _v(refreshed)}
+
+
+@router.post("/{booking_id:int}/sync-refund")
+async def sync_booking_refund(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """主动查退款兜底：向微信查询本单退款进度并同步落库。
+
+    退款与支付共用同一个回调地址（``WX_PAY_NOTIFY_URL``），因此回调不可达
+    （例如回调域名未完成 ICP 备案、443 被拦截）时，订单会一直停在 ``refunding``，
+    而款项其实已经退给用户。Celery 侧已有 ``retry_failed_refunds``（每 300s）与
+    ``poll_processing_refunds``（每 5min）做定时兜底，本接口提供用户/管理员可
+    **即时触发**的同一个动作；命中终态时复用与回调完全相同的落库逻辑
+    （``payment_callback._handle_refund_callback``），从而共用同一套状态机与幂等保护。
+
+    只读操作，绝不自行把退款标成成功 —— 一律以微信返回的 ``status`` 为准。
+    """
+    await check_rate_limit(
+        f"rate:syncrefund:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_SYNC_REFUND_PER_MINUTE,
+        window_seconds=60,
+    )
+
+    result = await db.execute(
+        select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if order.business_type == "tournament":
+        raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
+
+    # 权限：订单本人 / 平台管理员 / 本俱乐部管理员（与 refund-records 接口一致）
+    if order.user_id != current_user.id:
+        role = _v(current_user.role)
+        if role == "platform_admin":
+            pass
+        elif role == "club_admin":
+            member = await db.execute(
+                select(ClubMember).where(
+                    ClubMember.club_id == order.club_id,
+                    ClubMember.user_id == current_user.id,
+                )
+            )
+            if not member.scalar_one_or_none():
+                raise HTTPException(status_code=403, detail="Not authorized")
+        else:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+    current_status = _v(order.status)
+    current_refund_status = _v(order.refund_status)
+
+    # 已是终态：无需查单，直接回报（幂等）
+    if current_status == "refunded" or current_refund_status in ("success", "closed", "abnormal"):
+        return {
+            "msg": "ok",
+            "order_no": order.order_no,
+            "status": current_status,
+            "refund_status": current_refund_status,
+        }
+
+    if not order.refund_id:
+        raise HTTPException(status_code=400, detail="该订单没有退款记录")
+
+    # 占位模式没有真实交易，查单没有意义
+    if not settings.WX_PAY_ENABLED:
+        return {
+            "msg": "ok",
+            "order_no": order.order_no,
+            "status": current_status,
+            "refund_status": current_refund_status,
+            "payment_mode": "placeholder",
+        }
+
+    out_refund_no = order.refund_id
+    try:
+        status_code, body = await run_in_threadpool(
+            get_wxpay().query_refund, out_refund_no=out_refund_no
+        )
+    except Exception as e:
+        logger.error("WeChat refund query failed for %s: %s", out_refund_no, e, exc_info=True)
+        raise HTTPException(status_code=502, detail="查询退款结果失败，请稍后重试")
+
+    payload = (json.loads(body) if body else None) or {}
+    if status_code >= 300:
+        # 例如 RESOURCE_NOT_EXISTS：微信侧还没有这笔退款，保持现状，等定时任务重试
+        logger.info(
+            "WeChat refund query non-2xx for %s: http=%s code=%s",
+            out_refund_no, status_code, payload.get("code"),
+        )
+        return {
+            "msg": "ok",
+            "order_no": order.order_no,
+            "status": current_status,
+            "refund_status": current_refund_status,
+        }
+
+    # 防错单：单号必须与本单严格对应，否则绝不落库
+    if payload.get("out_refund_no") != out_refund_no or payload.get("out_trade_no") != order.order_no:
+        logger.error(
+            "Refund query mismatch for order %s: out_refund_no=%s out_trade_no=%s",
+            order.order_no, payload.get("out_refund_no"), payload.get("out_trade_no"),
+        )
+        raise HTTPException(status_code=502, detail="退款查询结果与本单不匹配")
+
+    refund_state = (payload.get("status") or "").upper()
+    if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
+        from app.services.payment_callback import _handle_refund_callback
+
+        # query_refund 返回 status，回调处理器认 refund_status —— 映射成回调格式后
+        # 复用同一落库逻辑，避免出现第三套状态机。
+        await _handle_refund_callback(
+            {
+                "out_refund_no": out_refund_no,
+                "out_trade_no": order.order_no,
+                "refund_status": refund_state,
+                "refund_id": payload.get("refund_id"),
+                "amount": payload.get("amount") or {},
+            },
+            db,
+        )
+        await db.commit()
+
+    refreshed = (
+        await db.execute(
+            select(BookingOrder.status, BookingOrder.refund_status).where(BookingOrder.id == order.id)
+        )
+    ).one()
+    logger.info(
+        "booking refund synced via refund query: order=%s state=%s",
+        order.order_no, refund_state or "(unknown)",
+    )
+    return {
+        "msg": "ok",
+        "order_no": order.order_no,
+        "status": _v(refreshed[0]),
+        "refund_status": _v(refreshed[1]),
+        "refund_state": refund_state or None,
+    }
+
 
 @router.post("/wx-notify")
 async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
@@ -619,7 +853,11 @@ async def refund_booking(
     await db.flush()
 
     try:
-        wxpay.refund(
+        # SDK 的非 2xx 响应不会自己抛异常，必须由 wx_request 统一转成 WeChatPayError，
+        # 否则退款被微信拒绝时这里会直接往下走、把订单错误地标成 refunding。
+        wx_request(
+            wxpay,
+            "refund",
             out_refund_no=out_refund_no,
             transaction_id=order.wx_transaction_id,
             amount={

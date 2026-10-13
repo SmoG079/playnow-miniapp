@@ -25,8 +25,27 @@ async def lifespan(app: FastAPI):
     # Database schema is managed by Alembic migrations.
     # Run: docker-compose exec api alembic upgrade head
     logger.info("media storage backend: %s", storage.active_backend())
-    logger.info("booking payment: placeholder (real WeChat prepay paused)")
+    logger.info(
+        "booking payment: %s",
+        "wechat pay enabled" if settings.WX_PAY_ENABLED else "PLACEHOLDER (WX_PAY_ENABLED=false: no real transactions)",
+    )
     logger.info("profit sharing: %s", "enabled" if settings.PROFIT_SHARING_ENABLED else "disabled")
+    if settings.WX_PAY_ENABLED:
+        # 启动即验证一次商户凭证，避免用户下单时才发现配置不可用。
+        # 失败不阻断启动：支付相关的接口会各自返回 5xx，其余功能仍可用。
+        from app.core.wechat_pay import get_wxpay
+
+        try:
+            get_wxpay()
+        except Exception:
+            logger.exception(
+                "booking payment: WECHAT PAY CLIENT INIT FAILED — paid endpoints will return 5xx"
+            )
+        else:
+            logger.info(
+                "booking payment: wechat pay client ready (verify mode=%s)",
+                "public_key" if settings.WX_PAY_PUBLIC_KEY_ID else "platform_certificates",
+            )
     yield
     await engine.dispose()
 

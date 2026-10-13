@@ -53,7 +53,16 @@ def main():
         raise RuntimeError("API and Celery must use the same release image")
     oldenv = dict(v.split("=", 1) for v in by_name["club-api"]["Config"]["Env"] if "=" in v)
     platform_keys = {"PATH", "LANG", "GPG_KEY", "PYTHON_VERSION", "PYTHON_SHA256", "PYTHON_PIP_VERSION", "PYTHON_SETUPTOOLS_VERSION", "PYTHON_GET_PIP_URL", "PYTHON_GET_PIP_SHA256"}
-    changed_keys = {"PUBLIC_BASE_URL", "WX_PAY_CERT_DIR", "LOG_LEVEL", "DEBUG"}
+    changed_keys = {"PUBLIC_BASE_URL", "WX_PAY_CERT_DIR", "LOG_LEVEL", "DEBUG",
+                    # 微信支付上线：商户号与密钥从空值切到真实值，属本次发布的有意变更。
+                    # WX_PAY_ENABLED / PROFIT_SHARING_ENABLED 不在此列 —— 它们是安全开关
+                    # （false 等于免费订场），任何变更都应被预检拦下人工确认。
+                    # 见 docs/wechat-pay-setup.md
+                    "WX_MCH_ID", "WX_MCH_API_V3_KEY", "WX_MCH_SERIAL_NO",
+                    "WX_MCH_PRIVATE_KEY_PATH", "WX_PAY_NOTIFY_URL",
+                    # 微信支付公钥：微信会定期轮换，轮换属常规运维而非安全开关
+                    # （公钥只用于验签，泄露不影响资金安全），故与 WX_MCH_* 同等对待。
+                    "WX_PAY_PUBLIC_KEY_PATH", "WX_PAY_PUBLIC_KEY_ID"}
     for service in ("api", "celery_worker", "celery_beat"):
         env = services[service]["environment"]
         jwt_secret = env.get("JWT_SECRET_KEY", "")

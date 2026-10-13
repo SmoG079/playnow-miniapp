@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { onLoad, onReachBottom } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
+import { syncBookingRefund } from "../../services/payment";
 import { bookingStatus } from "../../utils/status";
 import { useSession } from "../../stores/session";
 const s = useSession();
@@ -20,6 +21,7 @@ const clubId = ref(0),
   items = ref<any[]>([]),
   page = ref(1),
   more = ref(true),
+  refreshing = ref<any>(""),
   loading = ref(false);
 async function load(reset = true) {
   if (loading.value) return;
@@ -51,6 +53,29 @@ onLoad(async (q) => {
   await load();
 });
 onReachBottom(() => more.value && load(false));
+
+/** 退款中订单：主动向微信查退款进度。回调不可达时用于即时确认退款结果。 */
+async function refreshRefund(o: any) {
+  if (refreshing.value) return;
+  refreshing.value = o.id;
+  try {
+    const res = await syncBookingRefund(o.id);
+    uni.showToast({
+      title:
+        res?.status === "refunded"
+          ? "退款已到账"
+          : res?.status && res.status !== "refunding"
+            ? "状态已更新"
+            : "退款处理中，请稍后查看",
+      icon: res?.status === "refunded" ? "success" : "none",
+    });
+    if (res?.status && res.status !== "refunding") load();
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "刷新失败", icon: "none" });
+  } finally {
+    refreshing.value = "";
+  }
+}
 function cancel(o: any) {
   uni.showModal({
     title: "取消订单",
@@ -92,13 +117,22 @@ function cancel(o: any) {
           >{{ o.venue_name }} · {{ o.slot_date }} {{ o.slot_start }}</text
         ><view class="row between"
           ><text class="price">¥{{ o.amount }}</text
-          ><wd-button
-            v-if="['pending', 'paid'].includes(o.status)"
-            size="small"
-            variant="plain"
-            type="danger"
-            @click="cancel(o)"
-            >取消</wd-button
+          ><view class="row gap8"
+            ><wd-button
+              v-if="o.status === 'refunding'"
+              size="small"
+              variant="plain"
+              :disabled="refreshing === o.id"
+              @click="refreshRefund(o)"
+              >刷新退款</wd-button
+            ><wd-button
+              v-if="['pending', 'paid'].includes(o.status)"
+              size="small"
+              variant="plain"
+              type="danger"
+              @click="cancel(o)"
+              >取消</wd-button
+            ></view
           ></view
         ></view
       ><wd-empty v-if="!loading && !items.length" tip="暂无订单" /> </view
