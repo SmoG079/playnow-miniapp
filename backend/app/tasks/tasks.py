@@ -120,6 +120,11 @@ async def _execute_pending_settlements_impl():
     from app.services.settlement import execute_settlement, query_settlement_status
 
     settings = get_settings()
+    if not settings.PROFIT_SHARING_ENABLED:
+        # 平台用自有商户号直接收款，暂不分账。SettlementRecord 只作记账留存，
+        # 不向微信发起分账请求。 见 docs/wechat-pay-setup.md
+        return {"processed": 0, "errors": 0, "skipped": "profit_sharing_disabled"}
+
     async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
         result = await session.execute(
@@ -403,3 +408,36 @@ def process_wx_callback(event_type: str, data: dict):
 def maintain_tournaments():
     from app.services.tournament_maintenance import maintain
     return run_async_task(maintain)
+
+
+async def _expire_price_rules_impl():
+    from app.models.models import Venue, ClubMember, Notification, NotificationType
+    from app.services.price_rules import expires_at
+    from app.core.logger import get_logger
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    removed = 0
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        ids = (await session.execute(select(Venue.id).where(Venue.price_rules.is_not(None)).order_by(Venue.id))).scalars().all()
+        for ident in ids:
+            venue = (await session.execute(select(Venue).where(Venue.id == ident).with_for_update().execution_options(populate_existing=True))).scalar_one()
+            expired, kept = [], []
+            for rule in venue.price_rules or []:
+                expiry = expires_at(rule)
+                (expired if expiry and expiry <= now else kept).append(rule)
+            if not expired:
+                continue
+            venue.price_rules = kept
+            recipients = (await session.execute(select(ClubMember.user_id).where(ClubMember.club_id == venue.club_id))).scalars().all()
+            for user_id in recipients:
+                session.add(Notification(user_id=user_id, type=NotificationType.system,
+                    title="场地特殊价格规则已到期", content=f"{venue.name} 的 {len(expired)} 条特殊价格规则已到期并自动移除，请查看场地价格设置。",
+                    ref_id=venue.id, ref_type="venue"))
+            removed += len(expired)
+            get_logger(__name__).info("Expired %s price rules for venue %s", len(expired), ident)
+        await session.commit()
+    return removed
+
+
+@celery_app.task(name="app.tasks.tasks.expire_price_rules")
+def expire_price_rules():
+    return run_async_task(_expire_price_rules_impl)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { normalizedPrizes, displayedPrizes, type Prize } from "../../domain/prizes";
 import { reactive, ref, watch, computed, nextTick } from "vue";
 import { onLoad, onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
@@ -15,6 +16,7 @@ import {
   disciplineNames,
   localTime,
   getTournament,
+  saveTournament,
 } from "../../services/tournaments";
 import { tournamentFieldIssues, type TournamentFieldIssue } from "../../domain/tournament-form";
 import { buildSchedulePreview } from "../../services/tournament-preview";
@@ -83,6 +85,7 @@ const form = reactive({
   description:
     "欢迎参加我们的网球比赛！\n时间：{{日期}} {{时间}}\n地点：{{地点}}",
   prize: "",
+  prizes: [] as Prize[],
   address: "",
   contact_name: "",
   contact_phone: "",
@@ -119,7 +122,7 @@ onLoad(async (q) => {
   draftOwner = session.user?.id || "";
   const draft = readTournamentDraft(draftOwner, editId.value);
   if (draft) {
-    Object.assign(form, draft.form); Object.assign(cfg, draft.config);
+    Object.assign(form, draft.form); form.prizes=displayedPrizes(draft.form.prizes,draft.form.prize); Object.assign(cfg, draft.config);
     images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
     if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
     initialized = true;
@@ -150,6 +153,7 @@ onLoad(async (q) => {
     const start = localTime(t.start_time),
       end = localTime(t.end_time);
     Object.assign(form, {
+      prizes: displayedPrizes(t.prizes,t.prize),
       title: t.title,
       auto_title: t.auto_title,
       start_date: start.slice(0, 10),
@@ -212,6 +216,8 @@ function fail(message: string, panel = "advanced") {
   uni.pageScrollTo({ selector: "#" + panel, duration: 200 });
 }
 function payload(previewOnly = false) {
+  const prizes=normalizedPrizes(form.prizes);
+  if(prizes.some(p=>!p.name)) { panels.value=[...new Set([...panels.value,"prizes"])];uni.showToast({title:"请填写奖项名称",icon:"none"});return; }
   validatedPreviewOnly = previewOnly;
   fieldIssues.value = tournamentFieldIssues(form,cfg,linked.value,previewOnly);
   if (fieldIssues.value.length) {
@@ -241,6 +247,7 @@ function payload(previewOnly = false) {
     max_participants: Number(form.max_participants),
     description: form.description,
     prize: form.prize,
+    prizes: normalizedPrizes(form.prizes),
     address: form.address,
     contact_name: form.contact_name,
     contact_phone: form.contact_phone,
@@ -291,10 +298,7 @@ async function save() {
       data.images.push(
         await uploadedImage(img, "post"),
       );
-    const t: any = await request(
-      editId.value ? `/tournaments/${editId.value}` : "/tournaments",
-      { method: editId.value ? "PUT" : "POST", data },
-    );
+    const t = await saveTournament(data, editId.value);
     completed = true; clearTournamentDraft(draftOwner, editId.value);
     uni.redirectTo({ url: `/pages/common/tournament-detail?id=${t.id}` });
   } catch (error:any) {
@@ -355,14 +359,23 @@ async function save() {
       >
       <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
       <wd-collapse v-model="panels">
-        <wd-collapse-item name="details" title="更多基础信息 · 介绍、奖项、图片"
+        <wd-collapse-item name="prizes" :title="`奖项设置（选填） · ${normalizedPrizes(form.prizes).length} 条`">
+          <view v-for="(prize,i) in form.prizes" :key="i" class="prize-editor">
+            <wd-input v-model="prize.name" :maxlength="64" placeholder="奖项名称，例如冠军" />
+            <wd-textarea v-model="prize.description" :maxlength="2000" show-word-limit placeholder="奖励说明，支持多行" custom-textarea-class="prize-textarea" />
+            <view class="row"><wd-button size="small" variant="text" :disabled="i===0" @click="[form.prizes[i-1],form.prizes[i]]=[form.prizes[i],form.prizes[i-1]]">上移</wd-button><wd-button size="small" variant="text" :disabled="i===form.prizes.length-1" @click="[form.prizes[i+1],form.prizes[i]]=[form.prizes[i],form.prizes[i+1]]">下移</wd-button><wd-button size="small" variant="text" type="danger" @click="form.prizes.splice(i,1)">删除</wd-button></view>
+          </view>
+          <wd-button custom-class="add-prize-button" variant="plain" :disabled="form.prizes.length>=20" @click="form.prizes.push({name:'',description:''})">新增奖项</wd-button>
+        </wd-collapse-item>
+      </wd-collapse>
+      <wd-collapse v-model="panels">
+        <wd-collapse-item name="details" title="更多基础信息 · 介绍、图片"
           ><view id="details">
             <text class="field-label">赛事介绍</text
             ><wd-textarea v-model="form.description" /><text class="muted">{{
               placeholderHint
             }}</text>
-            <text class="field-label">奖项</text
-            ><wd-input v-model="form.prize" /><text class="field-label"
+            <text class="field-label"
               >联系人</text
             ><wd-input v-model="form.contact_name" /><text class="field-label"
               >联系电话</text
@@ -548,4 +561,9 @@ async function save() {
   flex-direction: column;
   gap: 12px;
 }
+</style>
+
+<style scoped>
+.prize-editor { margin-bottom:16px; padding:12px; border:1px solid #e5e8e5; border-radius:12px; }
+:deep(.prize-textarea) { min-height:140px; }
 </style>

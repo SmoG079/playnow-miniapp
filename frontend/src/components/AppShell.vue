@@ -5,7 +5,7 @@ defineProps<{ active?: string; back?: boolean; title?: string; simpleHeader?: bo
 <template>
   <wd-config-provider>
     <view class="app-shell">
-      <MainHeader v-if="back" :title="title || '详情'" back :context="!simpleHeader" />
+      <MainHeader v-if="back" :title="title || '详情'" back :context="false" />
       <slot />
       <wd-toast />
       <wd-dialog />

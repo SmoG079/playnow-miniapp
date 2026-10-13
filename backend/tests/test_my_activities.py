@@ -50,8 +50,8 @@ async def test_post_lifecycle_filters_use_shanghai_clock_and_keep_review_result(
         MatchPost(id=102,user_id='2',title='已关闭约球',status='closed',preferred_date=local.date()+timedelta(days=1),preferred_start=time(9),preferred_end=time(11))]);await db.flush()
     db.add(MatchRegistration(post_id=100,user_id='3',status=RegistrationStatus.rejected,review_reason='名额不匹配'));await db.flush()
     assert [x['id'] for x in (await records(db,kind='post',relation='published',phase='open')).items]==[100]
-    assert [x['id'] for x in (await records(db,kind='post',relation='published',phase='ongoing')).items]==[101]
-    assert [x['id'] for x in (await records(db,kind='post',relation='published',phase='ended')).items]==[102]
+    assert [x['id'] for x in (await records(db,kind='post',relation='published',phase='ongoing')).items]==[]
+    assert [x['id'] for x in (await records(db,kind='post',relation='published',phase='ended')).items]==[102,101]
     own=await records(db,'3',kind='post')
     assert own.items[0]['registration']=={'status':'rejected','review_reason':'名额不匹配'}
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { registrationClosed } from "../../domain/activity-visibility";
 import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -83,6 +84,9 @@ function action() {
   }
   if (full.value || post.value.status !== "open")
     return uni.showToast({ title: "当前活动不可报名", icon: "none" });
+  if (registrationClosed(post.value,"post")) {
+    uni.showToast({title:"约球报名已截止",icon:"none"});return;
+  }
   if (!s.user?.phone)
     return openPage(
       `/pages/profile/edit?redirect=${encodeURIComponent("/pages/common/post-detail?id=" + id.value)}`,
@@ -178,9 +182,9 @@ function remove(c: any) {
             }}
             人</text
           ></view
-        ><text class="body-copy">{{
+        ><view class="section-head"><text class="section-title">活动详情</text></view><view class="activity-description"><text class="body-copy">{{
           post.description || post.notes || "发起人暂未填写更多说明。"
-        }}</text
+        }}</text></view
         ><view class="organizer"
           ><Photo
             round
@@ -230,7 +234,7 @@ function remove(c: any) {
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
         ><wd-button
-          :disabled="!owner && !registration && (full || post.status !== 'open')"
+          :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{
             owner
@@ -239,6 +243,7 @@ function remove(c: any) {
                 ? registration.status === "pending"
                   ? "待审核 · 取消"
                   : "已报名 · 取消"
+                : registrationClosed(post,'post') ? "报名已截止"
                 : full
                   ? "已满员"
                   : "报名参加"
@@ -266,4 +271,9 @@ function remove(c: any) {
 
 <style scoped>
 .detail-facts .fact > .fact-icon { flex:0 0 22px; width:22px; align-items:center; }
+</style>
+
+<style scoped>
+.activity-description { background:#fff; border:1px solid #e5e8e5; border-radius:16px; padding:20px; margin-bottom:24px; }
+.activity-description .body-copy { white-space:pre-wrap; }
 </style>

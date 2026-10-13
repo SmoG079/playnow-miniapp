@@ -1,5 +1,5 @@
 """Database-backed records and club permissions on an isolated SQLite database."""
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import AsyncClient, ASGITransport
@@ -132,7 +132,7 @@ async def test_cancel_keeps_record_reopens_capacity_and_can_register_again(db):
     user = await db.get(User, 1)
     db.add(Activity(id=1, kind="post"))
     await db.flush()
-    db.add(MatchPost(id=1, user_id='2', title="约球", price=0, players_needed=1))
+    db.add(MatchPost(id=1, user_id='2', title="约球", price=0, players_needed=1, preferred_date=datetime.utcnow().date()+timedelta(days=2), preferred_start=time(9), preferred_end=time(11)))
     await db.flush()
     await posts.register_post(1, RegisterPostRequest(message="报名"), user, db)
     assert (await db.get(MatchPost, 1)).status == MatchPostStatus.full

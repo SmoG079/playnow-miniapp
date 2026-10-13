@@ -18,7 +18,7 @@ def minutes(value, end=False):
     return 1440 if end and result == 0 else result
 
 
-async def ensure_slots(db, venue_id, day, start=None, end=None, price_for=None):
+async def ensure_slots(db, venue_id, day, start=None, end=None):
     await db.execute(select(Venue.id).where(Venue.id == venue_id).with_for_update())
     if start is None or end is None:
         club = (
@@ -64,7 +64,6 @@ async def ensure_slots(db, venue_id, day, start=None, end=None, price_for=None):
                 date=day,
                 start_time=start_time,
                 end_time=end_time,
-                price_override=price_for(start_time) if price_for else None,
             )
         )
         intervals.append((current, stop))

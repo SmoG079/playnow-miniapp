@@ -20,3 +20,9 @@ export function returnToActivityForm(mode: string) {
   if (mode === "post") return uni.switchTab({ url: "/" + route });
   return uni.redirectTo({ url: "/" + route });
 }
+
+/** Route queries may retain percent encoding in mp-weixin. Decode once. */
+export function decodeRouteText(value: unknown): string {
+  const text=String(value || "");
+  try { return decodeURIComponent(text); } catch { return text; }
+}

@@ -7,7 +7,7 @@ import MainHeader from "../../components/MainHeader.vue";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
 import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
-import { listAll, request } from "../../services/api";
+import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { businessDate } from "../../utils/date";
 import { saveActivityDraft, readActivityDraft, clearActivityDraft } from "../../services/activity-draft";
@@ -80,7 +80,15 @@ onShow(async () => {
   if (linked) {
     form.city = linked.city || form.city;
   }
-  await loadClubs();
+  if (linked?.club_id) {
+    try {
+      const club = await request<any>(`/clubs/${Number(linked.club_id)}`);
+      clubs.value = [club]; clubIndex.value = 0;
+    } catch (error:any) {
+      uni.showToast({title:error.message || "俱乐部信息加载失败，请重试",icon:"none"});
+      return;
+    }
+  }
   if (linked) {
     if (linked.club_id)
       clubIndex.value = clubs.value.findIndex((c) => c.id === Number(linked.club_id));
@@ -106,27 +114,12 @@ watch(() => discovery.city, value => {
     form.city = value; changeCity();
   }
 }, { flush: "sync" });
-let clubLoadVersion = 0;
-async function loadClubs() {
-  const version = ++clubLoadVersion;
-  const selected = clubs.value[clubIndex.value]?.id;
-  try {
-    const available = form.city ? await listAll<any>(`/clubs?city=${encodeURIComponent(form.city)}`) : [];
-    if (version !== clubLoadVersion) return;
-    clubs.value = available;
-    clubIndex.value = clubs.value.findIndex(c => c.id === selected);
-  } catch (error: any) {
-    if (version !== clubLoadVersion) return;
-    clubs.value = []; clubIndex.value = -1;
-    uni.showToast({ title: error.message || "球场列表加载失败", icon: "none" });
-  }
-}
 function changeCity() {
   form.address = ""; form.latitude = null; form.longitude = null;
-  clubIndex.value = -1; loadClubs();
+  clubIndex.value = -1;
 }
 function selectLocation(point: any) {
-  Object.assign(form, point); loadClubs();
+  Object.assign(form, point);
 }
 function goClub() {
   if (s.requireLogin("/pages/publish/club-create")) uni.navigateTo({ url: "/pages/publish/club-create" });
@@ -171,7 +164,7 @@ async function submit() {
     return uni.showToast({ title: "人数至少为 1", icon: "none" });
   if (Number(form.price) < 0 || !Number.isFinite(Number(form.price)))
     return uni.showToast({ title: "请填写有效费用", icon: "none" });
-  if (choosingVenue.value && (clubIndex.value < 0 || !form.booking_id))
+  if (form.booking_id && clubIndex.value < 0)
     return uni.showToast({ title: "请选择俱乐部并完成订场", icon: "none" });
   if (!form.city || (!form.booking_id && (!form.address || form.latitude === null || form.longitude === null))) return uni.showToast({ title: "请在地图中选择活动地点", icon: "none" });
   loading.value = true;
@@ -205,23 +198,18 @@ async function submit() {
     loading.value = false;
   }
 }
-function chooseClub(e: any) {
-  clubIndex.value = Number(e.detail.value);
-  form.booking_id = null;
-  form.venue_id = null;
-  venueName.value = "";
-}
 function goBook() {
-  if (clubIndex.value < 0)
-    return uni.showToast({ title: "请先选择俱乐部", icon: "none" });
-  uni.navigateTo({
-    url: `/pages/booking/venue-detail?id=${clubs.value[clubIndex.value].id}&return_mode=post`,
-  });
+  uni.navigateTo({ url: "/pages/booking/select?return_mode=post" });
+}
+function returnToPublish() {
+  cacheDraft();
+  editingPost.value = false;
+  uni.pageScrollTo({ scrollTop: 0, duration: 0 });
 }
 </script>
 <template>
   <AppShell active="publish">
-    <MainHeader :title="editingPost ? '发布约球' : '发布'" />
+    <MainHeader :title="editingPost ? '发布约球' : '发布'" :back="editingPost" :back-action="returnToPublish" />
     <view class="content publish-content">
       <view v-if="!editingPost" class="publish-entries">
         <text class="entry-intro muted">约上球友，或组织一场属于你的比赛。</text>
@@ -253,9 +241,6 @@ function goBook() {
         </button>
       </view>
       <view v-else class="post-form">
-        <wd-button variant="text" @click="editingPost = false"
-          >返回发布入口</wd-button
-        >
         <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
         <text class="subtitle muted">场地可选，未关联即为自由约球。</text>
         <text class="field-label">标题 *</text
@@ -270,35 +255,10 @@ function goBook() {
             >{{ venueName }} · {{ form.preferred_date }}
             {{ form.preferred_start }}–{{ form.preferred_end }}</text
           >
-          <text v-else class="muted">{{
-            choosingVenue
-              ? "选择俱乐部并完成订场后关联"
-              : "未关联场地 · 自由约球"
-          }}</text>
-          <wd-button
-            v-if="!choosingVenue"
-            variant="plain"
-            @click="choosingVenue = true"
-            >关联场地</wd-button
-          >
-          <wd-button v-if="choosingVenue" variant="text" @click="unlinkVenue">{{
-            form.booking_id ? "移除关联" : "取消关联"
-          }}</wd-button>
+          <text v-else class="muted">未预订场地 · 自由约球</text>
+          <wd-button custom-class="post-booking-select-button" variant="plain" @click="goBook">{{ form.booking_id ? '重新选择并预订场地' : '选择并预订场地' }}</wd-button>
+          <wd-button v-if="form.booking_id" variant="text" @click="unlinkVenue">移除关联</wd-button>
         </view>
-        <template v-if="choosingVenue && clubs.length"
-          ><text class="field-label">俱乐部</text
-          ><picker
-            :range="clubs.map((c) => c.name)"
-            :value="clubIndex"
-            @change="chooseClub"
-            ><view class="picker-field"
-              >{{ clubIndex < 0 ? "请选择" : clubs[clubIndex].name
-              }}<wd-icon name="arrow-down" /></view></picker
-          ><wd-button block variant="plain" @click="goBook">{{
-            form.booking_id ? "已关联预约，重新选择" : "去选择并预订场地"
-          }}</wd-button></template
-        >
-        <view v-if="choosingVenue && !clubs.length" class="venue-empty"><text class="muted">{{ form.city ? '当前城市暂无可预订场地' : '请先在地图中选择活动地点' }}</text><wd-button variant="text" size="small" @click="goClub">创建俱乐部</wd-button></view>
         <view class="comparison-help"><wd-button variant="text" size="small" @click="showPostComparison = true">自由约球与定场约球有什么区别？</wd-button></view>
         <text class="field-label">活动地点</text>
         <ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />

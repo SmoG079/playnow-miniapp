@@ -22,6 +22,6 @@ describe("activity card data", () => {
     expect(capacity?.percent).toBe(100); expect(capacity?.remaining).toBe(0);
     expect(cardState({ status: "open" }, capacity).label).toBe("名额已满");
     expect(cardState({ status: "cancelled" }, capacity).label).toBe("已关闭");
-    expect(cardState({ status: "ongoing" }, capacity).label).toBe("进行中");
+    expect(cardState({ status: "ongoing" }, capacity).label).toBe("比赛进行中");
   });
 });

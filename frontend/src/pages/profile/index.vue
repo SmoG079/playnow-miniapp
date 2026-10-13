@@ -14,7 +14,6 @@ const menus = computed(() => {
     ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
     ["user", "我的活动", "/pages/profile/my-activities"],
     ["check", "申请处理", "/pages/profile/applications"],
-    ["notification", "系统通知", "/pages/chat/conversation?peer=system"],
   ];
   if (s.isClubAdmin && s.user?.managed_club_ids?.length)
     common.splice(

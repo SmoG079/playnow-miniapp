@@ -43,6 +43,24 @@ class TournamentConfig(BaseModel):
         return self
 
 
+class TournamentPrize(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field("", max_length=2000)
+
+    @field_validator("name", "description")
+    @classmethod
+    def strip_text(cls, value):
+        value = value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def named(self):
+        if not self.name:
+            raise ValueError("请填写奖项名称")
+        return self
+
+
 class TournamentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     club_id: int | None = Field(None, ge=1)
@@ -61,6 +79,7 @@ class TournamentCreate(BaseModel):
     images: list[str] = Field(default_factory=list, max_length=6)
     cover_image: str | None = None
     prize: str | None = Field(None, max_length=256)
+    prizes: list[TournamentPrize] | None = Field(None, max_length=20)
     address: str = Field("", max_length=256)
     contact_name: str = Field("", max_length=64)
     contact_phone: str = Field("", max_length=20)
@@ -170,3 +189,25 @@ class ScheduleCommand(VersionCommand):
 class TieCommand(VersionCommand, ReasonCommand):
     group_no: int = Field(ge=1)
     team_ids: list[int] = Field(min_length=2)
+
+
+class DrawSeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_no: int = Field(ge=1, le=16)
+    position: int = Field(ge=0, le=255)
+    team_id: int | None = Field(None, ge=1)
+
+
+class DrawAdjustCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    idempotency_key: str = Field(min_length=8, max_length=64)
+    reason: str = Field(min_length=1, max_length=256)
+    positions: list[DrawSeat] = Field(min_length=2, max_length=256)
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value):
+        if not value.strip():
+            raise ValueError("请填写调整原因")
+        return value.strip()

@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI):
     # Database schema is managed by Alembic migrations.
     # Run: docker-compose exec api alembic upgrade head
     logger.info("media storage backend: %s", storage.active_backend())
+    logger.info("booking payment: placeholder (real WeChat prepay paused)")
+    logger.info("profit sharing: %s", "enabled" if settings.PROFIT_SHARING_ENABLED else "disabled")
     yield
     await engine.dispose()
 

@@ -1,7 +1,8 @@
 import type { Tournament } from "../services/tournaments";
 
-export function tournamentPollDelay(tournament: Pick<Tournament, "status" | "matches"> | null): number | null {
+export function tournamentPollDelay(tournament: Pick<Tournament, "status" | "matches" | "phase"> | null): number | null {
   if (!tournament) return 20_000;
+  if (tournament.phase === "ended") return null;
   if (!["open", "ongoing"].includes(tournament.status)) return null;
   return tournament.matches.some(match => match.status === "pending" && match.team_a_id && match.team_b_id)
     ? 10_000 : 20_000;

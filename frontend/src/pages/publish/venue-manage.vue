@@ -2,6 +2,7 @@
 import { reactive, ref, watch } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import ActivityLocationSelect from "../../components/ActivityLocationSelect.vue";
+import VenuePriceRules from "../../components/VenuePriceRules.vue";
 import AppShell from "../../components/AppShell.vue";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
 import { request } from "../../services/api";
@@ -27,7 +28,10 @@ const s = useSession(),
 onLoad(async (q) => {
   clubId.value = Number(q?.club_id);
   id.value = Number(q?.venue_id || 0);
-  if (!s.requireLogin()) return;
+  if (!(await s.requireClubAdmin(`/pages/publish/venue-manage?club_id=${clubId.value}&venue_id=${id.value}`))) return;
+  if (!clubId.value || !s.canManageClub(clubId.value)) {
+    uni.showToast({title:"无权管理该俱乐部",icon:"none"});return;
+  }
   if (!id.value) { await discovery.ensureCity().catch(() => {}); form.city = discovery.city; }
   if (id.value) {
     const vs: any[] = await request(`/clubs/${clubId.value}/venues`);
@@ -69,6 +73,8 @@ async function save() {
     );
     uni.showToast({ title: "保存成功", icon: "success" });
     setTimeout(() => uni.navigateBack(), 600);
+  } catch (error:any) {
+    uni.showModal({title:"保存场地失败",content:error.message || "请检查价格规则后重试",showCancel:false});
   } finally {
     loading.value = false;
   }
@@ -97,7 +103,7 @@ async function save() {
           height="100px"
           :src="form.cover_image" /><button class="upload-box" @click="image">
           <wd-icon name="plus" /></button></view
-      ><view class="publish-action"
+      ><VenuePriceRules v-model="form.price_rules" :base-price="form.price_per_hour" :club-id="clubId" :venue-id="id" /><view class="publish-action"
         ><wd-button block :loading="loading || locationSelecting || imageUploading" @click="save"
           >保存场地</wd-button
         ></view

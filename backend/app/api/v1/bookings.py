@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
@@ -313,13 +314,49 @@ async def get_booking(
     )
 
 
+async def _wx_prepay(order: BookingOrder, user: User) -> dict:
+    """保留的真实支付工具，当前订场入口暂停调用。
+
+    Call the WeChat Pay V3 JSAPI unified order API and return the decoded body.
+
+    ``wechatpayv3`` returns ``(http_status, body_text)``. The call is blocking, so
+    it runs in a threadpool to keep the event loop free.
+    """
+    response = await run_in_threadpool(
+        get_wxpay().pay,
+        description=settings.WX_PAY_DESCRIPTION,
+        out_trade_no=order.order_no,
+        amount={"total": _to_cents(order.amount), "currency": "CNY"},
+        payer={"openid": user.openid},
+        notify_url=settings.WX_PAY_NOTIFY_URL or None,
+        # 平台为收款方，本笔交易不分账（分账已暂缓，见 docs/wechat-pay-setup.md）。
+        # 注意：一旦漏传这个字段，该订单将永久无法分账，事后不可补。
+        settle_info={"profit_sharing": False},
+    )
+    status, body = response
+    payload = json.loads(body) if body else {}
+    if status >= 300:
+        raise RuntimeError(payload.get("code") or f"WeChat Pay HTTP {status}")
+    return payload
+
+
 @router.post("/{booking_id:int}/pay")
 async def pay_booking(
     booking_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Placeholder: mark order as paid directly (WeChat Pay V3 pending)."""
+    """临时占位确认订场：不调用微信、不产生真实收款。
+
+    保留订单归属、状态、时段锁和幂等校验。真实预支付实现暂时注释，
+    待支付验收恢复后重新接入；环境开关不会启用被暂停的代码。
+    """
+    await check_rate_limit(
+        f"rate:pay:{current_user.id}",
+        max_requests=settings.RATE_LIMIT_PAY_PER_MINUTE,
+        window_seconds=60,
+    )
+
     result = await db.execute(
         select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update()
     )
@@ -346,6 +383,10 @@ async def pay_booking(
         local_start = datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
         if slot.booking_order_id != order.id or _v(slot.status) != "locked" or slot.locked_by != order.user_id or local_start <= datetime.now(ZoneInfo("Asia/Shanghai")):
             raise HTTPException(409, "订单时段已失效，请重新预订")
+
+    # 2026-10-13：按项目要求临时跳过真实支付，订场继续可用。
+    # paid/dev_ 仅代表占位确认，不代表真实资金到账。
+    logger.info("booking placeholder confirmed: order=%s", order.order_no)
     order.status = OrderStatus.paid
     order.payment_time = now
     order.wx_transaction_id = f"dev_{order.order_no}"
@@ -354,14 +395,37 @@ async def pay_booking(
         slot.locked_by = None
         slot.locked_at = None
         await release_lock(f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}", lock_owner(order.order_no))
-
-    # Create settlement record
-    import logging
-    _log = logging.getLogger(__name__)
-    _log.info("Payment placeholder: order %s marked as paid (dev mode)", order.order_no)
-
-    return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount)}
-
+    return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount), "payment_mode": "placeholder"}
+    # 暂停的真实微信预支付流程。恢复时需一起启用前端收银台、配置商户、
+    # 验收微信回调与退款；不能仅打开 WX_PAY_ENABLED 就恢复收款。
+    # if not current_user.openid or current_user.openid.startswith("dev_"):
+    #     raise HTTPException(status_code=409, detail="需要真实微信登录后才能支付")
+    #
+    # # 复用仍在有效期内的 prepay_id，避免重复向微信下单
+    # prepay_id = order.prepay_id
+    # if (
+    #     not prepay_id
+    #     or order.prepay_id_created_at is None
+    #     or now >= order.prepay_id_created_at + timedelta(seconds=settings.PREPAY_ID_TTL_SECONDS)
+    # ):
+    #     try:
+    #         payload = await _wx_prepay(order, current_user)
+    #     except Exception as e:
+    #         logger.error("WeChat prepay failed for %s: %s", order.order_no, e, exc_info=True)
+    #         raise HTTPException(status_code=502, detail="微信下单失败，请稍后重试")
+    #     prepay_id = payload.get("prepay_id")
+    #     if not prepay_id:
+    #         raise HTTPException(status_code=502, detail="微信未返回预支付信息")
+    #     order.prepay_id = prepay_id
+    #     order.prepay_id_created_at = now
+    #     await db.commit()
+    #
+    # return {
+    #     "msg": "ok",
+    #     "order_no": order.order_no,
+    #     "amount": str(order.amount),
+    #     "pay_params": build_jsapi_params(get_wxpay(), prepay_id),
+    # }
 
 @router.post("/wx-notify")
 async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):

@@ -15,7 +15,7 @@ from app.models.models import User, Venue, VenueTimeSlot, SlotStatus, Club, Venu
 from app.schemas.schemas import (
     VenueCreate, VenueUpdate, VenueBrief, VenueDetail,
     SlotGenerateRequest, SlotBrief, SlotDateGroup,
-    SlotStatusUpdateRequest,
+    SlotStatusUpdateRequest, PricePreviewRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ async def update_venue(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Venue).where(Venue.id == venue_id, Venue.club_id == club_id)
+        select(Venue).where(Venue.id == venue_id, Venue.club_id == club_id).with_for_update()
     )
     venue = result.scalar_one_or_none()
     if not venue:
@@ -160,14 +160,6 @@ def _slot_to_brief(slot: VenueTimeSlot) -> SlotBrief:
     )
 
 
-def _effective_price_for_slot(start_time: time, price_rules: list, venue_price: Decimal) -> Decimal:
-    """Return the first matching price rule price, else venue default."""
-    for rule in price_rules:
-        if rule.start_time <= start_time < rule.end_time:
-            return rule.price
-    return venue_price
-
-
 async def _require_club_admin_for_venue(
     venue_id: int,
     current_user: User = Depends(get_current_user),
@@ -218,11 +210,12 @@ async def generate_slots(
     if isinstance(closing, timedelta): closing = (datetime.min + closing).time()
     if req.start_time < opening or req.end_time > closing:
         raise HTTPException(422, "排期须位于俱乐部营业时间内")
+    if req.price_rules:
+        raise HTTPException(422, "请在场地价格规则中设置特殊价格")
     current_date = req.date_from
     created = skipped = 0
     while current_date <= req.date_to:
-        new, old = await ensure_slots(db, venue.id, current_date, req.start_time, req.end_time,
-            lambda start: _effective_price_for_slot(start, req.price_rules, venue.price_per_hour))
+        new, old = await ensure_slots(db, venue.id, current_date, req.start_time, req.end_time)
         created += new
         skipped += old
         current_date += timedelta(days=1)
@@ -263,3 +256,39 @@ async def update_slot_status(
     await db.flush()
 
     return {"msg": "ok", "slot_id": slot.id, "status": req.status}
+
+
+@router.post("/{venue_id}/prices/preview")
+async def preview_prices(venue_id: int, req: PricePreviewRequest,
+    _: User = Depends(_require_club_admin_for_venue), db: AsyncSession = Depends(get_db)):
+    venue = await db.get(Venue, venue_id)
+    return await price_preview_for_club(db, venue.club_id, req)
+
+
+@router.post("/with-club/{club_id}/prices/preview")
+async def preview_new_venue_prices(club_id: int, req: PricePreviewRequest,
+    _: User = Depends(get_club_admin), db: AsyncSession = Depends(get_db)):
+    return await price_preview_for_club(db, club_id, req)
+
+
+async def price_preview_for_club(db, club_id, req):
+    from types import SimpleNamespace
+    from app.services.price_rules import quote
+    club = await db.get(Club, club_id)
+    if not club:
+        raise HTTPException(404, "俱乐部不存在")
+    opening, closing = club.opening_time or time(8), club.closing_time or time(22)
+    if isinstance(opening, timedelta): opening = (datetime.min + opening).time()
+    if isinstance(closing, timedelta): closing = (datetime.min + closing).time()
+    rows = []
+    current = datetime.combine(req.date, opening)
+    stop = datetime.combine(req.date, closing)
+    virtual = SimpleNamespace(price_per_hour=req.price_per_hour, price_rules=req.price_rules)
+    while current + timedelta(minutes=30) <= stop:
+        end = current + timedelta(minutes=30)
+        slot = SimpleNamespace(date=req.date, start_time=current.time(), end_time=end.time())
+        hourly, index = quote(req.price_per_hour, req.price_rules, req.date, current.time())
+        rows.append(dict(start_time=current.strftime("%H:%M"), end_time=end.strftime("%H:%M"),
+            hourly_price=hourly, price=slot_charge(virtual, slot), rule_index=index))
+        current = end
+    return dict(date=req.date, slots=rows)

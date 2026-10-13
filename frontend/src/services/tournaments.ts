@@ -88,6 +88,7 @@ export interface Registration {
   refund_status?: string;
 }
 export interface Tournament {
+  phase?: string;
   venue_id?: number | null;
   city?: string | null;
   latitude?: number | null;
@@ -107,6 +108,7 @@ export interface Tournament {
   contact_name: string;
   contact_phone: string;
   prize: string;
+  prizes?: import("../domain/prizes").Prize[] | null;
   auto_title: boolean;
   cover_image?: string;
   max_participants: number;
@@ -120,6 +122,9 @@ export interface Tournament {
   draw_stage?: string;
   draw_published: boolean;
   can_manage: boolean;
+  draw_block_reason?: string;
+  can_adjust_draw?: boolean;
+  draw_positions?: {group_no:number;position:number;team_id:number|null}[];
   can_review?: boolean;
   can_register: boolean;
   bracket_preview?: { teams: Team[]; matches: Match[] };
@@ -211,6 +216,26 @@ export function validateConfig(
 }
 export function getTournament(id: number) {
   return request<Tournament>(`/tournaments/${id}`);
+}
+/** A validation rejection has not created or changed an event, so this retry is safe. */
+export async function saveTournament(data: { prizes: import("../domain/prizes").Prize[]; [key: string]: unknown }, id = 0) {
+  const path = id ? `/tournaments/${id}` : "/tournaments";
+  const method = id ? "PUT" : "POST";
+  try {
+    // Keep [] explicit for upgraded servers: it suppresses legacy prize content.
+    return await request<Tournament>(path, { method, data });
+  } catch (error: any) {
+    const detail = error.response?.data?.detail;
+    const unsupportedPrizes = error.statusCode === 422 && Array.isArray(detail) && detail.length === 1
+      && detail[0]?.type === "extra_forbidden" && detail[0]?.loc?.length === 2
+      && detail[0].loc[0] === "body" && detail[0].loc[1] === "prizes";
+    if (!unsupportedPrizes) throw error;
+    if (data.prizes.length) {
+      throw new Error("当前服务尚未支持多条奖项，请升级后端后重试；已填写内容已保留");
+    }
+    const { prizes, ...legacy } = data;
+    return request<Tournament>(path, { method, data: { ...legacy, prize: "" } });
+  }
 }
 export function command<T = any>(
   id: number,

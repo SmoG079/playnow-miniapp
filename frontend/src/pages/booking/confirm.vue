@@ -3,8 +3,9 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+import { payBooking } from "../../services/payment";
 import { useSession } from "../../stores/session";
-import { returnToActivityForm } from "../../utils/navigation";
+import { returnToActivityForm, decodeRouteText } from "../../utils/navigation";
 const s = useSession(),
   q = ref<any>({}),
   venue = ref<any>(null),
@@ -17,7 +18,7 @@ const slots = computed(() =>
     .map(Number),
 );
 onLoad(async (x) => {
-  q.value = x || {};
+  q.value = { ...x, venue_name: decodeRouteText(x?.venue_name) };
   if (
     !s.requireLogin(
       "/pages/booking/confirm?" +
@@ -54,7 +55,7 @@ async function pay() {
         method: "POST",
         data: { slot_ids: slots.value },
       }));
-    await request(`/bookings/${booking.value.id}/pay`, { method: "POST" });
+    await payBooking(booking.value.id);
     uni.showToast({ title: "支付成功", icon: "success" });
     if (["post", "tournament"].includes(q.value.return_mode)) {
       uni.setStorageSync("booking_return", {
@@ -74,6 +75,10 @@ async function pay() {
         url: `/pages/booking/success?booking_id=${booking.value.id}&order_no=${booking.value.order_no}`,
       });
   } catch (e: any) {
+    if (e.cancelled) {
+      uni.showToast({ title: "已取消支付，可在「我的预约」继续", icon: "none" });
+      return;
+    }
     if (e.statusCode === 409) booking.value = null;
     uni.showToast({
       title: e.message || "支付失败",

@@ -229,31 +229,8 @@ class VenuePriceRules(BaseModel):
     @field_validator("price_rules", check_fields=False)
     @classmethod
     def validate_price_rules(cls, rules):
-        if rules is None:
-            return rules
-        for rule in rules:
-            if rule.get("type") not in ("date_range", "daily_time", "time_range"):
-                raise ValueError("不支持的价格规则类型")
-            try:
-                price = Decimal(str(rule["price"]))
-                if not price.is_finite() or price < 0 or price > Decimal("99999999.99") or price.as_tuple().exponent < -2:
-                    raise ValueError()
-                start, end = rule.get("start_time"), rule.get("end_time")
-                if start: time.fromisoformat(start)
-                if end: time.fromisoformat(end)
-                if start and end and time.fromisoformat(start) >= time.fromisoformat(end):
-                    raise ValueError()
-                if rule["type"] != "date_range" and (not start or not end):
-                    raise ValueError()
-                if rule["type"] == "date_range":
-                    if date.fromisoformat(rule["start_date"]) > date.fromisoformat(rule["end_date"]):
-                        raise ValueError()
-                # Normalize strings for lexicographic pricing comparisons.
-                if start: rule["start_time"] = time.fromisoformat(start).strftime("%H:%M")
-                if end: rule["end_time"] = time.fromisoformat(end).strftime("%H:%M")
-            except (ValueError, TypeError, KeyError, ArithmeticError):
-                raise ValueError("价格规则需包含有效日期/时段及非负有限价格")
-        return rules
+        from app.services.price_rules import validate_rules
+        return validate_rules(rules)
 
 
 class VenueCreate(VenueLocation, VenuePriceRules):
@@ -339,7 +316,7 @@ class SlotBrief(BaseModel):
     date: date
     start_time: time
     end_time: time
-    price: Decimal  # effective price (override or venue default)
+    price: Decimal  # amount for this slot, calculated from ordered venue rules
     status: str
 
     class Config:
@@ -794,3 +771,9 @@ class ClubStats(BaseModel):
 class UploadResponse(BaseModel):
     url: str
     filename: str
+
+
+class PricePreviewRequest(VenuePriceRules):
+    price_per_hour: Decimal = Field(..., gt=0, max_digits=10, decimal_places=2)
+    price_rules: list[dict] = Field(default_factory=list)
+    date: date

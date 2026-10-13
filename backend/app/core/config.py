@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     WX_MCH_PRIVATE_KEY_PATH: str = ""
     WX_PAY_NOTIFY_URL: str = ""
     WX_PAY_CERT_DIR: str = "/app/certs"
+    # 真实订场支付暂缓：保留未来接入配置，当前入口使用占位确认。
+    # 即使配置为 true 也不会启用已注释的真实预支付流程。
+    WX_PAY_ENABLED: bool = False
+    # 微信支付账单里展示的商品描述
+    WX_PAY_DESCRIPTION: str = "网球场地预订"
+
     
     # Tencent Cloud COS — 媒体资源存储，见 docs/cos-media-storage.md
     # 生产环境必须使用 CAM 子账号密钥（只授权单个桶），不要用主账号
@@ -53,6 +59,9 @@ class Settings(BaseSettings):
     FREE_CANCEL_HOURS: int = 24
 
     # Settlement / profit-sharing
+    # 自动分账执行总开关。平台用自有商户号直接收款时为 false —— 此时
+    # SettlementRecord 仅作记账留存，不会向微信发起分账请求。
+    PROFIT_SHARING_ENABLED: bool = False
     SETTLEMENT_DELAY_DAYS: int = 30
     SETTLEMENT_MAX_RETRIES: int = 3
     SETTLEMENT_BATCH_SIZE: int = 100

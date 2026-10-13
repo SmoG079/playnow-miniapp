@@ -135,6 +135,9 @@ async def test_stale_order_cannot_pay_or_release_new_same_user_order(
     new, _ = await pending(db, 3)
     release = AsyncMock()
     monkeypatch.setattr("app.services.booking_locks.release_lock", release)
+    # Same isolation as tests/test_bookings.py: the shared Redis client is bound to
+    # the first event loop, so rate limiting is stubbed instead of hit for real.
+    monkeypatch.setattr(bookings, "check_rate_limit", AsyncMock())
     with pytest.raises(HTTPException) as exc:
         await bookings.pay_booking(2, user, db)
     assert exc.value.status_code == 409
@@ -153,6 +156,8 @@ async def test_current_order_pays_all_slots_once_and_releases_only_its_token(
     order, user = await pending(db, 2)
     release = AsyncMock()
     monkeypatch.setattr(bookings, "release_lock", release)
+    # See test_stale_order_cannot_pay_or_release_new_same_user_order.
+    monkeypatch.setattr(bookings, "check_rate_limit", AsyncMock())
     await bookings.pay_booking(2, user, db)
     assert order.status == "paid"
     for sid in (11, 12):

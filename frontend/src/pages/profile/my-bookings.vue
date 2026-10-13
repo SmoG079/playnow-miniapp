@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { onReachBottom, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
+import { payBooking } from "../../services/payment";
 import { useSession } from "../../stores/session";
 const s = useSession(),
   tabs = [
@@ -70,7 +71,15 @@ function cancel(b: any) {
   });
 }
 async function pay(b: any) {
-  await request(`/bookings/${b.id}/pay`, { method: "POST" });
+  try {
+    await payBooking(b.id);
+  } catch (e: any) {
+    uni.showToast({
+      title: e.cancelled ? "已取消支付" : e.message || "支付失败",
+      icon: "none",
+    });
+    return;
+  }
   uni.redirectTo({
     url: `/pages/booking/success?booking_id=${b.id}&order_no=${b.order_no}`,
   });

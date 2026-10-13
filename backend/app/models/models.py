@@ -413,6 +413,7 @@ class Tournament(Base):
     current_participants = Column(Integer, default=0, nullable=False)
     entry_fee = Column(DECIMAL(10, 2), default=0, nullable=False)
     prize = Column(String(256))
+    prizes = Column(JSON, nullable=True)
     images = Column(JSON)
     cover_image = Column(String(512))
     config = Column(JSON, nullable=True)

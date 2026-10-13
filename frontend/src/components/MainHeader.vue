@@ -5,7 +5,7 @@ import DiscoveryCityButton from "./DiscoveryCityButton.vue";
 import { useDiscovery } from "../stores/discovery";
 import { useWeather } from "../stores/weather";
 import { backOrHome } from "../utils/navigation";
-const props = withDefaults(defineProps<{ title: string; back?: boolean; context?: boolean }>(), { context: true });
+const props = withDefaults(defineProps<{ title: string; back?: boolean; context?: boolean; backAction?: () => void }>(), { context: false });
 const emit = defineEmits<{ (e: "cityChange"): void }>();
 const location = useDiscovery();
 const weather = useWeather();
@@ -24,6 +24,10 @@ const weatherLabel = computed(() => !location.city ? "选择地区查看天气"
 const refreshWeather = () => { if (props.context) return weather.refresh(location.city, location.region[0] || ""); };
 watch(() => [props.context, location.city, location.region[0]], refreshWeather, { immediate: true });
 onShow(refreshWeather);
+function goBack() {
+  if (props.backAction) props.backAction();
+  else backOrHome();
+}
 </script>
 <template>
   <view class="home-header main-header" :class="{ 'main-header-back': back, 'main-header-simple': !context }" :style="{ paddingTop: navTop + 'px' }">
@@ -31,7 +35,7 @@ onShow(refreshWeather);
       <DiscoveryCityButton @change="emit('cityChange')" />
     </view>
     <view class="header-heading" :style="!context ? { minHeight: navHeight + 'px', maxWidth: cityWidth + 'px' } : {}">
-      <button v-if="back" class="header-back" aria-label="返回" @click="backOrHome"><wd-icon name="arrow-left" size="23px" /></button>
+      <button v-if="back" class="header-back" aria-label="返回" @click="goBack"><wd-icon name="arrow-left" size="23px" /></button>
       <text class="page-title">{{ title }}</text>
     </view>
     <view v-if="context" class="header-context">

@@ -9,6 +9,7 @@
   "pages": [
     { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/booking/club-list" },
+    { "path": "pages/booking/select" },
     { "path": "pages/booking/venue-detail" },
     { "path": "pages/booking/confirm" },
     { "path": "pages/booking/success" },

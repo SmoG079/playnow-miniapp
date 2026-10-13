@@ -1,6 +1,8 @@
 import { utcInput } from "../services/tournaments";
 export interface ActivityCardData {
   id?: number; title?: string; status?: string; phase?: string;
+  registration_deadline?: string; registration_closed?: boolean;
+  result_summary?: {score?: string; winner?: string; is_draw?: boolean; walkover?: boolean};
   city?: string; address?: string; club_name?: string;
   start_time?: string; end_time?: string;
   preferred_date?: string; preferred_start?: string; preferred_end?: string;
@@ -35,10 +37,11 @@ export function cardCapacity(item: ActivityCardData, kind: ActivityKind) {
   if (typeof count !== "number" || typeof total !== "number" || !Number.isFinite(count) || !Number.isFinite(total) || count < 0 || total <= 0) return null;
   return { count, total, percent: Math.min(100, Math.round(count / total * 100)), remaining: Math.max(0, total - count) };
 }
-export function cardState(item: ActivityCardData, capacity: ReturnType<typeof cardCapacity>) {
+export function cardState(item: Pick<ActivityCardData, "status" | "phase">, capacity: ReturnType<typeof cardCapacity>, kind: ActivityKind = "tournament") {
   if (["cancelled", "closed"].includes(item.status || "")) return { label: "已关闭", active: false };
   if (["ended", "completed", "finished"].includes(item.status || "") || item.phase === "ended") return { label: "已结束", active: false };
-  if (item.status === "ongoing" || item.phase === "ongoing") return { label: "进行中", active: true };
+  if (item.phase === "ongoing" || !item.phase && item.status === "ongoing") return { label: kind === "tournament" ? "比赛进行中" : "进行中", active: true };
+  if (item.phase === "registration_closed") return { label: "报名截止，等待开始", active: false };
   if (item.status === "full" || capacity?.remaining === 0) return { label: "名额已满", active: false };
   if (item.status === "open" || item.phase === "open") return { label: "报名中", active: true };
   if (item.status === "draft") return { label: "筹备中", active: false };

@@ -27,11 +27,11 @@ class SlotPricingTests(unittest.TestCase):
         self.slot.date = date(2026, 10, 15)
         self.assertEqual(slot_charge(self.venue, self.slot), Decimal('25'))
 
-    def test_explicit_override_is_used_when_no_venue_rule_matches(self):
+    def test_legacy_override_is_ignored(self):
         self.slot.price_override = Decimal('90')
-        self.assertEqual(slot_charge(self.venue, self.slot), Decimal('45'))
+        self.assertEqual(slot_charge(self.venue, self.slot), Decimal('25'))
         self.slot.price_override = Decimal('0')
-        self.assertEqual(slot_charge(self.venue, self.slot), Decimal('0'))
+        self.assertEqual(slot_charge(self.venue, self.slot), Decimal('25'))
 
     def test_existing_first_matching_venue_rule_precedence(self):
         self.venue.price_rules = [dict(type='daily_time', start_time='18:00', end_time='22:00', price=80),

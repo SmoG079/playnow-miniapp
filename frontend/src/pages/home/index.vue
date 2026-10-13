@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onPullDownRefresh, onReachBottom, onShow } from "@dcloudio/uni-app";
+import { onPullDownRefresh, onReachBottom, onShow, onHide, onUnload } from "@dcloudio/uni-app";
+import { visibleInDiscovery, registrationCutoff, activityPhase } from "../../domain/activity-visibility";
 import MainHeader from "../../components/MainHeader.vue";
 import ActivityCard from "../../components/ActivityCard.vue";
 import AppShell from "../../components/AppShell.vue";
 import { request, type PageResult } from "../../services/api";
+import { utcInput } from "../../services/tournaments";
 import { openPage } from "../../utils/navigation";
 import { useDiscovery } from "../../stores/discovery";
 import { useSession } from "../../stores/session";
@@ -15,19 +17,32 @@ const posts = ref<any[]>([]), tournaments = ref<any[]>([]), loading = ref(false)
 const types = ["全部约球", "自由约球", "定场约球"];
 let loadVersion = 0;
 const pages = [1, 1], hasMore = [false, false];
-const visiblePosts = computed(() => posts.value.filter(p => p.status !== "closed"));
+const visibilityNow=ref(Date.now());
+let expiryTimer:ReturnType<typeof setTimeout>|undefined, visible=false;
+const visiblePosts = computed(() => posts.value.filter(p => visibleInDiscovery(p,"post",visibilityNow.value)));
+const visibleTournaments = computed(() => tournaments.value.filter(t => visibleInDiscovery(t,"tournament",visibilityNow.value)).map(t=>({...t,phase:activityPhase(t,"tournament",visibilityNow.value)})));
+function scheduleExpiry() {
+  clearTimeout(expiryTimer);visibilityNow.value=Date.now();
+  if(!visible)return;
+  const future=[...posts.value.map(p=>registrationCutoff(p,"post")),...tournaments.value.flatMap(t=>[registrationCutoff(t,"tournament"),Date.parse(utcInput(t.start_time)),Date.parse(utcInput(t.end_time))])].filter(stamp=>Number.isFinite(stamp)&&stamp>visibilityNow.value);
+  const delay=Math.min(future.length?Math.min(...future)-visibilityNow.value+20:2147483647,visibleTournaments.value.some(t=>t.phase==="ongoing")?15000:45000);
+  expiryTimer=setTimeout(()=>{visibilityNow.value=Date.now();void load(true);},delay);
+}
+function stopExpiry(){visible=false;clearTimeout(expiryTimer);loadVersion++;loading.value=false;}
+onHide(stopExpiry);onUnload(stopExpiry);
 function listingPath(kind: number, page: number) {
   const extra = discoveryQuery(location.city, sortValues[sort.value], date.value, location.latitude, location.longitude);
   return kind === 0
     ? `/posts?page=${page}&page_size=20&${extra}&activity_type=${["all","free","venue"][mode.value]}${ntrp.value ? "&ntrp_levels=" + levelOptions[ntrp.value] : ""}`
-    : `/tournaments?status=open&page=${page}&page_size=20&${extra}`;
+    : `/tournaments?page=${page}&page_size=20&${extra}`;
 }
 function canLoadMore(result: PageResult<any>, count: number) {
   return typeof result.total === "number" ? count < result.total : result.items.length === 20;
 }
-async function load() {
+async function load(silent = false) {
   const version = ++loadVersion;
-  posts.value = []; tournaments.value = [];
+  visibilityNow.value=Date.now();
+  if(!silent){posts.value = []; tournaments.value = [];}
   pages.fill(1); hasMore.fill(false);
   if (!location.city) { loading.value = false; return; }
   loading.value = true;
@@ -41,8 +56,8 @@ async function load() {
     hasMore[0] = canLoadMore(p, posts.value.length);
     hasMore[1] = canLoadMore(t, tournaments.value.length);
   } catch (e: any) {
-    if (version === loadVersion) uni.showToast({ title: e.message || "加载失败", icon: "none" });
-  } finally { if (version === loadVersion) loading.value = false; }
+    if (version === loadVersion && !silent) uni.showToast({ title: e.message || "加载失败", icon: "none" });
+  } finally { if (version === loadVersion) {loading.value = false;scheduleExpiry();} }
 }
 async function loadMore() {
   const kind = tab.value;
@@ -58,7 +73,7 @@ async function loadMore() {
     hasMore[kind] = canLoadMore(result, page * 20);
   } catch (error: any) {
     if (version === loadVersion) uni.showToast({ title: error.message || "加载失败", icon: "none" });
-  } finally { if (version === loadVersion) loading.value = false; }
+  } finally { if (version === loadVersion) {loading.value = false;scheduleExpiry();} }
 }
 async function locateCity() {
   try { await location.locate(); }
@@ -88,6 +103,7 @@ async function myLevel() {
   ntrp.value = levelOptions.indexOf(level); await load();
 }
 onShow(async () => {
+  visible=true;visibilityNow.value=Date.now();
   if (!location.city && !location.attempted) { await locateCity(); return; }
   await load();
 });
@@ -96,7 +112,7 @@ onReachBottom(loadMore);
 </script>
 <template>
   <AppShell active="home"
-    ><MainHeader title="首页" @city-change="load" /><view class="content"
+    ><MainHeader title="首页" context @city-change="load()" /><view class="content"
       ><view class="text-tabs section-head"
         ><button :class="{ selected: tab === 0 }" @click="tab = 0">
           约球广场</button
@@ -120,8 +136,8 @@ onReachBottom(loadMore);
         <wd-empty v-if="!loading && !visiblePosts.length" tip="暂无约球帖" />
       </template>
       <template v-else>
-        <ActivityCard v-for="t in tournaments" :key="t.id" :item="t" kind="tournament" @open="openPage('/pages/common/tournament-detail?id=' + t.id)" />
-        <wd-empty v-if="!loading && !tournaments.length" tip="暂无比赛" />
+        <ActivityCard v-for="t in visibleTournaments" :key="t.id" :item="t" kind="tournament" @open="openPage('/pages/common/tournament-detail?id=' + t.id)" />
+        <wd-empty v-if="!loading && !visibleTournaments.length" tip="暂无比赛" />
       </template>
       <wd-loading v-if="loading" /></view
     ></AppShell>

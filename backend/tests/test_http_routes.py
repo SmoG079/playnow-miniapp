@@ -85,7 +85,7 @@ class StaticRouteTests(unittest.TestCase):
         slot.price_override = Decimal("90")
         response = self.client.get("/api/v1/venues/9/slots?date=2026-10-14")
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(Decimal(response.json()[0]["slots"][0]["price"]), Decimal("90"))
+        self.assertEqual(Decimal(response.json()[0]["slots"][0]["price"]), Decimal("120"))
 
 
 if __name__ == "__main__":

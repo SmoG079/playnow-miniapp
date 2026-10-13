@@ -29,7 +29,7 @@ from app.schemas.tournament import (
     RegistrationCommand,
     ReasonCommand,
     ReviewCommand,
-    DrawCommand,
+    DrawCommand, DrawAdjustCommand,
     VersionCommand,
     ResultCommand,
     ScheduleCommand,
@@ -53,8 +53,12 @@ def brief(t):
         t,
         "id club_id city latitude longitude title sport_type start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
     )
+    data["registration_deadline"] = t.registration_deadline or t.start_time
+    data["registration_closed"] = t.registration_closed
     data["activity_id"] = t.id
     data["status"] = _v(t.status)
+    from app.services.activity_visibility import tournament_phase
+    data["phase"] = tournament_phase(t)
     return data
 
 
@@ -260,6 +264,8 @@ async def list_tournaments(
     venue_lat=case((Tournament.venue_id.is_not(None),Venue.latitude),else_=Tournament.latitude)
     venue_lng=case((Tournament.venue_id.is_not(None),Venue.longitude),else_=Tournament.longitude)
     query = select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).outerjoin(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
+    from app.services.activity_visibility import public_listing_condition
+    query = query.where(public_listing_condition("tournament", life.now()))
     selected_city=city_name(city)
     effective_city=case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)
     query=query.where(effective_city==selected_city) if selected_city else query.where(False)
@@ -273,7 +279,20 @@ async def list_tournaments(
     query=ordered(query,sort_by,Tournament.start_time,Tournament.id,lat,lng,
                   venue_lat,venue_lng)
     rows=(await db.execute(query.offset((page-1)*page_size).limit(page_size))).all()
-    return dict(items=[dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng},club_name=name,distance=haversine(lat,lng,
+    # Only published results enter public discovery, including while a new draft exists.
+    summaries = {}
+    published_ids = [t.id for t, *_ in rows if t.published_version]
+    if published_ids:
+        result_rows = (await db.execute(select(TournamentDraw.tournament_id, TournamentMatch, TournamentTeam.name)
+            .join(Tournament, (Tournament.id == TournamentDraw.tournament_id) & (Tournament.published_version == TournamentDraw.version))
+            .join(TournamentMatch, TournamentMatch.draw_id == TournamentDraw.id)
+            .outerjoin(TournamentTeam, TournamentTeam.id == TournamentMatch.winner_id)
+            .where(TournamentDraw.tournament_id.in_(published_ids), TournamentDraw.published_at.is_not(None), TournamentMatch.status == "completed")
+            .order_by(TournamentMatch.round_no.desc(), TournamentMatch.position.desc()))).all()
+        for tid, match, winner in result_rows:
+            if tid not in summaries:
+                summaries[tid] = dict(score=match.score, winner=winner, is_draw=match.is_draw, walkover=match.walkover)
+    return dict(items=[dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng, "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
          clat,clng))
          for t,name,clat,clng,actual_city in rows],total=total,page=page,page_size=page_size)
 
@@ -342,6 +361,8 @@ async def apply_request(db, t, req):
             422, "请先通过订场流程预订场地；赛事排场不会自动锁定预约时段"
         )
     fields = req.model_dump(exclude={"config"})
+    if "prizes" not in req.model_fields_set:
+        fields.pop("prizes", None)
     fields["city"] = city_name(req.city)
     if req.venue_id:
         fields.update(city=v.city,latitude=v.latitude,longitude=v.longitude,address=v.address)
@@ -484,7 +505,7 @@ async def get_tournament(
         club_name=club.name if club else None,
         **row_dict(
             t,
-            "description prize images address contact_name contact_phone lock_venue config registration_deadline cancellation_deadline registration_closed roster_frozen",
+            "description prize prizes images address contact_name contact_phone lock_venue config cancellation_deadline roster_frozen",
         ),
     )
     if t.venue_id:
@@ -520,6 +541,25 @@ async def get_tournament(
         rankings=await rankings(db, d, matches),
         prepay_enabled=get_settings().TOURNAMENT_PREPAY_ENABLED,
     )
+    from app.services import tournament_adjustment as adjustment
+    permitted = False
+    if user:
+        try:
+            await get_club_admin(t.club_id, user, db)
+            permitted = _v(user.role) == "platform_admin" or t.club_id is not None
+        except HTTPException:
+            pass
+    data["can_adjust_draw"] = bool(permitted and d and d.version == t.draw_version and
+        t.roster_frozen and _v(t.status) not in ("cancelled", "finished") and not adjustment.played(data["matches"]))
+    data["draw_positions"] = adjustment.seats(data["teams"], data["matches"], d.snapshot or {}) if d else []
+    data["draw_block_reason"] = ""
+    if manage and t.config and (not d or d.stage == "initial"):
+        roster = [row_dict(r, "user_id gender pairing partner_user_id requested_group")
+            for r, _, _ in rows if life.eligible(r)]
+        try:
+            engine.pair_grouped(roster, life.config(t), "draw-readiness", t.max_participants or 128)
+        except ValueError as exc:
+            data["draw_block_reason"] = str(exc)
     data["my_draw"] = (
         engine.personal_position(data["teams"], data["matches"], user.id)
         if user
@@ -959,6 +999,22 @@ async def close_registration(
     t.registration_closed = True
     t.roster_frozen = True
     life.audit(db, t, user, "roster_frozen", {})
+    return {"msg": "ok"}
+
+
+@router.post("/{ident}/reopen-registration")
+async def reopen_registration(ident: int, user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)):
+    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
+    t = await life.locked_event(db, ident)
+    await admin(db, t, user)
+    if t.draw_version or _v(t.status) != "open":
+        raise HTTPException(409, "已有签表或赛事已开始，不能重新开放报名")
+    if life.now() >= (t.registration_deadline or t.start_time):
+        raise HTTPException(409, "已超过报名截止时间，不能重新开放报名")
+    t.registration_closed = False
+    t.roster_frozen = False
+    life.audit(db, t, user, "registration_reopened", {})
     return {"msg": "ok"}
 
 
@@ -1465,3 +1521,67 @@ async def audit_log(
         .scalars()
         .all()
     ]
+
+
+@router.post("/{ident}/draw/adjust")
+async def adjust_draw(ident: int, req: DrawAdjustCommand,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services import tournament_adjustment as adjustment
+    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
+    t = await life.locked_event(db, ident)
+    # Deliberately do not use admin(): ordinary creator ownership is insufficient.
+    await get_club_admin(t.club_id, user, db)
+    if t.club_id is None and _v(user.role) != "platform_admin":
+        raise HTTPException(403, "无主办俱乐部的赛事仅平台管理员可调整签表")
+    prior = await db.scalar(select(TournamentDraw).where(TournamentDraw.tournament_id == ident,
+        TournamentDraw.idempotency_key == req.idempotency_key))
+    if prior:
+        if prior.snapshot.get("adjustment_request") != req.model_dump():
+            raise HTTPException(409, "幂等键已用于其他调整")
+        return dict(version=prior.version)
+    d = await draw_for(db, t)
+    if not d or req.expected_version != t.draw_version or not t.roster_frozen or _v(t.status) in ("cancelled", "finished"):
+        raise HTTPException(409, "签表版本已变化或赛事不能调整，请刷新")
+    rows = [match_dict(m) for m in await matches_for(db, d)]
+    if adjustment.played(rows):
+        raise HTTPException(409, "当前阶段已有比赛结果，不能调整对位")
+    teams = await teams_for(db, d)
+    knockout = any(m["kind"] == "knockout" for m in rows)
+    try:
+        positions = adjustment.validate_positions(adjustment.seats(teams, rows, d.snapshot or {}),
+            [p.model_dump() for p in req.positions], knockout)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    snapshot = dict(d.snapshot or {}, adjustment_request=req.model_dump(), adjusted_from=d.version)
+    new = TournamentDraw(tournament_id=ident, version=t.draw_version+1, stage=d.stage,
+        idempotency_key=req.idempotency_key, seed=d.seed, snapshot=snapshot, created_by=user.id, reason=req.reason)
+    db.add(new)
+    await db.flush()
+    mapping = {}
+    groups = {s["team_id"]:s["group_no"] for s in positions if s["team_id"] is not None}
+    for team in teams:
+        clone = TournamentTeam(draw_id=new.id,group_no=groups[team["id"]],name=team["name"],origin_group=team.get("origin_group"))
+        db.add(clone)
+        await db.flush()
+        mapping[team["id"]]=clone.id
+        for uid in team["user_ids"]:
+            db.add(TournamentTeamMember(draw_id=new.id,team_id=clone.id,user_id=uid))
+    snapshot["positions"]=[dict(s,team_id=mapping.get(s["team_id"])) for s in positions]
+    new.snapshot=dict(snapshot)
+    rebuilt=adjustment.rebuild(rows, positions, mapping, knockout)
+    cfg=life.config(t)
+    # Keep the current stage's starting point, including completed prior stages.
+    start=max(t.start_time,min((m["scheduled_at"] for m in rows if m.get("scheduled_at")),default=t.start_time))
+    if d.stage == "knockout" and snapshot.get("source_version"):
+        source=await draw_for(db,t,snapshot["source_version"])
+        previous=await matches_for(db,source)
+        start=max(start,max((m.scheduled_end for m in previous if m.scheduled_end),default=start))
+    engine.schedule(rebuilt,cfg,start)
+    overflow=any(m.get("scheduled_end",start)>t.end_time for m in rebuilt)
+    if overflow:
+        for m in rebuilt:
+            for k in ("court","scheduled_at","scheduled_end"): m.pop(k,None)
+    await persist_matches(db,new,rebuilt)
+    t.draw_version=new.version
+    life.audit(db,t,user,"draw_adjusted",dict(old_version=d.version,new_version=new.version,reason=req.reason))
+    return dict(version=new.version,overflows=overflow)

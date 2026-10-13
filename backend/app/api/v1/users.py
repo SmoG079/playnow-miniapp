@@ -50,7 +50,7 @@ async def managed_tournaments(
 async def my_activities(
     kind: Literal["tournament", "post"] = "tournament",
     relation: Literal["joined", "published"] = "joined",
-    phase: Literal["all", "open", "ongoing", "ended", "review"] = "all",
+    phase: Literal["all", "open", "ongoing", "ended", "review", "registration_closed"] = "all",
     keyword: str = Query("", max_length=128),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
@@ -58,12 +58,12 @@ async def my_activities(
     """Filter the current user's indexed records before paginating; bracket data is lazy-loaded."""
     from app.models.models import TournamentAudit
     now = datetime.utcnow()
+    from app.services.activity_visibility import registration_closed_condition, tournament_phase_condition
     if kind == "tournament":
         event, registration = Tournament, TournamentRegistration
         owned = select(TournamentAudit.id).where(TournamentAudit.tournament_id == Tournament.id,
             TournamentAudit.action == "created", TournamentAudit.actor_id == current_user.id).correlate(Tournament).exists()
-        event_phase = case((Tournament.status.in_(["finished", "cancelled"]), "ended"),
-            (Tournament.end_time <= now, "ended"), (Tournament.start_time <= now, "ongoing"), else_="open")
+        event_phase = tournament_phase_condition(now)
         query = select(Tournament, TournamentRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
             TournamentRegistration, and_(TournamentRegistration.tournament_id == Tournament.id,
                                           TournamentRegistration.user_id == current_user.id))
@@ -71,12 +71,7 @@ async def my_activities(
     else:
         event, registration = MatchPost, MatchRegistration
         owned = MatchPost.user_id == current_user.id
-        local_now = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Shanghai"))
-        today, clock = local_now.date(), local_now.time().replace(tzinfo=None)
-        ended = or_(MatchPost.preferred_date < today,
-            and_(MatchPost.preferred_date == today, MatchPost.preferred_end <= clock))
-        started = and_(MatchPost.preferred_date == today, MatchPost.preferred_start <= clock)
-        event_phase = case((MatchPost.status == "closed", "ended"), (ended, "ended"), (started, "ongoing"), else_="open")
+        event_phase = case((registration_closed_condition("post", now), "ended"), else_="open")
         query = select(MatchPost, MatchRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
             MatchRegistration, and_(MatchRegistration.post_id == MatchPost.id, MatchRegistration.user_id == current_user.id))
         approval = MatchRegistration.status
@@ -99,11 +94,13 @@ async def my_activities(
             status=_v(e.status), phase=event_phase_value, can_manage=bool(owner), created_at=e.created_at)
         if kind == "tournament":
             item.update(start_time=e.start_time, end_time=e.end_time, address=e.address, cover_image=e.cover_image,
+                registration_deadline=e.registration_deadline or e.start_time, registration_closed=e.registration_closed,
+                current_participants=e.current_participants, max_participants=e.max_participants,
                 draw_version=e.published_version, registration=dict(status=_v(r.status), approval=r.approval,
                 admission=r.admission, payment=r.payment, requested_group=r.requested_group, review_reason=r.review_reason) if r else None)
         else:
             item.update(preferred_date=e.preferred_date, preferred_start=e.preferred_start,
-                preferred_end=e.preferred_end, address=e.address, cover_image=(e.images or [None])[0],
+                preferred_end=e.preferred_end, players_needed=e.players_needed, address=e.address, cover_image=(e.images or [None])[0],
                 registration=dict(status=_v(r.status), review_reason=r.review_reason) if r else None)
         items.append(item)
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

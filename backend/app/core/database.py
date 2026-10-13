@@ -8,7 +8,8 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     pool_size=20,
     max_overflow=10,
-    pool_pre_ping=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
     echo=False,  # SQL logging controlled via LOG_MYSQL_LEVEL in logger.py
     hide_parameters=True,  # SQL errors/logs must not expose phone numbers or session keys.
 )

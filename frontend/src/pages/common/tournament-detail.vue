@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { cardState } from "../../domain/activity-card";
+import { drawBlockReason } from "../../domain/draw-readiness";
+import { displayedPrizes } from "../../domain/prizes";
 import { computed, reactive, ref } from "vue";
 import {
   onLoad,
@@ -8,6 +11,7 @@ import {
   onShareAppMessage,
 } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
+import TournamentDrawEditor from "../../components/TournamentDrawEditor.vue";
 import TournamentBracket from "../../components/TournamentBracket.vue";
 import TournamentSchedulePreview from "../../components/TournamentSchedulePreview.vue";
 import {
@@ -22,6 +26,7 @@ import {
   getTournament,
   command,
   localTime,
+  utcInput,
   teamName,
   formatNames,
   disciplineNames,
@@ -42,6 +47,11 @@ const s = useSession(),
   historyVersion = ref(0),
   history = ref<any>(null),
   mineOnly = ref(false);
+const adjustingDraw = ref(false);
+async function saveDrawAdjustment(data:any) {
+  try { await run("draw/adjust",data); adjustingDraw.value=false; uni.showToast({title:"调整已保存，请重新发布",icon:"none"}); }
+  catch(e:any) { uni.showModal({title:"保存调整失败",content:e.message||"请刷新后重试",showCancel:false}); }
+}
 const previewOpen = ref(false),
   schedulePreview = ref<ReturnType<typeof buildSchedulePreview> | null>(null);
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -163,7 +173,7 @@ function scheduleRefresh() {
   if (!visible || !id.value || delay === null) return;
   refreshTimer = setTimeout(async () => {
     if (!visible) return;
-    if (busy.value || refreshing) { scheduleRefresh(); return; }
+    if (busy.value || refreshing || adjustingDraw.value) { scheduleRefresh(); return; }
     refreshing = true;
     try {
       await load();
@@ -308,6 +318,9 @@ async function accept() {
   uni.showToast({ title: "搭档已确认", icon: "success" });
 }
 async function draw(stage = "initial") {
+  if(stage === "initial" && drawBlockReason(t.value)) {
+    uni.showModal({title:"暂不能抽签",content:drawBlockReason(t.value),showCancel:false});return;
+  }
   if (t.value?.draw_stage === "knockout") stage = "knockout";
   let why = "";
   if (
@@ -351,6 +364,11 @@ async function draw(stage = "initial") {
       confirmText: "知道了",
     });
   }
+}
+async function reopenRegistration() {
+  if (!(await confirm("重新开放报名并解除名单冻结？抽签前可继续补充参赛者。"))) return;
+  try { await run("reopen-registration"); }
+  catch(e:any) { uni.showModal({title:"重新开放报名失败",content:e.message||"请刷新后重试",showCancel:false}); }
 }
 async function publish() {
   if (await confirm("发布后所有用户将看到当前正式签表"))
@@ -465,6 +483,7 @@ function tie() {
       />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
+        ><text class="tag">{{ cardState(t, null, "tournament").label }}</text
         ><text class="tag">{{
           cfg
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
@@ -517,7 +536,7 @@ function tie() {
               <text class="body-copy">{{
                 t.description || "欢迎报名参加本次赛事"
               }}</text
-              ><text v-if="t.prize" class="body-copy">奖项：{{ t.prize }}</text
+              ><view v-if="displayedPrizes(t.prizes,t.prize).length"><text class="strong">奖项设置</text><view v-for="(prize,i) in displayedPrizes(t.prizes,t.prize)" :key="i"><text class="strong">{{prize.name}}</text><text class="body-copy" style="white-space:pre-wrap">{{prize.description}}</text></view></view
               ><view class="gallery"
                 ><Photo
                   v-for="img in t.images || []"
@@ -610,7 +629,9 @@ function tie() {
               ><text class="muted">{{
                 t.draw_published ? "正式签表" : "待发布；管理员看到的为抽签草稿"
               }}</text
-              ><view class="choices"
+              ><wd-button v-if="t.can_adjust_draw && !adjustingDraw && !history" variant="plain" :disabled="busy" @click="adjustingDraw=true">调整对位</wd-button>
+              <TournamentDrawEditor v-if="adjustingDraw" :tournament="t" :busy="busy" @cancel="adjustingDraw=false" @save="saveDrawAdjustment" />
+              <view class="choices"
                 ><wd-button
                   v-for="h in t.history"
                   :key="h.version"
@@ -822,7 +843,7 @@ function tie() {
                 )
               "
               >关闭报名</wd-button
-            ><wd-button
+            ><wd-button v-if="t.roster_frozen && !t.draw_version && t.status === 'open'" size="small" variant="plain" :loading="busy" :disabled="Date.now() >= new Date(utcInput(t.registration_deadline || t.start_time)).getTime()" @click="reopenRegistration">重新开放报名</wd-button><wd-button
               v-if="
                 cfg &&
                 t.roster_frozen &&
@@ -831,10 +852,11 @@ function tie() {
               "
               size="small"
               :loading="busy"
+              :disabled="!!drawBlockReason(t)"
               custom-class="draw-draft-button"
               @click="draw()"
               >{{ t.draw_version ? "重新抽签" : "生成抽签草稿" }}</wd-button
-            ><wd-button
+            ><text v-if="t.roster_frozen && drawBlockReason(t)" class="muted small">{{drawBlockReason(t)}}</text><wd-button
               v-if="t.draw_version && !t.draw_published"
               size="small"
               :loading="busy"

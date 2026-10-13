@@ -1,7 +1,7 @@
 from typing import Optional
 from app.services.privacy import can_view_club_documents
 import re
-from datetime import date as Date
+from datetime import date as Date, datetime
 from app.services.discovery import city_name, ordered
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,10 +138,10 @@ async def list_posts(
         .outerjoin(Venue, MatchPost.venue_id == Venue.id)
         .outerjoin(registration_counts, registration_counts.c.post_id == MatchPost.id)
     )
-    # The public square never exposes closed posts, including explicit status queries.
-    query = query.where(MatchPost.status != MatchPostStatus.closed)
-    count_query = select(func.count(MatchPost.id)).where(
-        MatchPost.status != MatchPostStatus.closed)
+    from app.services.activity_visibility import public_listing_condition
+    visible = public_listing_condition("post", datetime.utcnow())
+    query = query.where(visible)
+    count_query = select(func.count(MatchPost.id)).where(visible)
 
     selected_city = city_name(city)
     city_column = case((MatchPost.venue_id.is_not(None),Venue.city),else_=MatchPost.city)
@@ -167,7 +167,7 @@ async def list_posts(
 
     selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
     if selected_levels:
-        all_posts = select(MatchPost.level_required).distinct().outerjoin(Venue,MatchPost.venue_id==Venue.id).where(MatchPost.status != MatchPostStatus.closed)
+        all_posts = select(MatchPost.level_required).distinct().outerjoin(Venue,MatchPost.venue_id==Venue.id).where(visible)
         all_posts = all_posts.where(city_column==selected_city) if selected_city else all_posts.where(False)
         if club_id:
             all_posts = all_posts.where(MatchPost.club_id == club_id)
@@ -515,6 +515,9 @@ async def register_post(
         raise HTTPException(status_code=404, detail="Post not found")
     if _v(post.status) != "open":
         raise HTTPException(status_code=400, detail="Post is not open")
+    from app.services.activity_visibility import post_registration_closed
+    if post_registration_closed(post):
+        raise HTTPException(status_code=409, detail="约球报名已截止，请在我的活动查看已有记录")
 
     existing = await db.execute(
         select(MatchRegistration).where(

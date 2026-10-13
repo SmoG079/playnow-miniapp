@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notificationTime } from "../../domain/notifications";
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
@@ -23,19 +24,17 @@ function openSystem() {
   <AppShell active="chat"
     ><MainHeader title="消息" /><view class="content main-content"
       ><view class="conv-item" @click="openSystem"
-        ><view class="conv-avatar system"
-          ><wd-icon name="notification" size="24px" color="#ffffff" /></view
+        ><wd-badge :value="unread" :max="99" :hidden="unread === 0" :top="2" :right="2" border custom-class="system-notification-badge"><view class="conv-avatar system"
+          ><wd-icon name="notification" size="24px" color="#ffffff" /></view></wd-badge
         ><view class="conv-body"
           ><view class="row between"
             ><text class="strong">系统通知</text
-            ><text class="muted small">{{ latest?.created_at || "" }}</text
+            ><text class="muted small">{{ notificationTime(latest?.created_at) }}</text
             ></view
           ><text class="muted line-clamp">{{
             latest?.title || "活动与审核结果将在此推送"
           }}</text></view
-        ><view v-if="unread" class="unread-badge">{{
-          unread > 99 ? "99+" : unread
-        }}</view></view
+        ></view
       ><view class="empty-state message-empty"
         ><wd-icon name="message" size="48px" color="#147553" /><text
           class="section-title"
@@ -73,18 +72,8 @@ function openSystem() {
   flex-direction: column;
   gap: 3px;
 }
-.unread-badge {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: #e24b4a;
-  color: #fff;
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-}
+:deep(.system-notification-badge) { flex:none; }
+.conv-item { background:#fff;border:1px solid var(--playnow-card-border);border-radius:16px; }
+.conv-body .row { gap:8px; }
+.conv-body .small { white-space:nowrap;font-size:10px; }
 </style>

@@ -14,7 +14,7 @@ const relation = ref("joined"), kind = ref("tournament"), phase = ref("all"), ke
 const items = ref<any[]>([]), page = ref(1), more = ref(true), loading = ref(false), failed = ref(false);
 const failureMessage = ref("活动暂时无法加载");
 const expanded = ref<number | null>(null), personal = ref<any>(null), personalLoading = ref(false), personalError = ref("");
-const phaseOptions = computed(() => [{value:"all",label:"全部"},{value:"open",label:"报名中"},{value:"ongoing",label:"进行中"},{value:"ended",label:"已结束"}, ...(relation.value === "joined" ? [{value:"review",label:"待审核"}] : [])]);
+const phaseOptions = computed(() => [{value:"all",label:"全部"},{value:"open",label:"报名中"},...(kind.value === "tournament" ? [{value:"registration_closed",label:"等待开始"},{value:"ongoing",label:"比赛进行中"}] : []),{value:"ended",label:"已结束"}, ...(relation.value === "joined" ? [{value:"review",label:"待审核"}] : [])]);
 let visible = false, loadVersion = 0, detailVersion = 0, refreshing = false;
 let searchTimer: ReturnType<typeof setTimeout> | undefined, refreshTimer: ReturnType<typeof setTimeout> | undefined;
 onLoad(q => { if (q?.relation === "published") relation.value = "published"; });
@@ -42,7 +42,7 @@ function reset() {
 }
 function selectRelation(value: string) { if (relation.value === value) return; relation.value = value; phase.value = "all"; reset(); }
 function selectPhase(value: string) { if (phase.value === value) return; phase.value = value; reset(); }
-function selectKind(e: any) { kind.value = Number(e.detail.value) === 0 ? "tournament" : "post"; reset(); }
+function selectKind(e: any) { kind.value = Number(e.detail.value) === 0 ? "tournament" : "post"; phase.value = "all"; reset(); }
 function switchActivityType() { kind.value = kind.value === "tournament" ? "post" : "tournament"; phase.value = "all"; keyword.value = ""; reset(); }
 watch(keyword, () => { clearTimeout(searchTimer); searchTimer = setTimeout(reset,300); });
 async function loadPersonal(silent = false) {
@@ -64,6 +64,12 @@ async function loadPersonal(silent = false) {
 function showPersonal(item: any) {
   if (expanded.value === item.id) { expanded.value = null; personal.value = null; detailVersion++; return; }
   expanded.value = item.id; personal.value = null; personalError.value = ""; void loadPersonal();
+}
+function matchResult(match:any) {
+  const id = personal.value?.personalTeam?.id || personal.value?.my_draw?.team_id;
+  if(match.status === "bye") return "轮空晋级";
+  if(match.winner_id) return `${match.score || ""} · ${match.winner_id === id ? "胜" : "负"}${match.walkover ? "（弃权）" : ""}`;
+  return match.is_draw ? `${match.score || ""} · 平局` : match.score || "待比赛";
 }
 function opponent(match:any) {
   const id = personal.value?.personalTeam?.id || personal.value?.my_draw?.team_id;
@@ -111,7 +117,7 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
       <view v-if="(relation === 'joined' && (item.registration || item.kind === 'tournament')) || (relation === 'published' && item.can_manage)" class="activity-card-extras">
       <view v-if="relation === 'joined' && item.registration" class="registration-line"><text class="registration-state" :class="{pending:registrationLabel(item) === '待审核'}">{{ registrationLabel(item) }}</text><text v-if="item.registration.review_reason" class="muted small">{{ item.registration.review_reason }}</text></view>
       <view class="row activity-actions"><wd-button v-if="relation === 'joined' && item.kind === 'tournament'" size="small" variant="text" @click="showPersonal(item)">{{ expanded === item.id ? '收起我的对阵' : '我的分组与对阵' }}</wd-button><template v-if="relation === 'published' && item.can_manage"><wd-button size="small" variant="text" @click="openPage(`/pages/profile/applications?kind=${item.kind}`)">处理报名</wd-button><wd-button v-if="item.kind === 'tournament' && item.phase !== 'ended'" size="small" variant="text" @click="openPage(`/pages/publish/tournament-create?id=${item.id}`)">编辑比赛</wd-button><wd-button v-if="item.phase !== 'ended'" size="small" variant="plain" @click="closeActivity(item)">关闭{{ item.kind === 'tournament' ? '比赛' : '约球' }}</wd-button></template></view>
-      <view v-if="expanded === item.id" class="personal-detail"><text v-if="personalLoading" class="muted small">正在加载对阵…</text><view v-else-if="personalError"><text class="muted small">{{ personalError }}</text><wd-button size="small" variant="text" @click="loadPersonal()">重试</wd-button></view><template v-else-if="personal"><text class="muted small">{{ personal.provisional ? '临时预览 · 正式对阵以发布签表为准' : ('签表 v' + personal.published_version) }}</text><text class="strong small">{{ personal.my_draw ? `第 ${personal.my_draw.group_no} 组 · ${personal.my_draw.half}` : item.registration.requested_group ? `第 ${item.registration.requested_group} 组 · 待发布签表` : '自动分组 · 待发布签表' }}</text><view v-for="match in personal.personalMatches" :key="match.key" class="personal-match"><text>第 {{ match.round_no }} 轮 · 对手：{{ opponent(match) }}</text><text class="muted small">{{ match.status === 'bye' ? '轮空晋级' : match.score || '待比赛' }} · {{ localTime(match.scheduled_at) }} · {{ match.court || '待排场' }}</text></view><text v-if="!personal.personalMatches.length" class="muted small">报名确认并完成抽签后，可查看自己的对阵。</text></template></view>
+      <view v-if="expanded === item.id" class="personal-detail"><text v-if="personalLoading" class="muted small">正在加载对阵…</text><view v-else-if="personalError"><text class="muted small">{{ personalError }}</text><wd-button size="small" variant="text" @click="loadPersonal()">重试</wd-button></view><template v-else-if="personal"><text class="muted small">{{ personal.provisional ? '临时预览 · 正式对阵以发布签表为准' : ('签表 v' + personal.published_version) }}</text><text class="strong small">{{ personal.my_draw ? `第 ${personal.my_draw.group_no} 组 · ${personal.my_draw.half}` : item.registration.requested_group ? `第 ${item.registration.requested_group} 组 · 待发布签表` : '自动分组 · 待发布签表' }}</text><view v-for="match in personal.personalMatches" :key="match.key" class="personal-match"><text>第 {{ match.round_no }} 轮 · 对手：{{ opponent(match) }}</text><text class="muted small">{{ matchResult(match) }} · {{ localTime(match.scheduled_at) }} · {{ match.court || '待排场' }}</text></view><text v-if="!personal.personalMatches.length" class="muted small">报名确认并完成抽签后，可查看自己的对阵。</text></template></view>
       </view>
     </ActivityCard>
     <view v-if="failed" class="empty-state"><text class="muted">{{ failureMessage }}</text><wd-button size="small" @click="load()">重试</wd-button></view><wd-empty v-else-if="!loading && !items.length" :tip="keyword || phase !== 'all' ? '当前筛选无结果' : `暂无${relation === 'published' ? '发布' : '参加'}的${kind === 'tournament' ? '比赛' : '约球'}`"><template #bottom><view class="empty-type-action"><text @click="switchActivityType">查看{{ kind === 'tournament' ? '约球' : '比赛' }}记录</text></view></template></wd-empty><text v-if="loading" class="muted loading-text">正在加载…</text>
