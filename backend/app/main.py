@@ -11,7 +11,7 @@ from fastapi.responses import Response, FileResponse
 from app.models.models import PrivateUpload, Club
 from app.core.logger import setup_logging, RequestLogMiddleware, get_logger
 from app.api.deps import get_current_user
-from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments, activities, discovery, applications
+from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments, activities, discovery, applications, messages
 from app.services import storage
 
 settings = get_settings()
@@ -80,6 +80,7 @@ app.include_router(tournaments.router, prefix=api_prefix)
 app.include_router(activities.router, prefix=api_prefix)
 app.include_router(discovery.router, prefix=api_prefix)
 app.include_router(applications.router, prefix=api_prefix)
+app.include_router(messages.router, prefix=api_prefix)
 
 
 @app.get("/health")

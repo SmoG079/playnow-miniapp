@@ -112,6 +112,19 @@ describe("session token state", () => {
     expect(storage.get("access_token")).toBe("new");
     expect(uni.reLaunch).not.toHaveBeenCalled();
   });
+  it("后台未读查询认证失效时保留当前页面", async () => {
+    (uni as any).request = vi.fn((options: any) => {
+      options.success({ statusCode: 401, data: { detail: "expired" } });
+    });
+    const { useSession } = await import("../src/stores/session");
+    const { request } = await import("../src/services/api");
+    const session = useSession();
+    session.setTokens("access", "refresh");
+    await expect(request("/messages/unread-count", { preservePage: true })).rejects.toThrow("登录已过期");
+    expect(storage.get("access_token")).toBe("access");
+    expect(uni.reLaunch).not.toHaveBeenCalled();
+    expect(uni.navigateTo).not.toHaveBeenCalled();
+  });
   it("登录恢复地址保留活动编号及查询参数", async () => {
     vi.stubGlobal("getCurrentPages", () => [{ route: "pages/common/post-detail", options: { id: 42, title: "约球 & 报名" } }]);
     const { currentRoute } = await import("../src/services/api");

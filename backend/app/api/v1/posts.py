@@ -396,17 +396,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
             cover_image = cover_image or club.cover_image
             club_documents = club.documents if await can_view_club_documents(db, club, viewer) else None
 
-    # Get user phone
-    user_phone = None
-    user_result = await db.execute(
-        select(User.phone, User.ntrp_level).where(User.id == post.user_id)
-    )
-    user_row = user_result.one_or_none()
-    if user_row:
-        permitted = isinstance(viewer, User) and (viewer.id == post.user_id or _v(viewer.role) == "platform_admin" or any(
-            r.user_id == viewer.id and _v(r.status) == "approved" for r, *_ in reg_rows))
-        user_phone = user_row[0] if permitted else None
-
+    # 联系发起人走私信，不再通过活动详情暴露手机号。
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
         city=effective_city, address=venue_address if post.venue_id else post.address, latitude=effective_lat, longitude=effective_lng,
@@ -425,7 +415,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
-        price=post.price, user_phone=user_phone, venue_name=venue_name, venue_address=venue_address,
+        price=post.price, user_phone=None, venue_name=venue_name, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
         cover_image=(post.images[0] if post.images else cover_image), club_documents=club_documents,
         images=post.images,

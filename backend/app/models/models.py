@@ -623,3 +623,30 @@ class UserIDMigration(Base):
     __tablename__ = "user_id_migrations"
     legacy_id = Column(BigInteger, primary_key=True, autoincrement=False)
     openid = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
+
+
+class DirectConversation(Base):
+    __tablename__ = 'direct_conversations'
+    id = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    pair_key = Column(String(64), nullable=False, unique=True)
+    participant_a = Column(String(64).with_variant(mysql.VARCHAR(64, collation='utf8mb4_bin'), 'mysql'), ForeignKey('users.id'), nullable=False)
+    participant_b = Column(String(64).with_variant(mysql.VARCHAR(64, collation='utf8mb4_bin'), 'mysql'), ForeignKey('users.id'), nullable=False)
+    post_id = Column(BigInteger, ForeignKey('match_posts.id'), nullable=False)
+    read_a = Column(BigInteger, nullable=False, default=0)
+    read_b = Column(BigInteger, nullable=False, default=0)
+    last_message_id = Column(BigInteger, nullable=True)
+    last_message_preview = Column(String(200), nullable=True)
+    last_message_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (Index('idx_direct_a_recent','participant_a','last_message_at'),Index('idx_direct_b_recent','participant_b','last_message_at'))
+
+
+class DirectMessage(Base):
+    __tablename__ = 'direct_messages'
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    conversation_id = Column(String(32), ForeignKey('direct_conversations.id'), nullable=False)
+    sender_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation='utf8mb4_bin'), 'mysql'), ForeignKey('users.id'), nullable=False)
+    client_id = Column(String(64), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint('conversation_id','sender_id','client_id',name='uq_direct_client_message'),Index('idx_direct_history','conversation_id','id'))

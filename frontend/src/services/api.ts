@@ -146,9 +146,9 @@ async function authenticated<T>(operation: () => Promise<T>, skipAuth = false, p
 
 export async function request<T = any>(
   url: string,
-  options: { method?: Method; data?: any; skipAuth?: boolean } = {},
+  options: { method?: Method; data?: any; skipAuth?: boolean; preservePage?: boolean } = {},
 ): Promise<T> {
-  return authenticated(() => rawRequest<T>(url, options.method || "GET", options.data || {}, !!options.skipAuth), !!options.skipAuth);
+  return authenticated(() => rawRequest<T>(url, options.method || "GET", options.data || {}, !!options.skipAuth), !!options.skipAuth, !!options.preservePage);
 }
 
 export async function listAll<T = any>(url: string): Promise<T[]> {

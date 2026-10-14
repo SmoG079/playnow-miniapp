@@ -19,6 +19,16 @@ const s = useSession(),
   busy = ref(false),
   showRegs = ref(false);
 const location = computed(() => postLocation(post.value || {}));
+const contacting = ref(false);
+async function contactOrganizer() {
+  if(!s.requireLogin('/pages/common/post-detail?id='+id.value)||contacting.value)return;
+  contacting.value=true;
+  try{
+    const conversation=await request<{id:string}>('/messages/conversations',{method:'POST',data:{post_id:Number(id.value)}});
+    openPage('/pages/chat/conversation?id='+conversation.id);
+  }catch(e:any){uni.showToast({title:e.message||'暂时无法联系发起人',icon:'none'});}
+  finally{contacting.value=false;}
+}
 function openMeetingLocation() {
   const point = location.value;
   if (point.latitude == null || point.longitude == null) return;
@@ -197,11 +207,11 @@ function remove(c: any) {
               >{{ post.user_nickname || "匿名" }} · 发起人</text
             ></view
           ><wd-button
-            v-if="post.user_phone"
+            v-if="post.user_id !== s.user?.id"
             size="small"
             variant="plain"
-            @click="uni.makePhoneCall({ phoneNumber: post.user_phone })"
-            >联系</wd-button
+             :loading="contacting" @click="contactOrganizer"
+            >发消息</wd-button
           ></view
         ><view class="section-head"
           ><text class="section-title">评论</text></view

@@ -21,6 +21,7 @@
     { "path": "pages/publish/post-registration-approve" },
     { "path": "pages/chat/index" },
     { "path": "pages/chat/conversation" },
+    { "path": "pages/chat/system" },
     { "path": "pages/profile/index" },
     { "path": "pages/profile/edit" },
     { "path": "pages/profile/my-bookings" },
