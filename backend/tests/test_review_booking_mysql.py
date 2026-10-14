@@ -21,6 +21,7 @@ from app.models.models import (
     VenueTimeSlot,
     BookingOrder,
     BookingSlot,
+    RefundRecord, PaymentLog, Notification, SettlementRecord,
 )
 from app.api.v1 import bookings, clubs
 from app.schemas.schemas import BookingCreateRequest, CancelRequest
@@ -109,6 +110,10 @@ async def resources(monkeypatch):
                 slot.booking_order_id = None
             await db.flush()
             ids = select(BookingOrder.id).where(BookingOrder.venue_id == venue_id)
+            await db.execute(delete(RefundRecord).where(RefundRecord.order_id.in_(ids)))
+            await db.execute(delete(PaymentLog).where(PaymentLog.order_id.in_(ids)))
+            await db.execute(delete(SettlementRecord).where(SettlementRecord.order_id.in_(ids)))
+            await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
             await db.execute(delete(BookingSlot).where(BookingSlot.order_id.in_(ids)))
             await db.execute(
                 delete(BookingOrder).where(BookingOrder.venue_id == venue_id)
@@ -219,10 +224,10 @@ async def test_expired_order_rebooking_and_old_cancel_do_not_release_new_order(
         )
         await db.commit()
     async with factory() as db:
-        with pytest.raises(HTTPException):
-            await bookings.cancel_booking(
-                old.id, CancelRequest(), await db.get(User, user_ids[0]), db
-            )
+        result = await bookings.cancel_booking(
+            old.id, CancelRequest(), await db.get(User, user_ids[0]), db
+        )
+        assert result["status"] == "cancelled"
         await db.rollback()
         for sid in slot_ids:
             slot = await db.get(VenueTimeSlot, sid)

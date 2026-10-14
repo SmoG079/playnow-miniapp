@@ -14,6 +14,15 @@ export interface BookingCell {
   status: string;
 }
 
+export function canCancelBooking(
+  booking: { status: string; slot_date?: string; slot_start?: string },
+  now = Date.now(),
+) {
+  if (!["pending", "paid"].includes(booking.status) || !booking.slot_date || !booking.slot_start) return false;
+  const start = new Date(`${booking.slot_date}T${booking.slot_start}+08:00`).getTime();
+  return Number.isFinite(start) && now < start - 3600000;
+}
+
 function minutes(time: string) {
   const [hour, minute] = time.split(":").map(Number);
   return hour * 60 + minute;

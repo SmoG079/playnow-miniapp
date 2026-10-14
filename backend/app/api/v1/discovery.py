@@ -18,7 +18,9 @@ def parse_city(data):
     if city in ('市辖区','县') and province.endswith('市'): city=province
     if city in ('省直辖县级行政区划','自治区直辖县级行政区划'): city=district
     if not city: raise HTTPException(502,'未能识别城市，请手动选择')
-    return dict(city=city,province=province,district=district)
+    ad_info = result.get("ad_info") or {}
+    adcode = str(ad_info.get("adcode") or region.get("adcode") or "")
+    return dict(city=city,province=province,district=district,adcode=adcode if len(adcode) == 6 and adcode.isdigit() else None)
 
 @router.get('/location-city')
 async def location_city(request:Request,lat:float=Query(...,ge=-90,le=90),lng:float=Query(...,ge=-180,le=180)):
@@ -40,7 +42,8 @@ async def location_city(request:Request,lat:float=Query(...,ge=-90,le=90),lng:fl
 
 @router.get('/weather')
 async def weather(request: Request, city: str = Query(..., min_length=1, max_length=64),
-                  province: str = Query('', max_length=64)):
+                  province: str = Query('', max_length=64),
+                  adcode: str | None = None, lat: float | None = None, lng: float | None = None):
     from app.services.weather import city_weather
     city, province = city.strip(), province.strip()
     if not city:
@@ -49,7 +52,8 @@ async def weather(request: Request, city: str = Query(..., min_length=1, max_len
     if not settings.TENCENT_MAP_KEY:
         raise HTTPException(503, '天气暂不可用')
     await check_rate_limit('discovery:weather:' + (request.client.host if request.client else 'unknown'), 30, 60)
-    return await city_weather(city, province, settings.TENCENT_MAP_KEY, getattr(settings, 'TENCENT_MAP_SK', ''))
+    return await city_weather(city, province, settings.TENCENT_MAP_KEY, getattr(settings, 'TENCENT_MAP_SK', ''),
+        adcode=adcode, latitude=lat, longitude=lng)
 
 
 from datetime import date as Date

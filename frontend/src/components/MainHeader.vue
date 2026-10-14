@@ -19,10 +19,11 @@ try {
   }
 } catch { /* H5 uses the same layout without a native capsule. */ }
 const weatherLabel = computed(() => !location.city ? "选择地区查看天气"
+  : !location.weatherLocation ? "重新选择地区查看天气"
   : weather.loading ? "天气加载中"
   : weather.current ? `${Math.round(weather.current.temperature)}°C` : "天气暂不可用");
-const refreshWeather = () => { if (props.context) return weather.refresh(location.city, location.region[0] || ""); };
-watch(() => [props.context, location.city, location.region[0]], refreshWeather, { immediate: true });
+const refreshWeather = () => { if (props.context) return weather.refresh(location.city, location.region[0] || "", location.weatherLocation); };
+watch(() => [props.context, location.city, location.region[0], location.weatherLocation], refreshWeather, { immediate: true });
 onShow(refreshWeather);
 function goBack() {
   if (props.backAction) props.backAction();

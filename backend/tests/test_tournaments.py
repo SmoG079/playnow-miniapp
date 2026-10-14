@@ -371,6 +371,8 @@ async def test_schedule_conflict_and_downstream_reset(db):
 
 @pytest.mark.asyncio
 async def test_paid_capacity_identity_and_placeholder_rejection(db, monkeypatch):
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr("app.api.v1.bookings.check_rate_limit", AsyncMock())
     monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
     tid, admin = await event(db, 2, fee=20)
     for uid in (2, 3):
@@ -567,7 +569,14 @@ async def test_tournament_orders_do_not_pollute_booking_pagination(db, monkeypat
     monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
     tid, admin = await event(db, 2, fee=20)
     await register(db, tid, 2)
-    result = await my_bookings(None, 1, 20, await db.get(User, 2), db)
+    result = await my_bookings(
+        status=None,
+        order_no=None,
+        page=1,
+        page_size=20,
+        current_user=await db.get(User, 2),
+        db=db,
+    )
     assert result.total == 0 and result.items == []
     result = await club_orders(1, None, 1, 20, admin, db)
     assert result.total == 0 and result.items == []

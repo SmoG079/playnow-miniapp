@@ -59,12 +59,17 @@ async function pay() {
     // 收银台返回成功 ≠ 后端已记账：微信回调可能延迟或不可达（如回调域名未备案），
     // 因此主动查单确认，避免订单停留在待支付。
     const paid = await confirmBookingPaid(booking.value.id);
-    if (paid === "paid") uni.showToast({ title: "支付成功", icon: "success" });
-    else
+    if (paid !== "paid") {
       uni.showToast({
-        title: "支付结果确认中，可在「我的预约」查看",
+        title: paid === "pending" ? "支付结果确认中，请查看预约结果" : "预约未成功，请查看订单状态",
         icon: "none",
       });
+      uni.redirectTo({
+        url: `/pages/booking/success?booking_id=${booking.value.id}&order_no=${booking.value.order_no}`,
+      });
+      return;
+    }
+    uni.showToast({ title: "预约成功", icon: "success" });
     if (["post", "tournament"].includes(q.value.return_mode)) {
       uni.setStorageSync("booking_return", {
         booking_id: booking.value.id,
@@ -88,10 +93,17 @@ async function pay() {
       return;
     }
     if (e.statusCode === 409) booking.value = null;
-    uni.showToast({
-      title: e.message || "支付失败",
-      icon: "none",
-    });
+    if (e.detail) {
+      // 微信侧拒绝调起支付：展示完整错误（含 errno），便于区分
+      // 「未发布 / 类目不符 / 商户号被处罚 / 订单管理未接入」等原因。
+      uni.showModal({
+        title: "支付未成功",
+        content: `${e.detail}${e.errno != null ? `\nerrno=${e.errno}` : ""}`,
+        showCancel: false,
+      });
+    } else {
+      uni.showToast({ title: e.message || "支付失败", icon: "none" });
+    }
   } finally {
     paying.value = false;
   }
@@ -117,7 +129,7 @@ async function pay() {
             >¥{{ Number(q.price || 0).toFixed(2) }}</text
           ></view
         ></view
-      ><text class="notice">提交后场地将锁定 10 分钟，请及时完成支付。</text
+      ><text class="notice">提交后场地将锁定 10 分钟，请及时完成支付。开始前1小时内及开始后不可取消，其他时段取消全额退款。</text
       ><view class="publish-action"
         ><wd-button block :loading="paying" @click="pay"
           >确认支付 ¥{{ Number(q.price || 0).toFixed(2) }}</wd-button

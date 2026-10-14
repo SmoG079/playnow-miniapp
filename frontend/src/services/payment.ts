@@ -29,7 +29,16 @@ export async function requestPayment(params: PayParams) {
   } catch (e: any) {
     const detail = String(e?.errMsg || e?.message || "");
     if (/cancel/i.test(detail)) throw cancelledError();
-    throw Object.assign(new Error("支付失败，请重试"), { cause: e });
+    // 排障：完整打印微信返回的原始错误对象（含 errno / errCode）。
+    // 微信对「支付能力被限制」这类拒绝只会通过 errMsg + errno 表达，
+    // 不打印就无法区分是未发布、类目、处罚还是订单管理未接入。
+    console.error("[wxpay] requestPayment failed:", JSON.stringify(e));
+    throw Object.assign(new Error(detail || "支付失败，请重试"), {
+      cause: e,
+      detail,
+      errno: e?.errno,
+      errCode: e?.errCode,
+    });
   }
 }
 

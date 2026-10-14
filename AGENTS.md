@@ -67,10 +67,11 @@ PlayNow 是面向网球俱乐部的微信小程序，提供场地预约、约球
 
 以 [预订支付与退款待办](docs/deferred-booking-payments.md) 为当前范围约束：
 
-- 预订 `/bookings/{id}/pay` 仍是占位实现，直接标记 `paid` 并生成 `dev_` 交易号，不代表真实收款。
-- `/bookings/{id}/cancel` 取消订单并释放时段，不按距开始时间计算退款，也不调用真实微信退款。
+- 预订 `/bookings/{id}/pay` 在 `WX_PAY_ENABLED=false` 时为占位确认，生成 `dev_` 交易号；`true` 时调用真实微信预支付。不能再按 2026-10-13 的暂缓记录断言开关无法启用收款，线上开关需单独核对。
+- `/bookings/{id}/cancel` 已启用自助取消：按预约首个时段的上海时间计算，距离开始超过 1 小时允许取消，恰好 1 小时、1 小时内及开始后均拒绝。真实已付款全额退款，先持久化 refunding 意图，退款确认后释放时段；待支付和 dev_ 占位订单只取消，不伪造退款。重复请求复用原退款单。
+- 管理员退款先持久化单一退款意图，再由任务查询/提交原单；迟到收款与时段失效收款进入全额补偿退款，不恢复失效场地。退款成功只释放本订单仍拥有的时段。退款异常/关闭不自动恢复参赛或场地资格。实现及验证边界见 [2026-10-14 修复记录](docs/business-payment-fixes-20261014.md)。
 - 微信支付、管理员退款、回调和分账相关代码存在，不代表真实资金链路已经验收；赛事报名支付也需单独核验。
-- 真实预订支付和取消退款规则已明确暂缓。除任务要求恢复这部分功能外，不在无关改动中顺带接入或重写，也不将旧支付规范中的目标描述成当前行为。
+- 自助退款采用 2026-10-14 新规则（超过 1 小时全退，其余不可取消），旧 24 小时/50% 阶梯规范已被替代。分账仍暂缓；代码与隔离测试通过不代表真实资金链路已经验收。规则和边界验证见 [自助退款记录](docs/booking-self-refund-20261014.md)。
 - CI 排除标记为 `deferred_booking_payments` 的 10 项历史测试。保留测试及待办说明，不通过删除断言或掩盖失败声称全部测试通过；不带排除条件运行时仍会执行这些测试。
 
 ## 媒体存储与日志
@@ -114,7 +115,7 @@ npm run check:miniprogram
 
 ### 后端（`backend/` 目录）
 
-使用 Python 3.12 虚拟环境。先将 `DATABASE_URL`、`REDIS_URL` 和 JWT 配置显式指向隔离开发环境；不要直接使用配置文件中指向远程主机的默认连接。
+使用 Python 3.12 虚拟环境。根目录 `.python-version` 固定为 3.12；本机根目录 `.venv` 与 `backend/.venv` 指向同一环境，避免从 backend 误用旧 Python 3.9。新检出可在根目录执行 `uv venv --python 3.12 .venv`、`uv pip install --python .venv/bin/python -r backend/requirements-test.txt`，进入 backend 后使用 `source ../.venv/bin/activate`。先将 `DATABASE_URL`、`REDIS_URL` 和 JWT 配置显式指向隔离开发环境；不要直接使用配置文件中指向远程主机的默认连接。
 
 ```bash
 python -m pip install -r requirements.txt pytest pytest-asyncio

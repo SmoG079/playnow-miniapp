@@ -726,7 +726,9 @@ async def review(
     if t.roster_frozen:
         raise HTTPException(409, "名单已冻结")
     r = await db.get(TournamentRegistration, reg_id)
-    if not r or r.tournament_id != ident or r.approval != "pending":
+    if (not r or r.tournament_id != ident or r.approval != "pending"
+        or r.admission != "review" or _v(r.status) != "registered"
+        or _v(t.status) != "open"):
         raise HTTPException(409, "没有待审核报名")
     r.review_reason = req.reason
     r.approval = "approved" if req.approved else "rejected"

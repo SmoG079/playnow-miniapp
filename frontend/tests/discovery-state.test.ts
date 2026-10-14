@@ -18,7 +18,7 @@ describe("shared city preference", () => {
     setActivePinia(createPinia());
   });
   it("shares one initial request and reuses the city across pages and reopening", async () => {
-    request.mockResolvedValue({ province: "江苏省", city: "扬州市", district: "广陵区" });
+    request.mockResolvedValue({ province: "江苏省", city: "扬州市", district: "广陵区", adcode: "321002" });
     const city = useDiscovery();
     await Promise.all([city.ensureCity(), city.ensureCity(), city.ensureCity()]);
     await city.ensureCity();
@@ -28,6 +28,8 @@ describe("shared city preference", () => {
     const reopened = useDiscovery(); await reopened.ensureCity();
     expect(reopened.city).toBe("扬州市"); expect(getLocation).toHaveBeenCalledTimes(1);
     expect(reopened.latitude).toBeNull();
+    expect(reopened.weatherLocation).toEqual({city:"扬州市",province:"江苏省",adcode:"321002"});
+    expect(storage.get("discovery_city_v1").weather.latitude).toBeUndefined();
   });
   it("manual city selection wins over an older positioning response", async () => {
     let respond: any;
@@ -55,5 +57,14 @@ describe("shared city preference", () => {
     await city.ensureCity(); expect(getLocation).not.toHaveBeenCalled();
     request.mockResolvedValue({ city: "南京市" }); await city.locate();
     expect(city.city).toBe("南京市");
+  });
+  it("manual selection uses picker codes and cannot reuse another city's GPS",async()=>{
+    const city = useDiscovery();
+    request.mockResolvedValue({city:"扬州市",province:"江苏省",adcode:"321002"});
+    await city.selectPoint({latitude:32.4,longitude:119.4});
+    city.selectRegion(["江苏省","南京市","玄武区"],["320000","320100","320102"]);
+    expect(city.weatherLocation).toEqual({city:"南京市",province:"江苏省",adcode:"320100"});
+    city.selectRegion(["江苏省","苏州市","姑苏区"]);
+    expect(city.weatherLocation).toBeNull();
   });
 });

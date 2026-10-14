@@ -572,8 +572,8 @@ async def test_cancel_booking_rejects_after_start_time(user, venue, club):
 
 
 @pytest.mark.asyncio
-async def test_get_booking_config_returns_free_cancel_hours():
-    """P1-10: /bookings/config should return free_cancel_hours from settings."""
+async def test_get_booking_config_returns_fixed_one_hour_policy():
+    """Historical settings must not override the current product rule."""
     from app.api.v1.bookings import get_booking_config
     settings_mock = MagicMock()
     settings_mock.FREE_CANCEL_HOURS = 24
@@ -581,7 +581,7 @@ async def test_get_booking_config_returns_free_cancel_hours():
     with patch("app.api.v1.bookings.settings", settings_mock):
         result = await get_booking_config()
 
-    assert result == {"free_cancel_hours": 24}
+    assert result == {"free_cancel_hours": 1}
 
 
 # ---------------------------------------------------------------------------

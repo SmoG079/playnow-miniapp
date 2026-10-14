@@ -26,6 +26,7 @@ async def locked_order_slots(db, order):
                 .where(VenueTimeSlot.id.in_(ids))
                 .order_by(VenueTimeSlot.id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         )
         .scalars()

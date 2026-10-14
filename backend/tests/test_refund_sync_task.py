@@ -47,7 +47,7 @@ async def _run(impl, db, monkeypatch, wxpay):
 
     monkeypatch.setattr("app.core.wechat_pay.get_wxpay", Mock(return_value=wxpay))
     # 落库路径会释放时段锁；不 patch 会真连 Redis（模块级单例绑定首个 event loop）
-    monkeypatch.setattr("app.tasks.tasks.release_lock", AsyncMock())
+    monkeypatch.setattr("app.services.booking_locks.release_lock", AsyncMock())
 
     @asynccontextmanager
     async def session():
@@ -131,24 +131,20 @@ async def test_retry_refunds_resubmits_when_wechat_has_no_record(db, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_retry_refunds_rejected_resubmit_reverts_order(db, monkeypatch):
-    """微信明确拒绝提交退款（4xx）→ 退款确实没成功，订单回退为已支付。"""
+async def test_retry_refunds_rejected_resubmit_preserves_intent(db, monkeypatch):
+    """明确拒绝申请也保留原单及 refunding，待管理员核对后重试原单。"""
     from app.tasks.tasks import _retry_failed_refunds_impl
 
     order, rec = await _stale(db, 2)
     wxpay = Mock()
-    wxpay.query_refund = Mock(return_value=(200, json.dumps({
-        "out_refund_no": rec.out_refund_no,
-        "out_trade_no": order.order_no,
-        "status": "NOT_EXIST",
-    })))
+    wxpay.query_refund = Mock(return_value=(404, json.dumps({"code": "RESOURCE_NOT_EXISTS"})))
     wxpay.refund = Mock(return_value=(400, json.dumps({"code": "PARAM_ERROR"})))
 
     result = await _run(_retry_failed_refunds_impl, db, monkeypatch, wxpay)
 
     assert result["errors"] == 1
     assert rec.status == "failed"
-    assert order.status == "paid"
+    assert order.status == "refunding"
     assert order.refund_status == "failed"
 
 

@@ -1,6 +1,5 @@
 import json
 import uuid
-import httpx
 import time as unix_time
 import logging
 from datetime import datetime, timedelta, timezone, time
@@ -17,7 +16,7 @@ from app.services.booking_locks import release_order_slots, locked_order_slots, 
 from app.core.config import get_settings
 from app.core.redis import acquire_lock, release_lock, redis_client
 from app.core.rate_limit import check_rate_limit
-from app.core.wechat_pay import get_wxpay, build_jsapi_params, wx_request
+from app.core.wechat_pay import get_wxpay, build_jsapi_params
 from app.api.deps import get_current_user, get_club_admin, get_platform_admin, _v
 from app.models.models import (
     User, UserRole, Venue, VenueTimeSlot, BookingOrder, OrderStatus, SlotStatus,
@@ -44,23 +43,6 @@ settings = get_settings()
 def _utc_now() -> datetime:
     """Return current time as UTC-naive datetime, consistent with DB timestamps."""
     return datetime.utcnow()
-
-
-REFUND_RETRYABLE_CODES = {"SYSTEM_ERROR", "BIZERR_NEED_RETRY"}
-
-
-def _is_refund_retryable(exc: Exception) -> bool:
-    msg = str(exc).upper()
-    if any(code in msg for code in REFUND_RETRYABLE_CODES):
-        return True
-    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError)):
-        return True
-    return False
-
-
-def _refund_backoff_seconds(attempt: int) -> int:
-    base = settings.REFUND_RETRY_BACKOFF_BASE_SECONDS
-    return min(base * (2 ** attempt), 1800)
 
 
 def _generate_order_no() -> str:
@@ -237,7 +219,8 @@ async def create_booking(
 @router.get("/config")
 async def get_booking_config():
     """Return public booking configuration (e.g. free cancellation window)."""
-    return {"free_cancel_hours": settings.FREE_CANCEL_HOURS}
+    # Historical environment overrides must not restore the old refund policy.
+    return {"free_cancel_hours": 1}
 
 
 @router.get("/{booking_id:int}", response_model=BookingDetail)
@@ -327,6 +310,8 @@ async def _wx_prepay(order: BookingOrder, user: User) -> dict:
         amount={"total": _to_cents(order.amount), "currency": "CNY"},
         payer={"openid": user.openid},
         notify_url=settings.WX_PAY_NOTIFY_URL or None,
+        time_expire=(order.created_at + timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS))
+            .replace(tzinfo=timezone.utc).isoformat(),
         # 平台为收款方，本笔交易不分账（分账已暂缓，见 docs/wechat-pay-setup.md）。
         # 注意：一旦漏传这个字段，该订单将永久无法分账，事后不可补。
         settle_info={"profit_sharing": False},
@@ -410,6 +395,15 @@ async def pay_booking(
         or order.prepay_id_created_at is None
         or now >= order.prepay_id_created_at + timedelta(seconds=settings.PREPAY_ID_TTL_SECONDS)
     ):
+        # Persist the attempt before calling WeChat: even a lost prepay response
+        # must remain discoverable by payment recovery after local cancellation.
+        db.add(PaymentLog(order_id=order.id, type="pay", event_type="PREPAY_REQUESTED",
+                          raw_data={"out_trade_no": order.order_no}))
+        await db.commit()
+        order = (await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id)
+            .with_for_update().execution_options(populate_existing=True))).scalar_one()
+        if _v(order.status) != "pending":
+            raise HTTPException(409, "订单状态已变化，请刷新后重试")
         try:
             payload = await _wx_prepay(order, current_user)
         except Exception as e:
@@ -468,7 +462,11 @@ async def sync_booking_payment(
 
     current_status = _v(order.status)
     # 已是终态（paid/cancelled/refunding/refunded）：无需查单，直接回报（幂等）
-    if current_status != "pending":
+    attempted_prepay = bool(order.prepay_id)
+    if current_status == "cancelled" and not attempted_prepay:
+        attempted_prepay = bool(await db.scalar(select(PaymentLog.id).where(
+            PaymentLog.order_id == order.id, PaymentLog.event_type == "PREPAY_REQUESTED").limit(1)))
+    if current_status != "pending" and not (current_status == "cancelled" and attempted_prepay):
         return {"msg": "ok", "order_no": order.order_no, "status": current_status}
 
     # 占位模式没有真实交易，查单没有意义
@@ -509,7 +507,11 @@ async def sync_booking_payment(
 
     from app.services.payment_callback import _handle_payment_success
 
-    await _handle_payment_success(payload, db)
+    if payload.get("out_trade_no") != order.order_no:
+        raise HTTPException(502, "支付查询结果与本单不匹配")
+    outcome = await _handle_payment_success(payload, db)
+    if outcome.get("code") != "SUCCESS":
+        raise HTTPException(502, "支付查询结果与本单不匹配")
     await db.commit()
 
     refreshed = (
@@ -763,7 +765,8 @@ async def cancel_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id).with_for_update())
+    result = await db.execute(select(BookingOrder).where(BookingOrder.id == booking_id)
+        .with_for_update().execution_options(populate_existing=True))
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -774,8 +777,20 @@ async def cancel_booking(
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your booking")
 
+    from app.services.booking_refunds import cancellation_deadline, queue_refund, dispatch_refund, refund_response
+    if _v(order.status) in ("refunding", "refunded"):
+        return refund_response(order)
+    if _v(order.status) == "cancelled":
+        return {"msg": "ok", "status": "cancelled"}
     if _v(order.status) not in ("pending", "paid"):
         raise HTTPException(status_code=400, detail="Cannot cancel in current status")
+
+    if _utc_now() >= await cancellation_deadline(db, order):
+        raise HTTPException(409, "预约开始前1小时内及开始后不可取消")
+
+    if _v(order.status) == "paid" and not (order.wx_transaction_id or "").startswith("dev_"):
+        await queue_refund(db, order, order.amount, req.reason or "用户自助取消，全额退款")
+        return await dispatch_refund(db, order)
 
     order.status = OrderStatus.cancelled
     order.cancel_reason = req.reason
@@ -783,7 +798,7 @@ async def cancel_booking(
 
     await release_order_slots(db, order)
 
-    return {"msg": "ok"}
+    return {"msg": "ok", "status": "cancelled"}
 
 
 @router.post("/{booking_id:int}/refund")
@@ -825,79 +840,16 @@ async def refund_booking(
     else:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    if _v(order.status) != "paid":
-        raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
-
-    if not order.wx_transaction_id:
-        raise HTTPException(status_code=400, detail="Missing WeChat transaction id")
-
-    # Calculate refund amount (admin can specify, default to full)
+    if _v(order.status) not in ("paid", "cancelled", "refunding", "refunded"):
+        raise HTTPException(409, "Only paid orders can be refunded")
     if req.amount is not None and req.amount <= 0:
-        raise HTTPException(status_code=400, detail="Refund amount must be greater than 0")
-    refund_amount = req.amount if req.amount is not None else order.amount
+        raise HTTPException(400, "Refund amount must be greater than 0")
+    refund_amount = req.amount if req.amount is not None else (order.refund_amount or order.amount)
     if refund_amount > order.amount:
-        raise HTTPException(status_code=400, detail="Refund amount cannot exceed order amount")
-
-    wxpay = get_wxpay()
-    out_refund_no = _generate_order_no()
-
-    # Create refund record BEFORE calling WeChat (pre-creation for idempotency)
-    refund_record = RefundRecord(
-        order_id=order.id,
-        out_refund_no=out_refund_no,
-        amount=refund_amount,
-        reason=req.reason or "管理员退款",
-        status=RefundStatus.pending,
-    )
-    db.add(refund_record)
-    await db.flush()
-
-    try:
-        # SDK 的非 2xx 响应不会自己抛异常，必须由 wx_request 统一转成 WeChatPayError，
-        # 否则退款被微信拒绝时这里会直接往下走、把订单错误地标成 refunding。
-        wx_request(
-            wxpay,
-            "refund",
-            out_refund_no=out_refund_no,
-            transaction_id=order.wx_transaction_id,
-            amount={
-                "refund": _to_cents(refund_amount),
-                "total": _to_cents(order.amount),
-                "currency": "CNY",
-            },
-            reason=req.reason or "管理员退款",
-        )
-    except Exception as e:
-        if _is_refund_retryable(e):
-            # Retryable failure: schedule retry
-            refund_record.status = RefundStatus.failed
-            refund_record.scheduled_at = _utc_now() + timedelta(seconds=_refund_backoff_seconds(0))
-            refund_record.fail_reason = str(e)[:512]
-            order.refund_status = RefundStatus.failed
-            await db.commit()
-            from app.tasks.tasks import retry_failed_refunds
-            retry_failed_refunds.delay()
-            return {
-                "msg": "Refund queued for retry",
-                "status": "refunding",
-                "out_refund_no": out_refund_no,
-            }
-        # Non-retryable failure
-        refund_record.fail_reason = str(e)[:512]
-        await db.commit()
-        raise HTTPException(status_code=500, detail=f"WeChat refund failed: {str(e)}")
-
-    order.status = OrderStatus.refunding
-    order.refund_amount = refund_amount
-    order.refund_id = out_refund_no
-    order.refund_status = RefundStatus.pending
-    order.cancel_reason = req.reason or "管理员退款"
-    order.cancel_time = _utc_now()
-
-    # Slot stays booked until REFUND.SUCCESS callback arrives
-    await db.commit()
-
-    return {"msg": "ok", "out_refund_no": out_refund_no, "refund_amount": str(refund_amount), "status": "refunding"}
+        raise HTTPException(400, "Refund amount cannot exceed order amount")
+    from app.services.booking_refunds import queue_refund, dispatch_refund
+    await queue_refund(db, order, refund_amount, req.reason or "管理员退款", retry=True)
+    return await dispatch_refund(db, order)
 
 
 @router.get("/{booking_id:int}/refund-records")

@@ -8,7 +8,7 @@ async function locate() {
   catch { uni.showToast({ title: "定位未成功，请手动选择城市", icon: "none" }); }
 }
 function select(e: any) {
-  location.selectRegion(e.detail.value); visible.value = false; emit("change");
+  location.selectRegion(e.detail.value, e.detail.code); visible.value = false; emit("change");
 }
 </script>
 <template>

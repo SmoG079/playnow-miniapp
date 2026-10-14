@@ -267,6 +267,7 @@ async def unread_notification_count(
 @router.get("/me/bookings", response_model=PaginatedResponse)
 async def my_bookings(
     status: str = Query(None),
+    order_no: str = Query(None, max_length=64),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_user),
@@ -296,6 +297,12 @@ async def my_bookings(
             raise HTTPException(status_code=400, detail="Invalid status")
         query = query.where(BookingOrder.status == order_status)
         count_query = count_query.where(BookingOrder.status == order_status)
+
+    # 微信「订单管理」的订单详情页路径会带 ?orderNo=${商品订单号}，
+    # 该占位符由微信替换成下单时的商户订单号（即 order_no），据此定位单条订单。
+    if order_no:
+        query = query.where(BookingOrder.order_no == order_no)
+        count_query = count_query.where(BookingOrder.order_no == order_no)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0

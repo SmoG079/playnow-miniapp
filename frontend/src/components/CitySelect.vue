@@ -3,7 +3,7 @@ import { useDiscovery } from "../stores/discovery";
 const props = defineProps<{ modelValue: string; label?: string }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: string): void }>();
 const discovery = useDiscovery();
-function change(e: any) { discovery.selectRegion(e.detail.value); emit("update:modelValue", discovery.city); }
+function change(e: any) { discovery.selectRegion(e.detail.value, e.detail.code); emit("update:modelValue", discovery.city); }
 </script>
 <template>
   <view class="city-field">

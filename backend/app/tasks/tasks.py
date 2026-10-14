@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone, date, time, timedelta
 from zoneinfo import ZoneInfo
@@ -171,205 +172,104 @@ def _refund_backoff_seconds(attempt: int) -> int:
     return min(base * (2 ** attempt), 1800)
 
 
-def _is_refund_retryable(exc: Exception) -> bool:
-    import httpx
-    msg = str(exc).upper()
-    retryable_codes = {"SYSTEM_ERROR", "BIZERR_NEED_RETRY", "FREQUENCY_LIMITED"}
-    if any(code in msg for code in retryable_codes):
-        return True
-    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError)):
-        return True
-    return False
-
-
-async def _update_order_after_refund(session, order_id: int, status: str, refund_id: str = None):
-    result = await session.execute(
-        select(BookingOrder).where(BookingOrder.id == order_id)
-    )
-    order = result.scalar_one_or_none()
-    if not order:
-        return
-
-    if order.business_type == "tournament":
-        order.refund_status = status
-        if status == "success":
-            order.status = OrderStatus.refunded
-            order.refund_time = datetime.utcnow()
-        return
-
-    if status == "success":
-        order.status = OrderStatus.refunded
-        # 与回调路径（payment_callback._handle_refund_callback）保持字段一致，
-        # 否则同一次退款经由不同链路落库后，订单展示的退款状态会不一样。
-        order.refund_status = status
-        order.refund_time = datetime.utcnow()
-        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
-        slots_result = await session.execute(
-            select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
-        )
-        slots = slots_result.scalars().all()
-
-        # Find other active bookings sharing any of these slots
-        other_active_result = await session.execute(
-            select(BookingOrder).where(
-                BookingOrder.id != order.id,
-                BookingOrder.status.in_([OrderStatus.pending, OrderStatus.paid, OrderStatus.refunding]),
-            )
-        )
-        other_active_ids = set()
-        for other in other_active_result.scalars().all():
-            other_slots = other.slot_ids or ([other.slot_id] if other.slot_id else [])
-            other_active_ids.update(other_slots)
-
-        for slot in slots:
-            should_release = False
-            if _v(slot.status) == "locked" and slot.locked_by == order.user_id:
-                should_release = True
-            elif _v(slot.status) == "booked":
-                if slot.id not in other_active_ids:
-                    should_release = True
-            if should_release:
-                slot.status = SlotStatus.available
-                slot.locked_by = None
-                slot.locked_at = None
-                lock_key = f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}"
-                await release_lock(lock_key, str(order.user_id))
-    elif status in ("closed", "abnormal", "failed"):
-        order.status = OrderStatus.paid
-        order.refund_status = status
-
-
-async def _retry_failed_refunds_impl():
-    """Retry failed or pending refund submissions to WeChat Pay.
-
-    每一步都先向微信确认这笔退款的真实状态，避免在已经退成功的情况下重复提交或误判。
-    两类失败必须区分对待：
-
-    * 状态查询失败（网络等未知异常）→ 保持 ``refunding`` 并延后重试，**绝不回退订单**；
-    * 微信明确拒绝提交（4xx 业务错误）→ 退款确实没成功，订单回退为 ``paid``。
-
-    重复提交退款是安全的：同一 ``out_refund_no`` 在微信侧幂等。
-    """
+async def _recover_booking_refunds_impl(*, processing=False):
     from app.core.wechat_pay import WeChatPayError, get_wxpay, wx_request
-
     settings = get_settings()
     async with (task_session_factory.get() or async_session_factory)() as session:
         now = datetime.utcnow()
-        result = await session.execute(
-            select(RefundRecord)
-            .where(
-                RefundRecord.status.in_(["pending", "failed"]),
-                RefundRecord.order_id.in_(select(BookingOrder.id).where(BookingOrder.business_type != "tournament")),
+        query = select(RefundRecord.id, RefundRecord.order_id).join(BookingOrder).where(
+            BookingOrder.business_type != "tournament")
+        if processing:
+            query = query.where(RefundRecord.status == "processing",
+                RefundRecord.updated_at <= now - timedelta(minutes=1))
+        else:
+            query = query.where(RefundRecord.status.in_(["pending", "failed"]),
                 RefundRecord.scheduled_at <= now,
-                RefundRecord.retry_count < settings.REFUND_MAX_RETRIES,
-            )
-            .order_by(RefundRecord.scheduled_at)
-            .limit(settings.REFUND_BATCH_SIZE)
-        )
-        records = result.scalars().all()
-
-        processed = 0
-        errors = 0
-        wxpay = get_wxpay()
-
-        def _defer(rec):
-            """延后重试：只调整调度与计数，不触碰业务状态。"""
-            rec.retry_count += 1
-            rec.scheduled_at = now + timedelta(seconds=_refund_backoff_seconds(rec.retry_count))
-
-        for rec in records:
-            # 第一步：查询微信侧当前退款状态（只读；失败绝不能改变业务状态）
+                RefundRecord.retry_count < settings.REFUND_MAX_RETRIES)
+        rows = (await session.execute(query.order_by(RefundRecord.updated_at, RefundRecord.id)
+            .limit(settings.REFUND_BATCH_SIZE))).all()
+        await session.rollback()
+        processed = errors = 0
+        for ident, order_id in rows:
+            rec = None
+            transition_started = False
             try:
-                query = wx_request(wxpay, "query_refund", out_refund_no=rec.out_refund_no)
-            except WeChatPayError as exc:
-                # 微信明确拒绝（多为 4xx，如单号不存在）→ 视作尚未成功提交，继续走重新提交
-                logger.warning("Refund query rejected for %s: %s", rec.out_refund_no, exc)
-                query = {}
-            except Exception:
-                # 网络等未知异常：款项可能其实已经退成功，保持 refunding 并延后重试。
-                # 绝不可在这里把订单回退成 paid —— 那会造成资金与订单状态不一致。
-                rec.fail_reason = "退款状态查询失败，稍后重试"
-                _defer(rec)
-                await session.commit()
-                logger.exception("Refund query failed for record %s", rec.id)
-                errors += 1
-                continue
-
-            refund_state = (query.get("status") or "").upper()
-
-            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                rec.status = refund_state.lower()
-                rec.wx_refund_id = query.get("refund_id", rec.wx_refund_id)
-                rec.completed_at = now
+                # Lock before reading state or calling WeChat. Callbacks and
+                # administrator requests use this same order -> refund ordering.
+                order = (await session.execute(select(BookingOrder).where(BookingOrder.id == order_id)
+                    .with_for_update().execution_options(populate_existing=True))).scalar_one()
+                rec = (await session.execute(select(RefundRecord).where(RefundRecord.id == ident)
+                    .with_for_update().execution_options(populate_existing=True))).scalar_one()
+                if _v(rec.status) not in (("processing",) if processing else ("pending", "failed")):
+                    await session.rollback()
+                    continue
+                if not processing and (rec.retry_count >= settings.REFUND_MAX_RETRIES
+                    or not rec.scheduled_at or rec.scheduled_at > datetime.utcnow()):
+                    await session.rollback()
+                    continue
+                if not order.wx_transaction_id or order.wx_transaction_id.startswith("dev_"):
+                    raise RuntimeError("Unverified booking payment")
+                # Heal snapshots left by old timeout branches without minting a new number.
+                order.refund_id, order.refund_amount = rec.out_refund_no, rec.amount
+                order.status = OrderStatus.refunding
+                rec.updated_at = datetime.utcnow()
+                wxpay = get_wxpay()
+                try:
+                    response = await asyncio.to_thread(wx_request, wxpay, "query_refund", out_refund_no=rec.out_refund_no)
+                except WeChatPayError as exc:
+                    if processing or exc.status != 404 or exc.payload.get("code") != "RESOURCE_NOT_EXISTS":
+                        raise
+                    response = None
+                if response is None:
+                    response = await asyncio.to_thread(wx_request, wxpay, "refund",
+                        out_refund_no=rec.out_refund_no, transaction_id=order.wx_transaction_id,
+                        amount={"refund": _to_cents(rec.amount), "total": _to_cents(order.amount), "currency": "CNY"},
+                        reason=rec.reason or "管理员退款")
+                state = response.get("status", "").upper()
+                if state not in ("SUCCESS", "PROCESSING", "CLOSED", "ABNORMAL"):
+                    raise RuntimeError("Unknown refund status")
+                if response.get("out_refund_no") != rec.out_refund_no or response.get("out_trade_no") != order.order_no:
+                    raise RuntimeError("Refund response identity mismatch")
+                amount = response.get("amount", {})
+                if "refund" in amount and amount["refund"] != _to_cents(rec.amount):
+                    raise RuntimeError("Refund response amount mismatch")
+                from app.services.payment_callback import _handle_refund_callback
+                transition_started = True
+                outcome = await _handle_refund_callback(dict(response, refund_status=state), session)
+                if outcome.get("code") != "SUCCESS":
+                    raise RuntimeError("Refund response rejected")
                 rec.fail_reason = None
-                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
                 await session.commit()
                 processed += 1
-                continue
-
-            if refund_state == "PROCESSING":
-                rec.status = "processing"
-                await session.commit()
-                processed += 1
-                continue
-
-            # 第二步：微信侧没有终态记录 → 重新提交退款（同一 out_refund_no 幂等）
-            try:
-                order_result = await session.execute(
-                    select(BookingOrder).where(BookingOrder.id == rec.order_id)
-                )
-                order = order_result.scalar_one_or_none()
-                tx_id = order.wx_transaction_id if order else None
-                resp = wx_request(
-                    wxpay,
-                    "refund",
-                    out_refund_no=rec.out_refund_no,
-                    transaction_id=tx_id,
-                    out_trade_no=order.order_no if order and not tx_id else None,
-                    amount={"refund": _to_cents(rec.amount), "total": _to_cents(order.amount) if order else _to_cents(rec.amount), "currency": "CNY"},
-                    reason=rec.reason or "退款重试",
-                )
-            except WeChatPayError as exc:
-                # 微信明确拒绝这次提交：退款确实没有成功，订单回退为已支付
-                rec.status = "failed"
-                rec.fail_reason = str(exc)[:512]
-                await _update_order_after_refund(session, rec.order_id, "failed")
-                await session.commit()
-                logger.exception("Refund resubmit rejected for record %s", rec.id)
-                errors += 1
-                continue
             except Exception as exc:
-                if _is_refund_retryable(exc) and rec.retry_count < settings.REFUND_MAX_RETRIES - 1:
-                    _defer(rec)
-                    rec.fail_reason = str(exc)[:512]
+                # Hold acquired row locks while recording the failed attempt.
+                # No rollback/reacquire window in which a success can be overwritten.
+                if rec is not None and session.is_active and not transition_started:
+                    if _v(rec.status) != "success":
+                        if not processing:
+                            rec.retry_count += 1
+                            rec.scheduled_at = datetime.utcnow() + timedelta(seconds=_refund_backoff_seconds(rec.retry_count))
+                            if (isinstance(exc, WeChatPayError) and 400 <= exc.status < 500 and exc.status != 429
+                                and exc.payload.get("code") not in ("SYSTEM_ERROR", "BIZERR_NEED_RETRY", "FREQUENCY_LIMITED")):
+                                rec.retry_count = settings.REFUND_MAX_RETRIES
+                            if rec.retry_count >= settings.REFUND_MAX_RETRIES:
+                                rec.status = "failed"
+                                order.refund_status = "failed"
+                                from app.models.models import Notification, NotificationType
+                                session.add(Notification(user_id=order.user_id, type=NotificationType.booking,
+                                    title="退款需人工处理", content=f"订单 {order.order_no} 退款结果未确认，请联系管理员核对原单",
+                                    ref_id=order.id, ref_type="booking"))
+                        rec.fail_reason = "退款结果未确认，请查询原单后重试"
+                    await session.commit()
                 else:
-                    rec.status = "failed"
-                    rec.fail_reason = str(exc)[:512]
-                    await _update_order_after_refund(session, rec.order_id, "failed")
-                await session.commit()
-                logger.exception("Refund retry failed for record %s", rec.id)
+                    await session.rollback()
+                logger.error("Booking refund recovery failed: refund=%s", ident, exc_info=True)
                 errors += 1
-                continue
-
-            # 只认微信明确返回的终态；PROCESSING 表示还在处理
-            refund_state = (resp.get("status") or "").upper()
-            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                rec.status = refund_state.lower()
-                rec.wx_refund_id = resp.get("refund_id", rec.wx_refund_id)
-                rec.completed_at = now
-                rec.fail_reason = None
-                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
-            elif refund_state == "PROCESSING":
-                rec.status = "processing"
-                rec.retry_count += 1
-            else:
-                # 未知状态：保持 refunding 延后重试，不武断回退订单
-                rec.fail_reason = f"Unexpected refund status from resubmit: {refund_state}"
-                _defer(rec)
-            await session.commit()
-            processed += 1
-
         return {"processed": processed, "errors": errors}
+
+
+async def _retry_failed_refunds_impl():
+    return await _recover_booking_refunds_impl()
 
 
 @celery_app.task(name="app.tasks.tasks.retry_failed_refunds")
@@ -378,72 +278,23 @@ def retry_failed_refunds():
 
 
 async def _poll_processing_refunds_impl():
-    """轮询微信侧仍处于 PROCESSING 的退款单，直到拿到终态。
-
-    只认微信明确返回的终态。查询失败或状态未知时保持原状等下一轮，**绝不武断地
-    把订单从 refunding 回退成 paid** —— 那会在款项已退成功的情况下造成资金与订单
-    状态不一致。
-    """
-    from app.core.wechat_pay import WeChatPayError, get_wxpay, wx_request
-
-    async with (task_session_factory.get() or async_session_factory)() as session:
-        now = datetime.utcnow()
-        one_min_ago = now - timedelta(minutes=1)
-        result = await session.execute(
-            select(RefundRecord)
-            .where(
-                RefundRecord.status == "processing",
-                RefundRecord.order_id.in_(select(BookingOrder.id).where(BookingOrder.business_type != "tournament")),
-                RefundRecord.updated_at <= one_min_ago,
-            )
-            .limit(100)
-        )
-        records = result.scalars().all()
-
-        processed = 0
-        errors = 0
-        wxpay = get_wxpay()
-
-        for rec in records:
-            try:
-                query = wx_request(wxpay, "query_refund", out_refund_no=rec.out_refund_no)
-            except WeChatPayError as exc:
-                logger.warning("Refund poll rejected for %s: %s", rec.out_refund_no, exc)
-                await session.rollback()
-                errors += 1
-                continue
-            except Exception:
-                logger.exception("Poll failed for refund record %s", rec.id)
-                await session.rollback()
-                errors += 1
-                continue
-
-            refund_state = (query.get("status") or "").upper()
-            if refund_state in ("SUCCESS", "CLOSED", "ABNORMAL"):
-                rec.status = refund_state.lower()
-                rec.wx_refund_id = query.get("refund_id", rec.wx_refund_id)
-                rec.completed_at = now
-                rec.fail_reason = None
-                await _update_order_after_refund(session, rec.order_id, rec.status, rec.wx_refund_id)
-            elif refund_state == "PROCESSING":
-                rec.status = "processing"
-            else:
-                # 状态未知：保持现状等下一轮，不改变订单状态
-                logger.warning(
-                    "Unknown refund status for %s: %s", rec.out_refund_no, refund_state or "(empty)"
-                )
-                await session.rollback()
-                errors += 1
-                continue
-            await session.commit()
-            processed += 1
-
-        return {"processed": processed, "errors": errors}
+    return await _recover_booking_refunds_impl(processing=True)
 
 
 @celery_app.task(name="app.tasks.tasks.poll_processing_refunds")
 def poll_processing_refunds():
     return run_async_task(_poll_processing_refunds_impl)
+
+
+async def _maintain_booking_payments_impl():
+    from app.services.booking_payment_recovery import maintain
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        return await maintain(session)
+
+
+@celery_app.task(name="app.tasks.tasks.maintain_booking_payments")
+def maintain_booking_payments():
+    return run_async_task(_maintain_booking_payments_impl)
 
 
 async def _process_wx_callback_impl(event_type: str, data: dict):

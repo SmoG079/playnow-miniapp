@@ -1,11 +1,12 @@
 import json
-import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.logger import get_logger
 from app.core.config import get_settings
 from app.core.redis import release_lock
 from app.services.booking_locks import lock_owner, locked_order_slots, release_order_slots
@@ -17,7 +18,7 @@ from app.models.models import (
 )
 from app.services.settlement import generate_settlement_out_order_no, _to_cents
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -46,13 +47,16 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
     # Validate callback amount matches order amount
     callback_total = data.get("amount", {}).get("total")
     expected_total = _to_cents(order.amount)
-    if callback_total is not None and callback_total != expected_total:
+    if callback_total != expected_total or not transaction_id or transaction_id.startswith("dev_"):
         logger.error("Amount mismatch: callback=%s expected=%s", callback_total, expected_total)
         return {"code": "FAIL", "message": "Amount mismatch"}
 
-    # Idempotency: skip terminal states (asyncmy returns enums as strings)
-    if _v(order.status) != "pending":
+    # Cancelled orders can still receive their first real success notification.
+    if _v(order.status) in ("paid", "refunding", "refunded", "completed"):
+        if order.wx_transaction_id != transaction_id:
+            return {"code": "FAIL", "message": "Transaction mismatch"}
         return {"code": "SUCCESS"}
+    was_cancelled = _v(order.status) == "cancelled"
 
     order.status = OrderStatus.paid
     order.payment_time = datetime.utcnow()
@@ -84,29 +88,24 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
         slots = await locked_order_slots(db, order)
         expected_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
         expired = order.created_at is None or datetime.utcnow() >= order.created_at + timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS)
-        anomaly = expired or not slots or {slot.id for slot in slots} != set(expected_ids)
+        anomaly = was_cancelled or expired or not slots or {slot.id for slot in slots} != set(expected_ids)
+        anomaly = anomaly or any(slot.booking_order_id != order.id or _v(slot.status) != "locked"
+            or slot.locked_by != order.user_id
+            or datetime.combine(slot.date, slot.start_time).replace(tzinfo=ZoneInfo("Asia/Shanghai")) <= datetime.now(ZoneInfo("Asia/Shanghai"))
+            for slot in slots)
+        if anomaly:
+            from app.services.booking_refunds import queue_refund
+            await queue_refund(db, order, order.amount, "预约名额已失效，支付原路退回")
+            await release_order_slots(db, order)
+            db.add(Notification(user_id=order.user_id, type=NotificationType.booking,
+                title="预约支付异常", content=f"订单 {order.order_no} 已收款但预约失效，已申请原路退款，请查看退款进度",
+                ref_id=order.id, ref_type="booking"))
+            return {"code": "SUCCESS"}
         for slot in slots:
-            if expired or slot.booking_order_id != order.id or _v(slot.status) != "locked" or slot.locked_by != order.user_id:
-                anomaly = True
-                continue
             slot.status = SlotStatus.booked
             slot.locked_by = None
             slot.locked_at = None
             await release_lock(f"slot:{slot.venue_id}:{slot.date}:{slot.start_time}", lock_owner(order.order_no))
-        if expired:
-            await release_order_slots(db, order)
-
-        if anomaly:
-            notif = Notification(
-                user_id=order.user_id,
-                type=NotificationType.booking,
-                title="预约支付异常",
-                content=f"订单 {order.order_no} 支付成功，但部分场地锁定已失效，请联系客服处理",
-                ref_id=order.id,
-                ref_type="booking",
-            )
-            db.add(notif)
-            return {"code": "SUCCESS"}
 
         # Create settlement record
         club_result = await db.execute(select(Club).where(Club.id == order.club_id))
@@ -156,147 +155,61 @@ async def _handle_refund_callback(data: dict, db: AsyncSession):
             from app.services.tournament_lifecycle import refund_callback
             return await refund_callback(db, data)
 
-    # Find refund record
-    result = await db.execute(
-        select(RefundRecord).where(RefundRecord.out_refund_no == out_refund_no)
-    )
-    refund_record = result.scalar_one_or_none()
-    # Keep the same order -> refund -> slot lock order as administrator refunds.
-    order_id = refund_record.order_id if refund_record else None
-    if order_id is None and out_trade_no:
-        order_id = await db.scalar(select(BookingOrder.id).where(BookingOrder.order_no == out_trade_no))
-    if order_id is not None:
-        await db.execute(select(BookingOrder.id).where(BookingOrder.id == order_id).with_for_update())
-    if refund_record:
-        refund_record = (await db.execute(select(RefundRecord).where(RefundRecord.id == refund_record.id)
-            .with_for_update().execution_options(populate_existing=True))).scalar_one()
-
+    ref = (await db.execute(select(RefundRecord.id, RefundRecord.order_id)
+        .where(RefundRecord.out_refund_no == out_refund_no))).first()
+    order_id = ref.order_id if ref else await db.scalar(select(BookingOrder.id).where(BookingOrder.order_no == out_trade_no))
+    if order_id is None:
+        return {"code": "FAIL", "message": "Refund order not found"}
+    order = (await db.execute(select(BookingOrder).where(BookingOrder.id == order_id)
+        .with_for_update().execution_options(populate_existing=True))).scalar_one()
+    refund_record = (await db.execute(select(RefundRecord).where(RefundRecord.out_refund_no == out_refund_no)
+        .with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+    if out_trade_no != order.order_no:
+        return {"code": "FAIL", "message": "Refund order mismatch"}
+    if refund_record and refund_record.order_id != order.id:
+        return {"code": "FAIL", "message": "Refund intent mismatch"}
+    amount = data.get("amount", {})
     if not refund_record:
-        # Try to find by order
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no).with_for_update()
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                # Create refund record retroactively using actual amount from callback if available
-                actual_refund_cents = data.get("amount", {}).get("refund")
-                actual_refund = Decimal(actual_refund_cents) / Decimal(100) if actual_refund_cents is not None else (order.refund_amount or order.amount)
-                refund_record = RefundRecord(
-                    order_id=order.id,
-                    out_refund_no=out_refund_no,
-                    wx_refund_id=wx_refund_id,
-                    amount=actual_refund,
-                    reason=order.cancel_reason or "用户退款",
-                    status="pending",
-                )
-                db.add(refund_record)
-
-    if refund_status == "SUCCESS":
-        if refund_record:
-            # Idempotency: only update if not already success
-            if _v(refund_record.status) != "success":
-                refund_record.status = "success"
-                refund_record.wx_refund_id = wx_refund_id
-                refund_record.completed_at = datetime.utcnow()
-
-        # Update order status
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no).with_for_update()
-            )
-            order = order_result.scalar_one_or_none()
-            if not order:
-                return {"code": "SUCCESS"}
-
-            # Idempotency: do nothing if already refunded
-            if _v(order.status) == "refunded":
-                return {"code": "SUCCESS"}
-
-            if _v(order.status) == "refunding":
-                order.status = OrderStatus.refunded
-                order.refund_time = datetime.utcnow()
-                order.refund_status = "success"
-
-                await release_order_slots(db, order)
-
-                # Notify user
-                notif = Notification(
-                    user_id=order.user_id,
-                    type=NotificationType.booking,
-                    title="退款成功",
-                    content=f"您的订单 {order.order_no} 退款已成功到账",
-                    ref_id=order.id,
-                    ref_type="booking",
-                )
-                db.add(notif)
-
-    elif refund_status == "CLOSED":
-        if refund_record:
-            if _v(refund_record.status) != "closed":
-                refund_record.status = "closed"
-                refund_record.completed_at = datetime.utcnow()
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no).with_for_update()
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.refund_status = "closed"
-                # Refund closed: order remains valid, revert to paid. Do not reclaim Redis lock.
-                if _v(order.status) == "refunding":
-                    order.status = OrderStatus.paid
-                    slots = await locked_order_slots(db, order)
-                    for slot in slots:
-                        if slot and slot.booking_order_id == order.id and _v(slot.status) == "available":
-                            # Reclaim slot as booked without lock; if someone else booked it, leave as-is
-                            slot.status = SlotStatus.booked
-                            slot.locked_by = None
-                            slot.locked_at = None
-
-    elif refund_status == "ABNORMAL":
-        if refund_record:
-            if _v(refund_record.status) != "abnormal":
-                refund_record.status = "abnormal"
-                refund_record.completed_at = datetime.utcnow()
-        if out_trade_no:
-            order_result = await db.execute(
-                select(BookingOrder).where(BookingOrder.order_no == out_trade_no).with_for_update()
-            )
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.refund_status = "abnormal"
-                # Refund failed abnormally: user still has valid paid booking
-                if _v(order.status) == "refunding":
-                    order.status = OrderStatus.paid
-
-                # Notify user
-                notif_user = Notification(
-                    user_id=order.user_id,
-                    type=NotificationType.booking,
-                    title="退款异常",
-                    content=f"您的订单 {order.order_no} 退款处理异常，请联系客服处理",
-                    ref_id=order.id,
-                    ref_type="booking",
-                )
-                db.add(notif_user)
-
-                # Notify platform admins for manual review
-                admin_result = await db.execute(
-                    select(User).where(User.role == UserRole.platform_admin)
-                )
-                admins = admin_result.scalars().all()
-                for admin in admins:
-                    notif_admin = Notification(
-                        user_id=admin.id,
-                        type=NotificationType.system,
-                        title="退款异常需人工处理",
-                        content=f"订单 {order.order_no} 退款异常，退款单号 {out_refund_no}",
-                        ref_id=order.id,
-                        ref_type="booking",
-                    )
-                    db.add(notif_admin)
-
+        # Preserve signed historical/merchant-console refund notifications.
+        # Recheck under the order lock and require the actual refunded amount.
+        cents = amount.get("refund")
+        if not isinstance(cents, int) or not 0 < cents <= _to_cents(order.amount):
+            return {"code": "FAIL", "message": "Missing or invalid refund amount"}
+        refund_record = RefundRecord(order_id=order.id, out_refund_no=out_refund_no,
+            amount=Decimal(cents) / 100, reason="微信退款通知补记", status="pending", retry_count=0)
+        db.add(refund_record)
+        await db.flush()
+    if "refund" in amount and amount["refund"] != _to_cents(refund_record.amount):
+        return {"code": "FAIL", "message": "Refund amount mismatch"}
+    state = (refund_status or "").lower()
+    if state not in ("success", "processing", "closed", "abnormal"):
+        return {"code": "FAIL", "message": "Unknown refund status"}
+    if _v(refund_record.status) == "success" or (_v(refund_record.status) == state and state in ("closed", "abnormal")):
+        return {"code": "SUCCESS"}
+    refund_record.status = state
+    refund_record.wx_refund_id = wx_refund_id or refund_record.wx_refund_id
+    order.refund_id = refund_record.out_refund_no
+    order.refund_amount = refund_record.amount
+    order.refund_status = state
+    if state == "success":
+        refund_record.completed_at = datetime.utcnow()
+        was_refunded = _v(order.status) == "refunded"
+        order.status = OrderStatus.refunded
+        order.refund_time = datetime.utcnow()
+        await release_order_slots(db, order)
+        if not was_refunded:
+            db.add(Notification(user_id=order.user_id, type=NotificationType.booking,
+                title="退款成功", content=f"您的订单 {order.order_no} 退款已成功到账",
+                ref_id=order.id, ref_type="booking"))
+    else:
+        order.status = OrderStatus.refunding
+        if state in ("closed", "abnormal"):
+            refund_record.completed_at = datetime.utcnow()
+            admins = (await db.scalars(select(User).where(User.role == UserRole.platform_admin))).all()
+            for admin in admins:
+                db.add(Notification(user_id=admin.id, type=NotificationType.system,
+                    title="退款需人工处理", content=f"订单 {order.order_no} 退款{state}，请核对商户平台原单",
+                    ref_id=order.id, ref_type="booking"))
     return {"code": "SUCCESS"}
 
 
