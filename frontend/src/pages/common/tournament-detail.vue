@@ -47,6 +47,11 @@ const s = useSession(),
   historyVersion = ref(0),
   history = ref<any>(null),
   mineOnly = ref(false);
+const visibleParticipants = computed(() => (t.value?.participants || t.value?.registrations || []).filter(r=>["registered","confirmed"].includes(r.status) && !["cancelled","expired","rejected"].includes(r.admission||"")));
+const participantTeams = computed(() => (viewData.value?.teams || []).map((team:any)=>({...team,user_ids:(team.user_ids||[]).filter((uid:string)=>visibleParticipants.value.some(r=>r.user_id===uid))})).filter((team:any)=>team.user_ids.length));
+const showCancelledRecords = ref(false);
+const cancelledRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>r.status==="cancelled" || r.admission==="cancelled"));
+const managementRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>showCancelledRecords.value || !(r.status==="cancelled" || r.admission==="cancelled")));
 const adjustingDraw = ref(false);
 async function saveDrawAdjustment(data:any) {
   try { await run("draw/adjust",data); adjustingDraw.value=false; uni.showToast({title:"调整已保存，请重新发布",icon:"none"}); }
@@ -531,43 +536,27 @@ function tie() {
           >预览赛程结构</wd-button
         >
         <wd-tabs v-model="tab"
-          ><wd-tab title="介绍" name="intro"
-            ><view class="pane">
-              <text class="body-copy">{{
-                t.description || "欢迎报名参加本次赛事"
-              }}</text
-              ><view v-if="displayedPrizes(t.prizes,t.prize).length"><text class="strong">奖项设置</text><view v-for="(prize,i) in displayedPrizes(t.prizes,t.prize)" :key="i"><text class="strong">{{prize.name}}</text><text class="body-copy" style="white-space:pre-wrap">{{prize.description}}</text></view></view
-              ><view class="gallery"
-                ><Photo
-                  v-for="img in t.images || []"
-                  :key="img"
-                  :src="img"
-                  width="100%"
-                  height="180px"
-              /></view>
-              <text class="muted"
-                >主办方：{{ t.club_name }} {{ t.contact_name }}</text
-              ><wd-button
-                v-if="t.contact_phone"
-                variant="plain"
-                @click="uni.makePhoneCall({ phoneNumber: t.contact_phone })"
-                >联系主办方</wd-button
-              >
-              <text class="muted"
-                >报名截止：{{ localTime(t.registration_deadline) }}</text
-              ><text class="muted"
-                >自助取消截止：{{ localTime(t.cancellation_deadline) }}</text
-              ><text class="muted"
-                >截止前全额原路退款，之后由管理员处理；主办方取消全退。</text
-              >
-            </view></wd-tab
-          >
+          ><wd-tab title="介绍" name="intro">
+            <view class="pane intro-pane">
+              <view class="intro-section"><text class="intro-heading">赛事介绍</text><text class="intro-copy">{{ t.description || '欢迎报名参加本次赛事' }}</text></view>
+              <view v-if="displayedPrizes(t.prizes,t.prize).length" class="intro-section prizes-section">
+                <text class="intro-heading">奖项设置</text>
+                <view v-for="(prize,i) in displayedPrizes(t.prizes,t.prize)" :key="i" class="prize-row">
+                  <view class="prize-name"><wd-icon name="trophy" size="16px" color="#0787c8" /><text>{{ prize.name }}</text></view>
+                  <text v-if="prize.description" class="prize-description">{{ prize.description }}</text>
+                </view>
+              </view>
+              <view v-if="t.images?.length" class="intro-section"><text class="intro-heading">赛事图片</text><view class="gallery"><Photo v-for="img in t.images" :key="img" :src="img" width="100%" height="180px" /></view></view>
+              <view class="intro-section"><text class="intro-heading">主办与联系</text><text class="intro-copy">{{ t.club_name || '个人主办' }}{{ t.contact_name ? ' · '+t.contact_name : '' }}</text><wd-button v-if="t.contact_phone" size="small" variant="plain" @click="uni.makePhoneCall({ phoneNumber: t.contact_phone })">联系主办方</wd-button></view>
+              <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="muted small">截止前全额原路退款，之后由管理员处理；主办方取消全退。</text></view>
+            </view>
+          </wd-tab>
           <wd-tab title="参与者" name="players"
             ><view class="pane">
               <template
-                v-if="!cfg?.ungrouped_display && viewData?.teams?.length"
+                v-if="!cfg?.ungrouped_display && participantTeams.length"
                 ><view
-                  v-for="team in viewData.teams"
+                  v-for="team in participantTeams"
                   :key="team.id"
                   class="list-card"
                   ><view class="participant-avatars"
@@ -575,13 +564,13 @@ function tie() {
                       v-for="uid in team.user_ids || []"
                       :key="uid"
                       :src="
-                        t.registrations.find((r) => r.user_id === uid)
+                        visibleParticipants.find((r) => r.user_id === uid)
                           ?.user_avatar
                       "
                       width="32px"
                       height="32px"
                       round /></view
-                  ><text>第 {{ team.group_no }} 组 · {{ name(team.id) }}</text
+                  ><text>第 {{ team.group_no }} 组 · {{ teamName(participantTeams,team.id,visibleParticipants) }}</text
                   ><text class="muted"
                     >队伍 #{{ team.id }}
                     {{
@@ -594,7 +583,7 @@ function tie() {
               >
               <template v-else
                 ><view
-                  v-for="r in t.registrations"
+                  v-for="r in visibleParticipants"
                   :key="r.id"
                   class="list-card"
                   ><Photo
@@ -610,7 +599,7 @@ function tie() {
                   ></view
                 ></template
               >
-              <text v-if="!t.registrations.length" class="muted"
+              <text v-if="!visibleParticipants.length" class="muted"
                 >暂无参与者；双打每队两人，混双每队一男一女</text
               >
               <text v-if="!t.roster_frozen" class="muted"
@@ -892,7 +881,8 @@ function tie() {
               >取消赛事并退款</wd-button
             ></view
           >
-          <view v-for="r in t.registrations" :key="r.id" class="list-card"
+          <wd-button v-if="cancelledRegistrations.length" size="small" variant="text" @click="showCancelledRecords=!showCancelledRecords">{{ showCancelledRecords ? '收起取消记录' : '查看取消记录' }}（{{ cancelledRegistrations.length }}）</wd-button>
+          <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
             ><text
               >{{ r.user_nickname || "未设置昵称" }} ·
               {{ stateNames[r.admission || ""] }}</text
@@ -1075,6 +1065,8 @@ function tie() {
   </AppShell>
 </template>
 <style scoped>
+.intro-pane{padding:16px!important;border:1px solid #dce8ee;border-radius:14px;background:#fff}.intro-section{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid #e6edf1}.intro-section:first-child{padding-top:0;border-top:0}.intro-section:last-child{padding-bottom:0}.intro-heading{display:block;font-size:16px;font-weight:700;color:#244356;line-height:24px}.intro-copy{display:block;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px;color:#526772}.prize-row{padding:14px;background:#f0f8fd;border-left:3px solid #0787c8;border-radius:8px;display:flex;flex-direction:column;gap:8px}.prize-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;line-height:22px;color:#146790}.prize-description{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;color:#536975}
+
 .participant-avatars {
   display: flex;
   gap: 6px;

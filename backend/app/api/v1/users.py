@@ -93,7 +93,7 @@ async def my_activities(
         item = dict(id=e.id, activity_id=e.id, kind=kind, title=e.title, city=e.city,
             status=_v(e.status), phase=event_phase_value, can_manage=bool(owner), created_at=e.created_at)
         if kind == "tournament":
-            item.update(start_time=e.start_time, end_time=e.end_time, address=e.address, cover_image=e.cover_image,
+            item.update(start_time=e.start_time, end_time=e.end_time, address=e.address, cover_image=e.cover_image, level_required=e.level_required,
                 registration_deadline=e.registration_deadline or e.start_time, registration_closed=e.registration_closed,
                 current_participants=e.current_participants, max_participants=e.max_participants,
                 draw_version=e.published_version, registration=dict(status=_v(r.status), approval=r.approval,

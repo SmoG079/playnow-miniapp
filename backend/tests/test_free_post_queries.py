@@ -56,8 +56,10 @@ class MatchRegistration(Base):
 def source_query(filename, function):
     file = Path(__file__).parents[1] / 'app/api/v1' / filename
     node = next(n for n in ast.parse(file.read_text(encoding='utf-8')).body
-                if isinstance(n, ast.AsyncFunctionDef) and n.name == function)
-    if function == 'get_post':
+                if isinstance(n, (ast.FunctionDef,ast.AsyncFunctionDef)) and n.name == function)
+    if function == 'discovery_query':
+        expression=next(n.value for n in node.body if isinstance(n,ast.Return))
+    elif function == 'get_post':
         assignment = next(n for n in node.body if isinstance(n, ast.Assign)
                           and any(isinstance(t, ast.Name) and t.id == 'result' for t in n.targets))
         expression = assignment.value.value.args[0]
@@ -73,6 +75,10 @@ def source_query(filename, function):
     namespace['registration_counts'] = select(MatchRegistration.post_id,
         namespace['approved_count'].label('approved'),
         namespace['pending_count'].label('pending')).group_by(MatchRegistration.post_id).subquery()
+    if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name) and expression.func.id == 'discovery_query':
+        factory = next(n for n in ast.parse(file.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == 'discovery_query')
+        namespace['RegistrationStatus'] = SimpleNamespace(approved='approved', pending='pending')
+        exec(compile(ast.Module(body=[factory], type_ignores=[]), str(file), 'exec'), namespace)
     query = eval(compile(ast.Expression(expression), str(file), 'eval'), namespace)
     return query.group_by(MatchPost.id)
 
@@ -92,7 +98,7 @@ class FreePostQueriesTest(unittest.TestCase):
         self.engine.dispose()
 
     def test_public_list_includes_free_post(self):
-        rows = self.session.execute(source_query('posts.py', 'list_posts')).all()
+        rows = self.session.execute(source_query('posts.py', 'discovery_query')).all()
         self.assertEqual({row[0].id for row in rows}, {1, 2})
 
     def test_my_posts_include_free_post(self):

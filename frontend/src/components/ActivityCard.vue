@@ -20,7 +20,7 @@ const place = computed(() => props.item.address || props.item.club_name || props
   <view class="play-card" :class="{ 'play-card-tournament': tournament, 'play-card-post': !tournament }">
     <view class="play-card-main" @click="emit('open')">
       <view class="card-topline">
-        <wd-tag size="small" round variant="light" :type="tournament ? 'primary' : 'success'" :icon="tournament ? 'trophy' : 'user-group'">{{ typeLabel }}</wd-tag>
+        <wd-tag size="small" round variant="light" :color="tournament ? '#007ac2' : '#006633'" :bg-color="tournament ? '#e5f4ff' : '#e7f3e9'" :icon="tournament ? 'trophy' : 'user-group'">{{ typeLabel }}</wd-tag>
         <view class="event-state" :class="{ 'event-state-active': state.active }"><view v-if="state.active" class="state-dot" /><text>{{ state.label }}</text></view>
       </view>
       <text class="card-event-title">{{ item.title || '网球活动' }}</text>
@@ -57,5 +57,6 @@ const place = computed(() => props.item.address || props.item.club_name || props
 .card-place {display:flex;align-items:center;gap:5px;font-size:11px;line-height:18px;color:#718174;min-width:0;}.card-place-text {flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
 .card-bottom {border-top:1px solid #edf1e9;padding-top:3px;}.capacity-copy {flex:1;max-width:145px;}.capacity-numbers {display:flex;align-items:baseline;gap:4px;}.capacity-count {font-size:15px;font-weight:750;color:#256c46;line-height:18px;}.capacity-total {font-size:10px;color:#83917f;}.capacity-track {height:2px;margin-top:3px;border-radius:4px;overflow:hidden;background:#e9efe2;}.capacity-fill {height:100%;background:linear-gradient(90deg,#248258,#a2cc59);}
 .card-open {display:flex;align-items:center;gap:4px;flex:none;border-radius:14px;padding:5px 8px;color:#277348;background:#edf6e4;font-size:10px;font-weight:600;line-height:16px;}.card-number {font-size:11px;color:#8b978d;}
+.play-card-post{border-color:#cfe4d4;border-left:3px solid #006633}.play-card-tournament{border-color:#cfe6f6;border-left:3px solid #0085ca}.play-card-tournament .card-schedule{background:#edf7ff}.play-card-tournament .date-block{border-color:#cbe3f5}.play-card-tournament .date-month,.play-card-tournament .schedule-caption{color:#638da8}.play-card-tournament .date-day,.play-card-tournament .card-time,.play-card-tournament .capacity-count,.play-card-tournament .event-state-active{color:#087fc0}.play-card-tournament .card-open{background:#e7f4fd;color:#087fc0}.play-card-tournament .capacity-fill{background:linear-gradient(90deg,#0085ca,#65c8ee)}.play-card-tournament .capacity-track{background:#e3f0f8}.play-card-tournament .state-dot{background:#0085ca}.play-card-post .state-dot{background:#006633}
 @media (max-width:350px) {.card-schedule{gap:6px;}.card-thumbnail{display:none;}.card-time{font-size:13px;}}
 </style>

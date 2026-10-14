@@ -25,3 +25,10 @@ describe("actionable tournament form validation",()=>{
   expect(tournamentFieldIssues({...valid(),max_participants:7},{...defaultConfig(),discipline:"doubles"},null)[0].message).toContain("偶数");
  });
 });
+
+it.each(["3.3","4.0-3.0","3.0-","NaN"])("rejects invalid tournament NTRP %s",value=>{
+ expect(tournamentFieldIssues({...valid(),level_required:value},defaultConfig(),null).some(i=>i.field==="level_required")).toBe(true);
+});
+it.each(["","不限","3.5","3.0–4.0"])("accepts optional tournament NTRP %s",value=>{
+ expect(tournamentFieldIssues({...valid(),level_required:value},defaultConfig(),null)).toEqual([]);
+});

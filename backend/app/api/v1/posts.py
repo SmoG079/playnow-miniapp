@@ -104,22 +104,7 @@ def haversine(lat1, lng1, lat2, lng2):
     return round(c * r, 1)
 
 
-@router.get("", response_model=PaginatedResponse)
-async def list_posts(
-    club_id: int = Query(None),
-    sport: str = Query(None),
-    status: str = Query(None),
-    ntrp_levels: str = Query(None),
-    lat: float = Query(None, ge=-90, le=90),
-    lng: float = Query(None, ge=-180, le=180),
-    sort_by: str = Query('created', pattern='^(created|distance|date_asc|date_desc)$'),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
-    city: str | None = None,
-    activity_type: str = Query('all',pattern='^(all|free|venue)$'),
-    on_date: Date | None = None,
-):
+def discovery_query():
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
@@ -128,7 +113,7 @@ async def list_posts(
     )
     registration_counts = select(MatchRegistration.post_id,
         approved_count.label('approved'),pending_count.label('pending')).group_by(MatchRegistration.post_id).subquery()
-    query = (
+    return (
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
                case((MatchPost.venue_id.is_not(None),Venue.latitude),else_=MatchPost.latitude), case((MatchPost.venue_id.is_not(None),Venue.longitude),else_=MatchPost.longitude),
                registration_counts.c.approved, registration_counts.c.pending,
@@ -138,63 +123,9 @@ async def list_posts(
         .outerjoin(Venue, MatchPost.venue_id == Venue.id)
         .outerjoin(registration_counts, registration_counts.c.post_id == MatchPost.id)
     )
-    from app.services.activity_visibility import public_listing_condition
-    visible = public_listing_condition("post", datetime.utcnow())
-    query = query.where(visible)
-    count_query = select(func.count(MatchPost.id)).where(visible)
 
-    selected_city = city_name(city)
-    city_column = case((MatchPost.venue_id.is_not(None),Venue.city),else_=MatchPost.city)
-    query = query.where(city_column == selected_city) if selected_city else query.where(False)
-    count_query = count_query.outerjoin(Venue, MatchPost.venue_id == Venue.id)
-    count_query = count_query.where(city_column == selected_city) if selected_city else count_query.where(False)
-    if activity_type in ('free','venue'):
-        condition = MatchPost.venue_id.is_(None) if activity_type=='free' else MatchPost.venue_id.is_not(None)
-        query=query.where(condition); count_query=count_query.where(condition)
-    if on_date:
-        query=query.where(MatchPost.preferred_date==on_date)
-        count_query=count_query.where(MatchPost.preferred_date==on_date)
 
-    if club_id:
-        query = query.where(MatchPost.club_id == club_id)
-        count_query = count_query.where(MatchPost.club_id == club_id)
-    if sport:
-        query = query.where(MatchPost.sport_type == sport)
-        count_query = count_query.where(MatchPost.sport_type == sport)
-    if status:
-        query = query.where(MatchPost.status == status)
-        count_query = count_query.where(MatchPost.status == status)
-
-    selected_levels = [l for l in (ntrp_levels or '').split(',') if l.strip()] if ntrp_levels else []
-    if selected_levels:
-        all_posts = select(MatchPost.level_required).distinct().outerjoin(Venue,MatchPost.venue_id==Venue.id).where(visible)
-        all_posts = all_posts.where(city_column==selected_city) if selected_city else all_posts.where(False)
-        if club_id:
-            all_posts = all_posts.where(MatchPost.club_id == club_id)
-        if sport:
-            all_posts = all_posts.where(MatchPost.sport_type == sport)
-        if status:
-            all_posts = all_posts.where(MatchPost.status == status)
-        result_all = await db.execute(all_posts)
-        matched_levels = [level for level in result_all.scalars().all() if _level_matches(selected_levels, level)]
-        if matched_levels:
-            query = query.where(or_(MatchPost.level_required.in_([l for l in matched_levels if l is not None]), MatchPost.level_required.is_(None) if None in matched_levels else False))
-            count_query = count_query.where(or_(MatchPost.level_required.in_([l for l in matched_levels if l is not None]), MatchPost.level_required.is_(None) if None in matched_levels else False))
-        else:
-            query = query.where(False)
-            count_query = count_query.where(False)
-
-    query = ordered(query, sort_by, MatchPost.preferred_date, MatchPost.id, lat, lng,
-                    case((MatchPost.venue_id.is_not(None),Venue.latitude),else_=MatchPost.latitude),
-                    case((MatchPost.venue_id.is_not(None),Venue.longitude),else_=MatchPost.longitude))
-
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    offset = (page - 1) * page_size
-    result = await db.execute(query.offset(offset).limit(page_size))
-    rows = result.all()
-
+def discovery_items(rows,lat=None,lng=None):
     items = []
     for row in rows:
         post, nickname, avatar, phone, club_name, club_lat, club_lng, approved_cnt, pending_cnt, effective_city = row
@@ -223,7 +154,7 @@ async def list_posts(
             images=post.images,
         ))
 
-    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+    return items
 
 
 @router.post("", response_model=PostBrief)

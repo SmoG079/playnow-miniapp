@@ -85,6 +85,7 @@ const form = reactive({
   description:
     "欢迎参加我们的网球比赛！\n时间：{{日期}} {{时间}}\n地点：{{地点}}",
   prize: "",
+  level_required: "",
   prizes: [] as Prize[],
   address: "",
   contact_name: "",
@@ -154,6 +155,7 @@ onLoad(async (q) => {
       end = localTime(t.end_time);
     Object.assign(form, {
       prizes: displayedPrizes(t.prizes,t.prize),
+      level_required: t.level_required || "",
       title: t.title,
       auto_title: t.auto_title,
       start_date: start.slice(0, 10),
@@ -241,6 +243,7 @@ function payload(previewOnly = false) {
     title,
     auto_title: form.auto_title,
     sport_type: "网球",
+    level_required: form.level_required.trim() || null,
     start_time: start.toISOString(),
     end_time: end.toISOString(),
     entry_fee: Number(form.entry_fee),
@@ -352,6 +355,8 @@ async function save() {
             ><view class="picker-field">{{ form.end }}</view></picker
           ></view
         >
+        <text class="field-label" id="required-level_required">NTRP 等级（选填）</text>
+        <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
         <text class="field-label" id="required-address">比赛地点 *</text>
         <ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
         <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>

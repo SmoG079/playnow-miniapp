@@ -51,7 +51,7 @@ def row_dict(row, names):
 def brief(t):
     data = row_dict(
         t,
-        "id club_id city latitude longitude title sport_type start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
+        "id club_id city latitude longitude title sport_type level_required start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
     )
     data["registration_deadline"] = t.registration_deadline or t.start_time
     data["registration_closed"] = t.registration_closed
@@ -252,33 +252,13 @@ async def rankings(db, d, matches):
     return result
 
 
-@router.get("")
-async def list_tournaments(
-    club_id: int | None = None, sport: str | None = None, status: str | None = None,
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db), city: str | None = None,
-    sort_by: str = Query('date_asc',pattern='^(created|distance|date_asc|date_desc)$'),
-    lat: float | None = Query(None,ge=-90,le=90), lng: float | None = Query(None,ge=-180,le=180),
-    on_date: Date | None = None,
-):
+def discovery_query():
     venue_lat=case((Tournament.venue_id.is_not(None),Venue.latitude),else_=Tournament.latitude)
     venue_lng=case((Tournament.venue_id.is_not(None),Venue.longitude),else_=Tournament.longitude)
-    query = select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).outerjoin(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
-    from app.services.activity_visibility import public_listing_condition
-    query = query.where(public_listing_condition("tournament", life.now()))
-    selected_city=city_name(city)
-    effective_city=case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)
-    query=query.where(effective_city==selected_city) if selected_city else query.where(False)
-    if club_id: query=query.where(Tournament.club_id==club_id)
-    if sport: query=query.where(Tournament.sport_type==sport)
-    if status: query=query.where(Tournament.status==status)
-    if on_date:
-        start=datetime.combine(on_date,datetime.min.time())-timedelta(hours=8)
-        query=query.where(Tournament.start_time>=start,Tournament.start_time<start+timedelta(days=1))
-    total=(await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
-    query=ordered(query,sort_by,Tournament.start_time,Tournament.id,lat,lng,
-                  venue_lat,venue_lng)
-    rows=(await db.execute(query.offset((page-1)*page_size).limit(page_size))).all()
+    return select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).outerjoin(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
+
+
+async def discovery_items(db,rows,lat=None,lng=None):
     # Only published results enter public discovery, including while a new draft exists.
     summaries = {}
     published_ids = [t.id for t, *_ in rows if t.published_version]
@@ -292,9 +272,9 @@ async def list_tournaments(
         for tid, match, winner in result_rows:
             if tid not in summaries:
                 summaries[tid] = dict(score=match.score, winner=winner, is_draw=match.is_draw, walkover=match.walkover)
-    return dict(items=[dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng, "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
+    return [dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng, "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
          clat,clng))
-         for t,name,clat,clng,actual_city in rows],total=total,page=page,page_size=page_size)
+         for t,name,clat,clng,actual_city in rows]
 
 
 @router.post("/preview")
@@ -361,6 +341,8 @@ async def apply_request(db, t, req):
             422, "请先通过订场流程预订场地；赛事排场不会自动锁定预约时段"
         )
     fields = req.model_dump(exclude={"config"})
+    if "level_required" not in req.model_fields_set:
+        fields.pop("level_required", None)
     if "prizes" not in req.model_fields_set:
         fields.pop("prizes", None)
     fields["city"] = city_name(req.city)
@@ -528,6 +510,7 @@ async def get_tournament(
     )
     data.update(
         registrations=regs,
+        participants=[r for r in regs if r["status"] in ("registered", "confirmed") and r.get("admission") not in ("cancelled", "expired", "rejected")],
         my_registration=mine,
         can_manage=manage,
         can_review=can_review,

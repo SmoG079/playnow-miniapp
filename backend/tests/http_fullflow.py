@@ -80,7 +80,7 @@ call('GET','/bookings/settlements',member,expected=403)
 call('POST',f'/bookings/{bid}/cancel',member,json={'reason':'isolated test'})
 assert call('GET',f'/bookings/{bid}',member)['status']=='cancelled'
 post=call('POST','/posts',owner,json={'title':'E2E approval post','preferred_date':date,'preferred_start':'09:00','preferred_end':'11:00','price':0,'players_needed':2,'approval_required':True})['id']
-call('GET','/posts');call('GET',f'/posts/{post}')
+call('GET','/discovery/activities?activity_type=post');call('GET',f'/posts/{post}')
 call('PUT',f'/posts/{post}',owner,json={'notes':'updated'})
 call('PUT',f'/posts/{post}',other,expected=403,json={'title':'unauthorized'})
 call('POST',f'/posts/{post}/register',member,json={'message':'join'})
@@ -113,7 +113,7 @@ call('POST',f'/posts/{post}/close',owner)
 assert call('GET',f'/posts/{post}')['status']=='closed'
 start=date+'T14:00:00';end=date+'T16:00:00'
 tournament=call('POST','/tournaments',owner,json={'club_id':club,'address':'E2E tennis court','title':'E2E free tournament','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4})['id']
-call('GET','/tournaments');call('GET',f'/tournaments/{tournament}')
+call('GET','/discovery/activities?activity_type=tournament');call('GET',f'/tournaments/{tournament}')
 call('PUT',f'/tournaments/{tournament}',owner,json={'club_id':club,'title':'E2E free tournament','address':'E2E tennis court','start_time':start,'end_time':end,'entry_fee':0,'max_participants':4,'description':'updated'})
 assert call('POST',f'/tournaments/{tournament}/register',member,json={}).get('order_id') is None
 assert call('GET',f'/tournaments/{tournament}')['current_participants']==1

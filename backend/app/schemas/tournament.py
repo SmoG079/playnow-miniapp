@@ -70,6 +70,7 @@ class TournamentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=256)
     description: str | None = None
     sport_type: str = "网球"
+    level_required: str | None = Field(None, max_length=32)
     start_time: datetime
     end_time: datetime
     venue_id: int | None = None
@@ -131,6 +132,12 @@ class TournamentCreate(BaseModel):
                 raise ValueError("晋级队数不能超过每组队伍数")
         return self
 
+
+    @field_validator("level_required")
+    @classmethod
+    def normalize_level(cls, value):
+        from app.services.ntrp import normalize_requirement
+        return normalize_requirement(value)
 
     @field_validator("city")
     @classmethod

@@ -117,7 +117,8 @@ async def test_edit_cannot_bypass_booking_ownership_and_unlink_becomes_free(db):
 
 @pytest.mark.asyncio
 async def test_free_meeting_address_survives_creation_detail_and_update(db):
-    from app.api.v1.posts import get_post, list_posts
+    from app.api.v1.posts import get_post
+    from tests.test_discovery import listing
     user = await db.get(User, 1)
     created = await create_post(request(city='南京市', address='滨江网球场', latitude=32.0, longitude=118.0), user, db)
     assert created.address == '滨江网球场'
@@ -125,7 +126,7 @@ async def test_free_meeting_address_survives_creation_detail_and_update(db):
     assert (detail.address, detail.latitude, detail.longitude) == ('滨江网球场', 32.0, 118.0)
     changed = await update_post(created.id, PostUpdate(address='中央网球场', latitude=32.1, longitude=118.1), user, db)
     assert changed.address == '中央网球场'
-    result = await list_posts(db=db,city='南京市',club_id=None,sport=None,status=None,ntrp_levels=None,lat=None,lng=None,sort_by='date_asc',page=1,page_size=20,activity_type='all',on_date=None)
+    result = await listing(db=db,city='南京市',ntrp_levels=None,lat=None,lng=None,sort_by='date_asc',page=1,page_size=20,on_date=None)
     assert result.items[0].address == '中央网球场'
 
 @pytest.mark.asyncio

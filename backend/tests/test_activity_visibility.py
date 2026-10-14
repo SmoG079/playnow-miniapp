@@ -9,6 +9,7 @@ from app.schemas.schemas import RegisterPostRequest
 from app.schemas.tournament import RegistrationCommand
 from tests.test_tournaments import db, event
 from tests.test_discovery import listing
+from app.services.activity_discovery import list_activities
 
 
 @pytest.mark.asyncio
@@ -43,7 +44,7 @@ async def test_tournament_waiting_ongoing_ended_and_manual_closure(db):
     future.registration_deadline=datetime.utcnow()-timedelta(seconds=1)
     await db.flush()
     args=dict(db=db,city='南京市',page=1,page_size=20,lat=None,lng=None,sort_by='date_asc')
-    assert (await tournaments.list_tournaments(**args))['total']==1
+    assert (await list_activities(activity_type='tournament',**args))['total']==1
     for uid,relation in [('1','published'),('2','joined')]:
         records=await users.my_activities(kind='tournament',relation=relation,phase='registration_closed',keyword='',page=1,page_size=20,current_user=await db.get(User,uid),db=db)
         item=next(p for p in records.items if p['id']==tid)
@@ -51,14 +52,14 @@ async def test_tournament_waiting_ongoing_ended_and_manual_closure(db):
     assert future.status=='open'
     future.registration_deadline=datetime.utcnow()+timedelta(days=1)
     await db.flush()
-    assert (await tournaments.list_tournaments(**args))['total']==1
+    assert (await list_activities(activity_type='tournament',**args))['total']==1
     future.registration_closed=True;await db.flush()
-    assert (await tournaments.list_tournaments(**args))['total']==1
-    assert (await tournaments.list_tournaments(**args))['items'][0]['phase']=='registration_closed'
+    assert (await list_activities(activity_type='tournament',**args))['total']==1
+    assert (await list_activities(activity_type='tournament',**args))['items'][0]['phase']=='registration_closed'
     future.start_time=datetime.utcnow()-timedelta(seconds=1);await db.flush()
-    assert (await tournaments.list_tournaments(**args))['items'][0]['phase']=='ongoing'
+    assert (await list_activities(activity_type='tournament',**args))['items'][0]['phase']=='ongoing'
     future.end_time=datetime.utcnow()-timedelta(seconds=1);await db.flush()
-    assert (await tournaments.list_tournaments(**args))['total']==0
+    assert (await list_activities(activity_type='tournament',**args))['total']==0
     ended=await users.my_activities(kind='tournament',relation='published',phase='ended',keyword='',page=1,page_size=20,current_user=owner,db=db)
     assert ended.items[0]['id']==tid
 
@@ -81,15 +82,15 @@ async def test_public_results_refresh_only_from_published_draw(db):
     await tournaments.create_draw(tid,DrawCommand(idempotency_key='visibility-draw',expected_version=0),owner,db)
     t=await db.get(Tournament,tid);t.city='南京市'
     args=dict(db=db,city='南京市',page=1,page_size=20,lat=None,lng=None,sort_by='date_asc')
-    assert (await tournaments.list_tournaments(**args))['items'][0]['result_summary'] is None
+    assert (await list_activities(activity_type='tournament',**args))['items'][0]['result_summary'] is None
     await tournaments.publish_draw(tid,VersionCommand(expected_version=t.draw_version),owner,db)
     d=await db.scalar(select(TournamentDraw).where(TournamentDraw.tournament_id==tid,TournamentDraw.version==t.published_version))
     m=await db.scalar(select(TournamentMatch).where(TournamentMatch.draw_id==d.id))
     # Same storage written by the administrator's result endpoint.
     m.score='6:3';m.winner_id=m.team_a_id;m.status='completed';await db.flush()
     t.start_time=datetime.utcnow()-timedelta(minutes=1);await db.flush()
-    item=(await tournaments.list_tournaments(**args))['items'][0]
+    item=(await list_activities(activity_type='tournament',**args))['items'][0]
     assert item['phase']=='ongoing' and item['result_summary']['score']=='6:3'
     assert item['result_summary']['winner']
     m.score='6:4';await db.flush()
-    assert (await tournaments.list_tournaments(**args))['items'][0]['result_summary']['score']=='6:4'
+    assert (await list_activities(activity_type='tournament',**args))['items'][0]['result_summary']['score']=='6:4'

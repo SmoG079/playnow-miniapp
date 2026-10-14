@@ -4,6 +4,11 @@ const blank = (v:unknown) => v == null || String(v).trim() === "";
 export function tournamentFieldIssues(form:any, config:TournamentConfig, linked:any, previewOnly=false): TournamentFieldIssue[] {
   const issues:TournamentFieldIssue[]=[];
   const add=(field:string,panel:string,message:string)=>issues.push({field,panel,message});
+  if (!blank(form.level_required) && String(form.level_required).trim() !== "不限") {
+    const parts=String(form.level_required).trim().replace(/[–—]/g,"-").split("-");
+    const values=parts.map(v=>Number(v.trim()));
+    if(parts.some(v=>!v.trim()) || ![1,2].includes(parts.length) || values.some(v=>!Number.isFinite(v)||v<1||v>7||!Number.isInteger(v*2)) || values[0]>values[values.length-1]) add("level_required","basic","NTRP 请填写1.0–7.0的半级值或范围，例如3.0或3.0-4.0");
+  }
   if (!previewOnly && !form.auto_title && blank(form.title)) add("title","basic","请填写赛事名称");
   for (const [field,label] of [["start_date","开始日期"],["start","开始时间"],["end_date","结束日期"],["end","结束时间"]])
     if (blank(form[field])) add(field,"basic",`请选择${label}`);

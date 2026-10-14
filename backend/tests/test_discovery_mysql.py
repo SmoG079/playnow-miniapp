@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import create_async_engine,async_sessionmaker
 from sqlalchemy.pool import NullPool
 from app.models.models import Club,User,MatchPost,Tournament,TournamentAudit,Activity
 from app.api.v1 import posts,tournaments
+from app.services.activity_discovery import list_activities
+from tests.test_discovery import listing
 from app.schemas.schemas import PostCreate
 from app.schemas.tournament import TournamentCreate
 from app.services import activity_ids
@@ -39,15 +41,15 @@ async def test_real_city_distance_date_and_type_pagination(monkeypatch):
             t=await tournaments.create_tournament(TournamentCreate(city=city,club_id=cid,title='跨日比赛',address='网球场',start_time=start,
                 end_time=start+timedelta(hours=2),max_participants=2),owner,db);ids.append(t['id'])
             await db.commit()
-            args=dict(city=city,club_id=None,sport=None,status=None,ntrp_levels=None,lat=32.4,lng=119.4,
+            args=dict(city=city,ntrp_levels=None,lat=32.4,lng=119.4,
                 sort_by='distance',page=1,page_size=1,activity_type='all',on_date=None,db=db)
-            result=await posts.list_posts(**args)
+            result=await listing(**args)
             assert result.total==2 and result.items[0].id==ids[0]
-            result=await posts.list_posts(**dict(args,sort_by='date_desc'))
+            result=await listing(**dict(args,sort_by='date_desc'))
             assert result.items[0].id==ids[1]
-            assert (await posts.list_posts(**dict(args,city=None))).total==0
-            assert (await posts.list_posts(**dict(args,activity_type='venue'))).total==0
-            result=await tournaments.list_tournaments(city=city,sort_by='date_asc',lat=None,lng=None,on_date=date(2030,11,2),page=1,page_size=1,db=db)
+            assert (await listing(**dict(args,city=None))).total==0
+            assert (await listing(**dict(args,activity_type='venue'))).total==0
+            result=await list_activities(activity_type='tournament',city=city,sort_by='date_asc',lat=None,lng=None,on_date=date(2030,11,2),page=1,page_size=1,db=db)
             assert result['total']==1 and result['items'][0]['id']==ids[3]
     finally:
         async with factory() as db:

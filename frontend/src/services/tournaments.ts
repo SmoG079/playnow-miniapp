@@ -89,6 +89,8 @@ export interface Registration {
 }
 export interface Tournament {
   phase?: string;
+  level_required?: string | null;
+  participants?: Registration[];
   venue_id?: number | null;
   city?: string | null;
   latitude?: number | null;

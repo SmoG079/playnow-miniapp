@@ -785,7 +785,8 @@ async def test_personal_tournament_without_club_supports_listing_management_and_
     with pytest.raises(HTTPException) as denied:
         await api.admin(db, await db.get(Tournament, row['id']), await db.get(User, '3'))
     assert denied.value.status_code == 403
-    result = await api.list_tournaments(city='南京市', sort_by='created', lat=None, lng=None, page=1, page_size=20, db=db)
+    from app.services.activity_discovery import list_activities
+    result = await list_activities(activity_type='tournament',city='南京市', sort_by='created', lat=None, lng=None, page=1, page_size=20, db=db)
     assert row['id'] in [r['id'] for r in result['items']]
     await register(db, row['id'], '3')
     registration = await db.scalar(select(TournamentRegistration).where(TournamentRegistration.tournament_id==row['id']))

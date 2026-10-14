@@ -50,3 +50,20 @@ async def weather(request: Request, city: str = Query(..., min_length=1, max_len
         raise HTTPException(503, '天气暂不可用')
     await check_rate_limit('discovery:weather:' + (request.client.host if request.client else 'unknown'), 30, 60)
     return await city_weather(city, province, settings.TENCENT_MAP_KEY, getattr(settings, 'TENCENT_MAP_SK', ''))
+
+
+from datetime import date as Date
+from typing import Literal
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+
+@router.get('/activities')
+async def activities(city: str | None = None,
+    activity_type: Literal['all','post','free','venue','tournament'] = 'all',
+    ntrp_levels: str | None = Query(None,max_length=128), on_date: Date | None = None,
+    sort_by: Literal['created','date_asc','date_desc','distance'] = 'date_asc',
+    lat: float | None = Query(None,ge=-90,le=90), lng: float | None = Query(None,ge=-180,le=180),
+    page: int = Query(1,ge=1), page_size: int = Query(20,ge=1,le=50), status: str | None = Query(None,max_length=20), db: AsyncSession = Depends(get_db)):
+    from app.services.activity_discovery import list_activities
+    return await list_activities(db,city,activity_type,ntrp_levels,on_date,sort_by,lat,lng,page,page_size,status)

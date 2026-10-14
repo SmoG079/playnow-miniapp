@@ -8,10 +8,12 @@ from app.schemas.tournament import TournamentCreate
 from tests.test_tournaments import db
 
 async def listing(db,city='扬州市',**options):
-    args=dict(club_id=None,sport=None,status=None,ntrp_levels=None,lat=None,lng=None,
-              sort_by='date_asc',page=1,page_size=20,city=city,activity_type='all',on_date=None,db=db)
-    args.update(options)
-    return await posts.list_posts(**args)
+    from app.services.activity_discovery import list_activities
+    from app.schemas.schemas import PaginatedResponse,PostBrief
+    kind=options.pop('activity_type','post')
+    if kind=='all':kind='post'
+    result=await list_activities(db,city,activity_type=kind,**options)
+    return PaginatedResponse(**{**result,'items':[PostBrief(**item) for item in result['items']]})
 
 async def post(db,city,day,**fields):
     payload=dict(title=city or '历史无城市',city=city,preferred_date=day,
@@ -52,7 +54,8 @@ async def test_tournaments_city_and_shanghai_day_filter(db):
     for city,start in [('扬州市',datetime(2026,11,1,16,30)),('南京市',datetime(2026,11,1,16,30)),('扬州市',datetime(2026,11,2,18))]:
         await tournaments.create_tournament(TournamentCreate(city=city,club_id=1,title=city,address='网球场',
             start_time=start,end_time=start+timedelta(hours=2),max_participants=2),owner,db)
-    result=await tournaments.list_tournaments(db=db,city='扬州市',sort_by='date_desc',lat=None,lng=None,
+    from app.services.activity_discovery import list_activities
+    result=await list_activities(db=db,activity_type='tournament',city='扬州市',sort_by='date_desc',lat=None,lng=None,
         page=1,page_size=1,on_date=date(2026,11,2))
     assert result['total']==1 and result['items'][0]['city']=='扬州市'
 

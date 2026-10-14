@@ -163,7 +163,8 @@ async def test_closed_posts_hidden_in_public_square_and_filters_but_history_reta
     (await db.get(MatchPost,public.id)).status=MatchPostStatus.full
     await posts.close_post(closed.id,owner,db)
     await db.commit()
-    listing=await posts.list_posts(city="扬州市",club_id=None,sport=None,status=status,ntrp_levels=levels,
+    from tests.test_discovery import listing as query_square
+    listing=await query_square(city="扬州市",status=status,ntrp_levels=levels,
         lat=None,lng=None,sort_by='created',page=1,page_size=20,db=db)
     expected=[] if status=='closed' else [public.id]
     assert [x.id for x in listing.items]==expected
