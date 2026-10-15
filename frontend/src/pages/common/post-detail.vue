@@ -182,7 +182,7 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><ActivityShare /><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="detail-facts"
+        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="detail-facts"
           ><view class="fact"
             ><view class="fact-icon"><wd-icon name="time-line" size="18px" /></view><view
               ><text class="strong">{{ post.preferred_date }}</text
@@ -251,7 +251,7 @@ function remove(c: any) {
         ><view
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
-        ><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><ActivityShare /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{
@@ -266,7 +266,7 @@ function remove(c: any) {
                   ? "已满员"
                   : "报名参加"
           }}</wd-button
-        ></view
+        ></view></view
       ><wd-popup v-model="showRegs" position="bottom"
         ><view class="sheet"
           ><text class="section-title">报名成员</text
@@ -288,6 +288,8 @@ function remove(c: any) {
 </template>
 
 <style scoped>
+.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
+
 .detail-facts .fact > .fact-icon { flex:0 0 22px; width:22px; align-items:center; }
 </style>
 

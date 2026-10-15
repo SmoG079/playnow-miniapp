@@ -491,7 +491,7 @@ function tie() {
       />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
-        ><ActivityShare /><text class="tag">{{ cardState(t, null, "tournament").label }}</text
+        ><text class="tag">{{ cardState(t, null, "tournament").label }}</text
         ><text class="tag">{{
           cfg
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
@@ -958,7 +958,7 @@ function tie() {
         </view> </view
       ><view class="fixed-action"
         ><text class="price large">¥{{ t.entry_fee || 0 }}/人</text
-        ><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><ActivityShare /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="
             !canJoin ||
             (!t.can_register && s.loggedIn) ||
@@ -971,7 +971,7 @@ function tie() {
               ? "预付尚未开放"
               : title
           }}</wd-button
-        ></view
+        ></view></view
       > </template
     ><view v-else class="page-loading"><wd-loading text="正在加载赛事信息" /></view>
     <wd-popup v-model="popup" position="bottom" closable
@@ -1069,6 +1069,8 @@ function tie() {
   </AppShell>
 </template>
 <style scoped>
+.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
+
 .intro-pane{padding:16px!important;border:1px solid #dce8ee;border-radius:14px;background:#fff}.intro-section{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid #e6edf1}.intro-section:first-child{padding-top:0;border-top:0}.intro-section:last-child{padding-bottom:0}.intro-heading{display:block;font-size:16px;font-weight:700;color:#244356;line-height:24px}.intro-copy{display:block;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px;color:#526772}.prize-row{padding:14px;background:#f0f8fd;border-left:3px solid #0787c8;border-radius:8px;display:flex;flex-direction:column;gap:8px}.prize-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;line-height:22px;color:#146790}.prize-description{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;color:#536975}
 
 .participant-avatars {
