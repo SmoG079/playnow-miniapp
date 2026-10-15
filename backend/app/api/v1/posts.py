@@ -163,6 +163,9 @@ async def create_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.activity_visibility import post_registration_closed
+    if post_registration_closed(req):
+        raise HTTPException(422, "活动开始时间已过，请重新选择日期和时间")
     if req.booking_id or req.venue_id:
         booking, venue = await _post_booking(
             db, current_user.id, req.booking_id, req.venue_id, req.club_id

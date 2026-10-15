@@ -26,7 +26,8 @@ async def test_city_isolation_empty_city_and_dates_before_pagination(db):
     old=await post(db,'扬州市','2026-11-01')
     far=await post(db,'扬州市','2026-12-01')
     other=await post(db,'南京市','2026-11-01')
-    legacy=await post(db,None,'2026-10-01')
+    legacy=await post(db,None,'2026-11-01')
+    stored=await db.get(MatchPost,legacy.id);stored.preferred_date=date(2026,10,1);await db.flush()
     assert [x.id for x in (await listing(db,page_size=1)).items]==[old.id]
     assert [x.id for x in (await listing(db,page_size=1,sort_by='date_desc')).items]==[far.id]
     assert (await listing(db)).total==2

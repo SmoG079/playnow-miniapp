@@ -30,6 +30,7 @@ export const useDiscovery = defineStore("discovery", () => {
   }
   function selectRegion(value: string[], codes?: string[]) {
     selection++;
+    latitude.value = null; longitude.value = null;
     region.value = value;
     city.value = regionCity(value);
     const province = value[0] || "";
@@ -37,6 +38,9 @@ export const useDiscovery = defineStore("discovery", () => {
     if (adcode) weatherLocation.value = { city: city.value, province, adcode };
     else if (weatherLocation.value?.city !== city.value || weatherLocation.value?.province !== province) weatherLocation.value = null;
     persist();
+  }
+  function selectCity(value: string) {
+    if (value && value !== city.value) selectRegion(["", value, ""]);
   }
   async function selectPoint(point: { latitude: number; longitude: number }) {
     const version = ++selection;
@@ -74,5 +78,5 @@ export const useDiscovery = defineStore("discovery", () => {
     const loc: any = await new Promise((resolve, reject) => uni.getLocation({ type: "gcj02", success: resolve, fail: reject }));
     latitude.value = loc.latitude; longitude.value = loc.longitude;
   }
-  return { city, region, latitude, longitude, weatherLocation, locating, attempted, selectRegion, selectPoint, locate, ensureCity, coordinates };
+  return { city, region, latitude, longitude, weatherLocation, locating, attempted, selectCity, selectRegion, selectPoint, locate, ensureCity, coordinates };
 });

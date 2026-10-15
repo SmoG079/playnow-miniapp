@@ -4,6 +4,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { createPinia, setActivePinia } from "pinia";
 import { activityShare, enableActivitySharing, isTimelinePreview } from "../src/utils/share";
+import { futureActivityStart } from "../src/utils/date";
 import { useSession } from "../src/stores/session";
 
 beforeEach(() => { vi.stubGlobal("uni", {}); });
@@ -81,17 +82,21 @@ it("publishes total minimum and maximum attendance and rejects inverted bounds",
   const source=fs.readFileSync(new URL("../src/pages/publish/post-create.vue",import.meta.url),"utf8").match(/<script setup lang="ts">([\s\S]*?)<\/script>/)![1];
   const ast=ts.createSourceFile("form.ts",source,ts.ScriptTarget.Latest,true);
   const statement=ast.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name?.text==="submit")!;
-  const send=vi.fn().mockResolvedValue({id:22}),toast=vi.fn(),redirect=vi.fn(),defer=vi.fn();
+  const send=vi.fn().mockResolvedValue({id:22,city:"扬州市"}),toast=vi.fn(),redirect=vi.fn(),defer=vi.fn();
   const context:any={form:{title:"周末约球",preferred_date:"2026-11-01",preferred_start:"19:00",preferred_end:"21:00",min_players:4,max_players:6,price:"0",city:"扬州市",address:"测试场地",latitude:32,longitude:119},
     draftReady:{value:true},loading:{value:false},coverUploading:{value:false},locationSelecting:{value:false},images:{value:[]},clubs:{value:[]},clubIndex:{value:-1},
-    request:send,uni:{showToast:toast,redirectTo:redirect},clearActivityDraft:vi.fn(),draftOwner:"fixture",completed:false,setTimeout:defer};
+    futureActivityStart:(day:string,time:string)=>futureActivityStart(day,time,Date.parse("2026-10-15T07:00:00Z")),discovery:{selectCity:vi.fn()},request:send,uni:{showToast:toast,redirectTo:redirect},clearActivityDraft:vi.fn(),draftOwner:"fixture",completed:false,setTimeout:defer};
   vm.createContext(context);
   vm.runInContext(ts.transpileModule(statement.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2020}}).outputText,context);
   await context.submit();
   expect(send).toHaveBeenCalledWith("/posts",expect.objectContaining({data:expect.objectContaining({min_players:4,max_players:6})}));
+  expect(context.discovery.selectCity).toHaveBeenCalledWith("扬州市");
   defer.mock.calls[0][0]();
   expect(redirect).toHaveBeenCalledWith({url:"/pages/common/post-detail?id=22"});
   send.mockClear();context.form.min_players=7;
   await context.submit();expect(send).not.toHaveBeenCalled();
   expect(toast).toHaveBeenLastCalledWith({title:"最低人数不能大于最大人数",icon:"none"});
+  context.form.min_players=4;context.form.preferred_date="2026-10-09";
+  await context.submit();expect(send).not.toHaveBeenCalled();
+  expect(toast).toHaveBeenLastCalledWith({title:"活动开始时间已过，请重新选择日期和时间",icon:"none"});
 });

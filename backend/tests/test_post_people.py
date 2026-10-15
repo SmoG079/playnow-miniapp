@@ -84,3 +84,19 @@ async def test_cannot_shrink_below_confirmed_people(db):
     with pytest.raises(HTTPException) as exc:
         await posts.update_post(result.id,PostUpdate(max_players=2),owner,db)
     assert exc.value.status_code==422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("day,start", [(date(2026,10,9),"19:00"),(date(2026,10,15),"18:59"),(date(2026,10,15),"19:00")])
+async def test_cannot_publish_expired_draft_or_exact_start(day,start):
+    from datetime import datetime
+    from unittest.mock import patch
+    database=AsyncMock()
+    req=PostCreate(title="晚上来打球",preferred_date=day,preferred_start=start,preferred_end="21:00",min_players=4,max_players=6,price=0)
+    with patch("app.services.activity_visibility.datetime") as clock:
+        clock.utcnow.return_value=datetime(2026,10,15,11,0)
+        with pytest.raises(HTTPException) as exc:
+            await posts.create_post(req,User(id="fixture"),database)
+    assert exc.value.status_code==422
+    assert "活动开始时间已过" in exc.value.detail
+    database.execute.assert_not_awaited();database.commit.assert_not_awaited()

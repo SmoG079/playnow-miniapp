@@ -68,3 +68,12 @@ describe("shared city preference", () => {
     expect(city.weatherLocation).toBeNull();
   });
 });
+
+it("publishing into another city persists that city and discards the previous city coordinates",async()=>{
+ const storage=new Map<string,any>();
+ vi.stubGlobal("uni",{getStorageSync:(k:string)=>storage.get(k),setStorageSync:(k:string,v:any)=>storage.set(k,v)});
+ setActivePinia(createPinia());request.mockResolvedValue({city:"南京市",province:"江苏省",adcode:"320100"});
+ const city=useDiscovery();await city.selectPoint({latitude:32,longitude:118});
+ city.selectCity("扬州市");expect(city.city).toBe("扬州市");expect(city.latitude).toBeNull();expect(city.longitude).toBeNull();expect(city.weatherLocation).toBeNull();
+ setActivePinia(createPinia());expect(useDiscovery().city).toBe("扬州市");
+});

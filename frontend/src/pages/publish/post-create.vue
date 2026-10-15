@@ -9,7 +9,7 @@ import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
-import { businessDate } from "../../utils/date";
+import { businessDate, futureActivityStart } from "../../utils/date";
 import { saveActivityDraft, readActivityDraft, clearActivityDraft } from "../../services/activity-draft";
 const discovery = useDiscovery();
 const s = useSession(),
@@ -157,6 +157,8 @@ async function submit() {
     return uni.showToast({ title: "请选择日期和时间", icon: "none" });
   if (form.preferred_end <= form.preferred_start)
     return uni.showToast({ title: "结束时间必须晚于开始时间", icon: "none" });
+  if (!futureActivityStart(form.preferred_date, form.preferred_start))
+    return uni.showToast({ title: "活动开始时间已过，请重新选择日期和时间", icon: "none" });
   if (![form.min_players, form.max_players].every(value => Number.isInteger(Number(value)) && Number(value) >= 2 && Number(value) <= 31))
     return uni.showToast({ title: "人数须为 2–31 的整数（含发起人）", icon: "none" });
   if (Number(form.min_players) > Number(form.max_players))
@@ -173,7 +175,7 @@ async function submit() {
       urls.push(
         await uploadedImage(path, "post"),
       );
-    const created = await request<{ id: number }>("/posts", {
+    const created = await request<{ id: number; city: string | null }>("/posts", {
       method: "POST",
       data: {
         ...form,
@@ -189,6 +191,7 @@ async function submit() {
     });
     completed = true;
     clearActivityDraft("post", draftOwner, 0);
+    if (created.city) discovery.selectCity(created.city);
     uni.showToast({ title: "发布成功", icon: "success" });
     setTimeout(() => uni.redirectTo({ url: `/pages/common/post-detail?id=${created.id}` }), 800);
   } catch (e: any) {
@@ -264,6 +267,7 @@ function returnToPublish() {
         <text class="field-label">日期</text
         ><picker
           mode="date"
+          :start="today()"
           :value="form.preferred_date"
           @change="form.preferred_date = $event.detail.value"
           ><view class="picker-field">{{ form.preferred_date }}</view></picker
