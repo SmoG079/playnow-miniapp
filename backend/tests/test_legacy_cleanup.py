@@ -53,10 +53,14 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
                 slot = VenueTimeSlot(venue_id=venue.id, date=date(2030, 1, 1), start_time=time(9), end_time=time(9, 30))
                 session.add(slot)
                 session.add(Activity(id=101, kind="tournament")); session.flush()
-                event = Tournament(id=101, club_id=club.id, title="fixture",
-                    start_time=datetime(2030, 1, 1), end_time=datetime(2030, 1, 2), max_participants=4)
-                session.add(event); session.flush()
-                draw = TournamentDraw(tournament_id=event.id, version=1, stage="initial", idempotency_key="fixture", seed="fixture", snapshot={}, created_by=user.id)
+                # Seed the historical table, never today's ORM schema at an older revision.
+                events_before = sa.Table("tournaments", sa.MetaData(), autoload_with=connection)
+                connection.execute(events_before.insert().values(id=101, activity_kind="tournament", club_id=club.id,
+                    venue_id=venue.id, title="fixture", start_time=datetime(2030,1,1), end_time=datetime(2030,1,2),
+                    max_participants=4, current_participants=0, entry_fee=0, status="draft", lock_venue=False,
+                    auto_title=False, roster_frozen=False, registration_closed=False, draw_version=0,
+                    created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+                draw = TournamentDraw(tournament_id=101, version=1, stage="initial", idempotency_key="fixture", seed="fixture", snapshot={}, created_by=user.id)
                 session.add(draw); session.flush()
                 teams = [TournamentTeam(draw_id=draw.id, group_no=1, name=str(ident)) for ident in range(3)]
                 session.add_all(teams); session.flush()
@@ -85,6 +89,7 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
             venues = sa.Table("venues", metadata, autoload_with=connection)
             rules = connection.execute(sa.select(venues.c.price_rules)).scalar_one()
             assert rules == [{"type":"daily_time", "start_time":"09:00", "end_time":"11:00", "price":120}]
+            assert connection.execute(sa.select(events.c.location_name).where(events.c.id == 101)).scalar_one() == "court"
             assert "slot_id" not in orders.c and "prize" not in events.c
             assert "user_id_migrations" not in sa.inspect(connection).get_table_names()
     finally:
