@@ -185,7 +185,7 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
+        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
           ><text class="link" @click="showRegs = true"
             >{{ (post.registration_count || 0) + 1 }}/{{
@@ -244,7 +244,7 @@ function remove(c: any) {
         ><view
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
-        ><view class="registration-actions"><ActivityShare kind="post" :id="id" :title="post.title" :schedule="`${post.preferred_date} ${post.preferred_start}–${post.preferred_end}`" :place="post.address || post.city" :people="`${post.min_players}–${post.max_players} 人（含发起人）`" :fee="Number(post.price)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><ActivityShare kind="post" :id="id" :title="post.title" :schedule="`${post.preferred_date} ${post.preferred_start}–${post.preferred_end}`" :place="post.address || post.city" :people="`${post.min_players}–${post.max_players} 人`" :fee="Number(post.price)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{

@@ -144,7 +144,7 @@ async function submit() {
   if (!futureActivityStart(form.preferred_date, form.preferred_start))
     return uni.showToast({ title: "活动开始时间已过，请重新选择日期和时间", icon: "none" });
   if (![form.min_players, form.max_players].every(value => Number.isInteger(Number(value)) && Number(value) >= 2 && Number(value) <= 31))
-    return uni.showToast({ title: "人数须为 2–31 的整数（含发起人）", icon: "none" });
+    return uni.showToast({ title: "人数须为 2–31 的整数", icon: "none" });
   if (Number(form.min_players) > Number(form.max_players))
     return uni.showToast({ title: "最低人数不能大于最大人数", icon: "none" });
   if (Number(form.price) < 0 || !Number.isFinite(Number(form.price)))
@@ -198,7 +198,6 @@ function returnToPublish() {
     <view class="content publish-content">
       <view class="post-form">
         <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
-        <text class="subtitle muted">场地可选，未关联即为自由约球。</text>
         <text class="field-label">标题 *</text
         ><wd-input
           v-model="form.title"
@@ -251,12 +250,12 @@ function returnToPublish() {
         ><wd-input
           v-model="form.level_required"
           placeholder="不限，例如 2.5-3.5"
-        /><text class="field-label">最低人数（含发起人）</text
+        /><text class="field-label">最低人数</text
         ><wd-input-number
           v-model="form.min_players"
           :min="2"
           :max="31"
-        /><text class="field-label">最大人数（含发起人）</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /><text class="muted small">达到最低人数即成团，满最大人数停止报名；未成团不自动取消或退款。</text><text class="field-label">人均费用（元）</text
+        /><text class="field-label">最大人数</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /><text class="muted small">达到最低人数成团，满员停止报名；未成团不自动取消或退款。</text><text class="field-label">人均费用（元）</text
         ><wd-input v-model="form.price" type="digit" /><text class="field-label"
           >活动说明</text
         ><wd-textarea

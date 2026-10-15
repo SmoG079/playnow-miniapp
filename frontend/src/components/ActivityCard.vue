@@ -32,7 +32,7 @@ const place = computed(() => props.item.address || props.item.club_name || props
       </view>
       <view class="card-place"><wd-icon :name="item.address ? 'location' : 'company'" size="13px" /><text class="card-place-text">{{ place || '地点待补充' }}</text></view>
       <view class="card-bottom">
-        <view v-if="capacity" class="capacity-copy"><view class="capacity-numbers"><template v-if="tournament"><text class="capacity-count">{{ capacity.count }}</text><text class="capacity-total">/ {{ capacity.total }} 人已报名</text></template><template v-else><text class="capacity-count">{{ item.min_players === item.max_players ? item.max_players : `${item.min_players}–${item.max_players}` }} 人</text><text class="capacity-total">已有 {{ capacity.count }} 人（含发起人）</text></template></view><view class="capacity-track"><view class="capacity-fill" :style="{ width: capacity.percent + '%' }" /></view></view>
+        <view v-if="capacity" class="capacity-copy"><view class="capacity-numbers"><template v-if="tournament"><text class="capacity-count">{{ capacity.count }}</text><text class="capacity-total">/ {{ capacity.total }} 人已报名</text></template><template v-else><text class="capacity-count">{{ item.min_players === item.max_players ? item.max_players : `${item.min_players}–${item.max_players}` }} 人</text><text class="capacity-total">已有 {{ capacity.count }} 人</text></template></view><view class="capacity-track"><view class="capacity-fill" :style="{ width: capacity.percent + '%' }" /></view></view>
         <text v-else class="card-number">{{ item.id ? '#' + item.id : '网球活动' }}</text>
         <view class="card-open"><text>查看{{ tournament ? '比赛' : '球局' }}</text><wd-icon name="arrow-right" size="12px" /></view>
       </view>

@@ -173,7 +173,7 @@ async function save() {
       ><view class="picker-field" @click="chooseLocation"
         ><text>{{ form.address || "在地图中选择" }}</text
         ><wd-icon name="location" /></view
-      ><text class="muted small">{{ locationSelecting ? '正在识别城市…' : (form.city ? form.city + ' · 城市根据地图位置自动填写' : '选择地图位置后自动获取城市') }}</text>
+      ><text class="muted small">{{ locationSelecting ? '正在识别城市…' : (form.city ? form.city : '请选择地图位置') }}</text>
       <text class="field-label">营业时间</text
       ><view class="form-two"
         ><picker
