@@ -67,6 +67,7 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
                 connection.execute(sa.text("INSERT INTO booking_orders(id,order_no,user_id,venue_id,club_id,slot_id,slot_ids,amount,status,business_type) VALUES (991,'isolated-old-slot',:user,:venue,:club,:slot,NULL,50,'cancelled','booking')"),
                     dict(user=user.id, venue=venue.id, club=club.id, slot=slot.id))
                 connection.execute(sa.text("UPDATE tournaments SET prize='旧奖项',prizes=NULL WHERE id=101"))
+                connection.execute(sa.text("UPDATE venues SET price_rules=JSON_ARRAY(JSON_OBJECT('type','time_range','start_time','09:00','end_time','11:00','price',120)) WHERE id=:id"), {'id':venue.id})
                 slot_id, draw_id = slot.id, draw.id
                 session.commit()
             connection.commit()
@@ -81,6 +82,9 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
             assert connection.execute(sa.select(events.c.prizes).where(events.c.id == 101)).scalar_one() == [{"name":"奖项", "description":"旧奖项"}]
             snapshot = connection.execute(sa.select(draws.c.snapshot).where(draws.c.id == draw_id)).scalar_one()
             assert [position["team_id"] for position in snapshot["positions"]] == ids
+            venues = sa.Table("venues", metadata, autoload_with=connection)
+            rules = connection.execute(sa.select(venues.c.price_rules)).scalar_one()
+            assert rules == [{"type":"daily_time", "start_time":"09:00", "end_time":"11:00", "price":120}]
             assert "slot_id" not in orders.c and "prize" not in events.c
             assert "user_id_migrations" not in sa.inspect(connection).get_table_names()
     finally:

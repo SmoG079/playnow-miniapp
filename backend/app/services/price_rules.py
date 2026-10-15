@@ -3,7 +3,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-TYPES = {"date_range", "daily_time", "time_range", "weekly", "monthly"}
+TYPES = {"date_range", "daily_time", "weekly", "monthly"}
 
 
 def validate_rules(rules):
@@ -28,7 +28,7 @@ def validate_rules(rules):
                 if a >= b or any(t.minute % 30 or t.second or t.microsecond for t in (a, b)):
                     raise ValueError()
                 rule.update(start_time=a.strftime("%H:%M"), end_time=b.strftime("%H:%M"))
-            if rule["type"] in ("daily_time", "time_range") and not start:
+            if rule["type"] == "daily_time" and not start:
                 raise ValueError()
             dates = rule.get("start_date"), rule.get("end_date")
             if any(dates):

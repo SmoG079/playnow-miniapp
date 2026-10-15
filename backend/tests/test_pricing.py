@@ -15,7 +15,7 @@ class SlotPricingTests(unittest.TestCase):
         self.assertEqual(slot_charge(self.venue, self.slot), Decimal('25'))
 
     def test_special_rate_and_exclusive_end(self):
-        self.venue.price_rules = [dict(type='time_range', start_time='18:00', end_time='22:00', price=80)]
+        self.venue.price_rules = [dict(type='daily_time', start_time='18:00', end_time='22:00', price=80)]
         self.assertEqual(slot_charge(self.venue, self.slot), Decimal('40'))
         self.slot.start_time, self.slot.end_time = time(22), time(22, 30)
         self.assertEqual(slot_charge(self.venue, self.slot), Decimal('25'))
@@ -35,7 +35,7 @@ class SlotPricingTests(unittest.TestCase):
 
     def test_existing_first_matching_venue_rule_precedence(self):
         self.venue.price_rules = [dict(type='daily_time', start_time='18:00', end_time='22:00', price=80),
-            dict(type='time_range', start_time='18:00', end_time='22:00', price=100)]
+            dict(type='daily_time', start_time='18:00', end_time='22:00', price=100)]
         self.slot.price_override = Decimal('90')
         self.assertEqual(hourly_slot_price(self.venue, self.slot), Decimal('80'))
 

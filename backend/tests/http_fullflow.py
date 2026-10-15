@@ -55,7 +55,7 @@ else: groups=slots
 if groups and 'slots' in groups[0]: slots=groups[0]['slots']
 else: slots=groups
 ids=[s['id'] for s in slots]
-call('PUT',f'/venues/{venue}/with-club/{club}',owner,json={'price_rules':[{'type':'time_range','start_time':'08:00','end_time':'10:00','price':180}]})
+call('PUT',f'/venues/{venue}/with-club/{club}',owner,json={'price_rules':[{'type':'daily_time','start_time':'08:00','end_time':'10:00','price':180}]})
 grid=call('GET',f'/clubs/{club}/venue-slots',params={'date':date})
 quoted=sum(float(cell['price']) for row in grid['rows'] for cell in row['cells'] if cell['slot_id'] in ids[:2])
 assert quoted==180
@@ -126,7 +126,7 @@ image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 upload=call('POST','/upload',owner,files={'file':('e2e.png',image,'image/png')})
 assert c.get(upload['url']).content==image
 call('POST','/upload',owner,expected=400,files={'file':('invalid.txt',b'test','text/plain')})
-created=call('POST',f'/venues/with-club/{club}',owner,json={'name':'empty court','price_per_hour':80,'price_rules':[{'type':'time_range','start_time':'18:00','end_time':'22:00','price':100}]})
+created=call('POST',f'/venues/with-club/{club}',owner,json={'name':'empty court','price_per_hour':80,'price_rules':[{'type':'daily_time','start_time':'18:00','end_time':'22:00','price':100}]})
 assert created['price_rules'][0]['price']==100
 unused=created['id']
 call('DELETE',f'/venues/{unused}/with-club/{club}',owner)
