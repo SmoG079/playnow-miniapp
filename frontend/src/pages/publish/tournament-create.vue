@@ -88,6 +88,7 @@ const form = reactive({
   level_required: "",
   prizes: [] as Prize[],
   address: "",
+  location_name: "",
   contact_name: "",
   contact_phone: "",
   registration_hours: "0",
@@ -169,10 +170,11 @@ onLoad(async (q) => {
       city: t.city || discovery.city,
       latitude: t.latitude ?? null, longitude: t.longitude ?? null,
       address: t.address || "",
+      location_name: t.location_name,
       contact_name: t.contact_name || "",
       contact_phone: t.contact_phone || "",
     });
-    if (t.venue_id) linked.value = { venue_id: t.venue_id, venue_name: t.address || "已关联球场" };
+    if (t.venue_id) linked.value = { venue_id: t.venue_id, venue_name: t.location_name };
     if (t.config) Object.assign(cfg, t.config);
     form.courts = cfg.courts.join("\n");
     images.value = t.images || [];
@@ -200,6 +202,7 @@ function applyReturnedBooking() {
     linked.value = x;
     form.city = x.city || ""; form.latitude = x.latitude ?? null; form.longitude = x.longitude ?? null;
     form.address = x.address || "";
+    form.location_name = x.venue_name || "";
     pendingBooking = null;
     uni.removeStorageSync("booking_return");
     cacheDraft();
@@ -208,7 +211,7 @@ function applyReturnedBooking() {
 onShow(() => { pendingBooking = uni.getStorageSync("booking_return") || pendingBooking; applyReturnedBooking(); });
 watch(() => discovery.city, value => {
   if (!editId.value && !linked.value?.venue_id && form.city !== value) {
-    form.city = value; form.address = ""; form.latitude = null; form.longitude = null;
+    form.city = value; form.address = ""; form.location_name = ""; form.latitude = null; form.longitude = null;
 
   }
 }, { flush: "sync" });
@@ -252,6 +255,7 @@ function payload(previewOnly = false) {
 
     prizes: normalizedPrizes(form.prizes),
     address: form.address,
+    location_name: form.location_name,
     contact_name: form.contact_name,
     contact_phone: form.contact_phone,
     images: [] as string[],
@@ -358,7 +362,7 @@ async function save() {
         <text class="field-label" id="required-level_required">NTRP 等级（选填）</text>
         <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
         <text class="field-label" id="required-address">比赛地点 *</text>
-        <ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
+        <wd-input v-model="form.location_name" :disabled="!!linked?.venue_id" placeholder="地点名称，例如：某某网球中心" :maxlength="256" /><ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
         <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
         <text class="muted">比赛排场名称不会自动预订场地</text></view
       >

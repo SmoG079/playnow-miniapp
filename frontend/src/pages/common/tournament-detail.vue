@@ -11,6 +11,8 @@ import {
   onShareTimeline,
 } from "@dcloudio/uni-app";
 import { sharedActivityId } from "../../services/activity-sharing";
+import ActivityFacts from "../../components/ActivityFacts.vue";
+import { cardSchedule } from "../../domain/activity-card";
 import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
@@ -498,13 +500,8 @@ function tie() {
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
             : "赛事"
         }}</text
-        ><text class="muted"
-          >{{ localTime(t.start_time) }} — {{ localTime(t.end_time) }}</text
-        ><text class="muted" @click="t.latitude != null && t.longitude != null && uni.openLocation({ latitude: Number(t.latitude), longitude: Number(t.longitude), name: t.title, address: t.address || '' })"
-          >{{ t.address || '球场位置待补充' }} · {{ t.current_participants }}/{{
-            t.max_participants
-          }}人</text
-        >
+        ><ActivityFacts :schedule="cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').dateLabel + ' ' + cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').timeLabel" :name="t.location_name || '地点名称待补充'" :address="t.address" :can-navigate="t.latitude != null && t.longitude != null" @navigate="uni.openLocation({latitude:Number(t.latitude),longitude:Number(t.longitude),name:t.location_name,address:t.address})" />
+        <text class="muted small">已报名 {{ t.current_participants }}/{{ t.max_participants }} 人</text>
         <view v-if="myPosition" class="list-card"
           ><text class="strong"
             >我的比赛：第 {{ myPosition.team.group_no }} 组 ·

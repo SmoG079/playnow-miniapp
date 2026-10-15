@@ -134,7 +134,7 @@ def discovery_items(rows,lat=None,lng=None):
         user_nickname = nickname or _fallback_nickname(post.user_id, phone)
         items.append(PostBrief(
             id=post.id, club_id=post.club_id, user_id=post.user_id,
-            city=effective_city, address=post.address, latitude=club_lat, longitude=club_lng,
+            city=effective_city, address=post.address, location_name=post.location_name, latitude=club_lat, longitude=club_lng,
             title=post.title, sport_type=post.sport_type,
             preferred_date=post.preferred_date,
             preferred_start=post.preferred_start,
@@ -172,7 +172,7 @@ async def create_post(
         )
         req.club_id, req.venue_id = booking.club_id, venue.id
         req.city=venue.city
-        req.latitude=venue.latitude; req.longitude=venue.longitude; req.address=venue.address
+        req.latitude=venue.latitude; req.longitude=venue.longitude; req.address=venue.address; req.location_name=venue.name
     elif req.club_id:
         # Retain the existing club-only publishing path for administrators.
         if _v(current_user.role) not in ("club_admin", "platform_admin"):
@@ -200,7 +200,7 @@ async def create_post(
         id=await allocate_activity(db, "post"),
         club_id=req.club_id,
         user_id=current_user.id,
-        city=city_name(req.city), address=req.address, latitude=req.latitude, longitude=req.longitude,
+        city=city_name(req.city), address=req.address, location_name=req.location_name, latitude=req.latitude, longitude=req.longitude,
         title=req.title,
         sport_type=sport_type,
         preferred_date=req.preferred_date,
@@ -230,7 +230,7 @@ async def create_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=post.city, address=post.address, latitude=post.latitude, longitude=post.longitude,
+        city=post.city, address=post.address, location_name=post.location_name, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -279,13 +279,13 @@ async def update_post(
         venue_id = update_data.get("venue_id", post.venue_id)
         if booking_id or venue_id:
             booking, venue = await _post_booking(db, post.user_id, booking_id, venue_id)
-            update_data.update(club_id=booking.club_id, venue_id=venue.id, city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
+            update_data.update(club_id=booking.club_id, venue_id=venue.id, city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
         else:
             update_data["club_id"] = None
     if post.venue_id and "venue_id" not in update_data:
         venue = await db.get(Venue, post.venue_id)
         if venue:
-            update_data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
+            update_data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
     approved = await db.scalar(select(func.count(MatchRegistration.id)).where(
         MatchRegistration.post_id == post.id, MatchRegistration.status == RegistrationStatus.approved)) or 0
     capacity = update_data.get("max_players", post.max_players)
@@ -310,7 +310,7 @@ async def update_post(
 
     return PostBrief(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=post.city, address=post.address, latitude=post.latitude, longitude=post.longitude,
+        city=post.city, address=post.address, location_name=post.location_name, latitude=post.latitude, longitude=post.longitude,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
@@ -402,7 +402,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     # 联系发起人走私信，不再通过活动详情暴露手机号。
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
-        city=effective_city, address=venue_address if post.venue_id else post.address, latitude=effective_lat, longitude=effective_lng,
+        city=effective_city, address=venue_address if post.venue_id else post.address, location_name=post.location_name, latitude=effective_lat, longitude=effective_lng,
         title=post.title, sport_type=post.sport_type,
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,

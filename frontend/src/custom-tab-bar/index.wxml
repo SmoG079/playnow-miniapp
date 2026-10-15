@@ -1,0 +1,15 @@
+<view wx:if="{{!hidden}}" class="tabbar" style="padding-bottom:{{safeBottom}}px">
+  <view wx:for="{{tabs}}" wx:key="pagePath" class="tab-item {{selected === index ? 'selected' : ''}} {{index === 2 ? 'publish-item' : ''}}" data-index="{{index}}" bindtap="switchTab" role="button" aria-label="{{item.text}}">
+    <view wx:if="{{index === 2}}" class="publish-circle" hover-class="publish-pressed">
+      <text class="publish-label">发布</text>
+      <view class="publish-plus"><view class="plus-horizontal"/><view class="plus-vertical"/></view>
+    </view>
+    <block wx:else>
+      <view class="tab-icon-wrap">
+        <image class="tab-icon" src="/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+        <text wx:if="{{index === 3 && unread}}" class="unread-badge">{{unread}}</text>
+      </view>
+      <text class="tab-label">{{item.text}}</text>
+    </block>
+  </view>
+</view>

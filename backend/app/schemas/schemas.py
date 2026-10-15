@@ -422,6 +422,7 @@ class PaginatedResponse(BaseModel):
 
 class PostCreate(BaseModel):
     address: Optional[str] = Field(None, max_length=256)
+    location_name: str = Field("", max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -467,6 +468,7 @@ class PostCreate(BaseModel):
 
 class PostUpdate(BaseModel):
     address: Optional[str] = Field(None, max_length=256)
+    location_name: Optional[str] = Field(None, max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -489,7 +491,7 @@ class PostUpdate(BaseModel):
 
     @model_validator(mode="after")
     def preserve_required_information(self):
-        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "min_players", "max_players", "status", "approval_required"):
+        for field in ("location_name", "title", "preferred_date", "preferred_start", "preferred_end", "min_players", "max_players", "status", "approval_required"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError("活动名称、时间和人数不可清空")
         if self.min_players is not None and self.max_players is not None and self.min_players > self.max_players:
@@ -511,6 +513,7 @@ class PostUpdate(BaseModel):
 
 class PostBrief(BaseModel):
     address: Optional[str] = Field(None, max_length=256)
+    location_name: str = Field("", max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)

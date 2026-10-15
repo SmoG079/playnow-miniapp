@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
 import AppShell from "../../components/AppShell.vue";
@@ -8,7 +8,17 @@ import { identityLabels } from "../../domain/my-activities";
 import { openPage } from "../../utils/navigation";
 const s = useSession();
 const identities = computed(() => identityLabels(s.user));
-onShow(() => s.fetchUser().catch(() => {}));
+const allowed = ref(false);
+onShow(() => {
+  allowed.value = false;
+  s.syncTokens();
+  if (!s.loggedIn) {
+    uni.redirectTo({ url: "/pages/common/login?redirect=" + encodeURIComponent("/pages/profile/index") });
+    return;
+  }
+  allowed.value = true;
+  s.fetchUser().catch(() => {});
+});
 const menus = computed(() => {
   const common = [
     ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
@@ -34,7 +44,7 @@ function logout() {
 }
 </script>
 <template>
-  <AppShell active="profile"
+  <AppShell v-if="allowed" active="profile"
     ><MainHeader title="我的" /><view class="content main-content"
       ><template v-if="s.loggedIn && s.user"
         ><view class="profile-header" @click="openPage('/pages/profile/edit')"
@@ -66,14 +76,6 @@ function logout() {
           ></view
         ></template
       ><view v-else-if="s.loggedIn" class="empty-state"><text class="muted">{{ s.loading ? "正在确认登录信息" : "登录信息暂不可用" }}</text><wd-button size="small" @click="s.fetchUser().catch(() => {})">重试</wd-button></view
-      ><view v-else class="empty-state"
-        ><wd-icon name="user" size="52px" color="#147553" /><text
-          class="section-title"
-          >登录后开启完整体验</text
-        ><text class="muted">报名、订场、发布活动与管理俱乐部</text
-        ><wd-button @click="openPage('/pages/common/login')"
-          >微信登录</wd-button
-        ></view
       ></view
     ></AppShell
   >

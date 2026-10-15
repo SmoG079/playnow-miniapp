@@ -1,7 +1,14 @@
 <script setup lang="ts">
+import { getCurrentInstance, onMounted } from "vue";
+import { onShow } from "@dcloudio/uni-app";
+import { syncCustomTabBarSelection } from "../utils/tabbar";
 import MainHeader from "./MainHeader.vue";
 import { isTimelinePreview } from "../utils/share";
-defineProps<{ active?: string; back?: boolean; title?: string; simpleHeader?: boolean; flush?: boolean }>();
+const props = defineProps<{ active?: string; back?: boolean; title?: string; simpleHeader?: boolean; flush?: boolean }>();
+const instance = getCurrentInstance();
+function syncTab() { syncCustomTabBarSelection(props.active, (instance?.proxy?.$root as any)?.$scope); }
+onShow(syncTab);
+onMounted(syncTab);
 </script>
 <template>
   <wd-config-provider>

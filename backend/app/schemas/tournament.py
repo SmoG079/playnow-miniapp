@@ -81,6 +81,7 @@ class TournamentCreate(BaseModel):
     cover_image: str | None = None
     prizes: list[TournamentPrize] = Field(default_factory=list, max_length=20)
     address: str = Field("", max_length=256)
+    location_name: str = Field("", max_length=256)
     contact_name: str = Field("", max_length=64)
     contact_phone: str = Field("", max_length=20)
     auto_title: bool = False

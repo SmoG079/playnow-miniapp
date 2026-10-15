@@ -51,7 +51,7 @@ def row_dict(row, names):
 def brief(t):
     data = row_dict(
         t,
-        "id club_id city latitude longitude title sport_type level_required start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
+        "id club_id city location_name latitude longitude title sport_type level_required start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
     )
     data["registration_deadline"] = t.registration_deadline or t.start_time
     data["registration_closed"] = t.registration_closed
@@ -345,7 +345,7 @@ async def apply_request(db, t, req):
         fields.pop("level_required", None)
     fields["city"] = city_name(req.city)
     if req.venue_id:
-        fields.update(city=v.city,latitude=v.latitude,longitude=v.longitude,address=v.address)
+        fields.update(city=v.city,latitude=v.latitude,longitude=v.longitude,address=v.address,location_name=v.name)
     for key, value in fields.items():
         setattr(t, key, value)
     if req.auto_title:
@@ -489,7 +489,7 @@ async def get_tournament(
     if t.venue_id:
         venue = await db.get(Venue, t.venue_id)
         if venue:
-            data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
+            data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
     data["auto_title"] = t.auto_title
     data["description_template"] = t.description
     local_start = t.start_time + timedelta(hours=8)

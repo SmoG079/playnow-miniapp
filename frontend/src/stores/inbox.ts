@@ -2,10 +2,12 @@ import {defineStore} from 'pinia';
 import {ref,computed} from 'vue';
 import {request} from '../services/api';
 import {useSession} from './session';
+import {syncCustomTabBarUnread} from '../utils/tabbar';
 export const useInbox=defineStore('inbox',()=>{
  const systemUnread=ref(0),directUnread=ref(0),total=computed(()=>systemUnread.value+directUnread.value);
  let active=false,loading=false,generation=0,timer:ReturnType<typeof setTimeout>|undefined;
  function badge(){
+  syncCustomTabBarUnread(total.value);
   const fail=()=>{};
   if(total.value)uni.setTabBarBadge?.({index:3,text:total.value>99?'99+':String(total.value),fail});
   else uni.removeTabBarBadge?.({index:3,fail});

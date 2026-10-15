@@ -17,7 +17,6 @@ export function returnToActivityForm(mode: string) {
   const pages = getCurrentPages();
   const index = pages.map(page => page.route).lastIndexOf(route);
   if (index >= 0 && index < pages.length - 1) return uni.navigateBack({ delta: pages.length - 1 - index });
-  if (mode === "post") return uni.switchTab({ url: "/" + route });
   return uni.redirectTo({ url: "/" + route });
 }
 

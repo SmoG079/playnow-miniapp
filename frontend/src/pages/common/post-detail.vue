@@ -3,6 +3,8 @@ import { registrationClosed } from "../../domain/activity-visibility";
 import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
 import { sharedActivityId } from "../../services/activity-sharing";
+import ActivityFacts from "../../components/ActivityFacts.vue";
+import { cardSchedule } from "../../domain/activity-card";
 import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
@@ -183,17 +185,7 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="detail-facts"
-          ><view class="fact"
-            ><view class="fact-icon"><wd-icon name="time-line" size="18px" /></view><view
-              ><text class="strong">{{ post.preferred_date }}</text
-              ><text class="muted"
-                >{{ post.preferred_start }}–{{ post.preferred_end }}</text
-              ></view
-            ></view
-          ><view class="fact" @click="openMeetingLocation"><view class="fact-icon"><wd-icon name="location" size="18px" /></view><view><text class="strong">{{ location.title }}</text><text v-if="location.address && location.address !== location.title" class="muted">{{ location.address }}</text><text v-if="location.latitude != null && location.longitude != null" class="muted">点击查看地图与导航</text></view></view
-          ></view
-        ><view class="row between section-head"
+        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
           ><text class="link" @click="showRegs = true"
             >{{ (post.registration_count || 0) + 1 }}/{{

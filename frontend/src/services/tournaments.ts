@@ -106,6 +106,7 @@ export interface Tournament {
   entry_fee: number;
   status: string;
   address: string;
+  location_name: string;
   images: string[];
   contact_name: string;
   contact_phone: string;
