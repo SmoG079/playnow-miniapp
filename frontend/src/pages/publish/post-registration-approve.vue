@@ -5,6 +5,9 @@ import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 const id = ref(0),
   post = ref<any>(null);
+const statusLabels: Record<string, string> = {
+  pending: "等待审核", approved: "已通过", rejected: "未通过", cancelled: "已取消",
+};
 async function load() {
   post.value = await request(`/posts/${id.value}`);
 }
@@ -29,20 +32,16 @@ async function review(r: any, status: string) {
         v-for="r in post?.registrations || []"
         :key="r.user_id"
         class="record-card"
-        ><view class="row gap8"
+        ><view class="registration-person"
           ><Photo
             round
             width="42px"
             height="42px"
             :src="r.user_avatar"
-            fallback="/static/tennis.jpg"
-          /><view
-            ><text class="strong">{{ r.user_nickname || "球友" }}</text
-            ><text class="muted small">{{
-              r.status === "pending" ? "等待审核" : r.status
-            }}</text></view
+          /><text class="registration-name strong">{{ r.user_nickname || "球友" }}</text
+          ><text class="registration-status" :class="'status-' + r.status">{{ statusLabels[r.status] }}</text
           ></view
-        ><view v-if="r.status === 'pending'" class="row gap8"
+        ><view v-if="r.status === 'pending'" class="registration-actions"
           ><wd-button size="small" @click="review(r, 'approved')"
             >通过</wd-button
           ><wd-button
@@ -58,3 +57,12 @@ async function review(r: any, status: string) {
         tip="暂无报名" /></view
   ></AppShell>
 </template>
+
+<style scoped>
+.registration-person{display:flex;align-items:center;justify-content:flex-start;gap:10px;text-align:left}
+.registration-name{flex:1;min-width:0;line-height:1.5;overflow-wrap:anywhere}
+.registration-status{flex-shrink:0;font-size:12px;color:#839087}
+.status-approved{color:#159660}
+.status-pending{color:#b27b21}
+.registration-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+</style>
