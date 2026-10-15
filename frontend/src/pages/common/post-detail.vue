@@ -12,6 +12,7 @@ import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 import { postLocation } from "../../domain/post-location";
+import { postParticipants } from "../../domain/post-participants";
 const s = useSession(),
   id = ref(""),
   post = ref<any>(null),
@@ -24,6 +25,7 @@ const s = useSession(),
   busy = ref(false),
   showRegs = ref(false);
 const location = computed(() => postLocation(post.value || {}));
+const participants = computed(() => post.value ? postParticipants(post.value) : []);
 const contacting = ref(false);
 async function contactOrganizer() {
   if(!s.requireLogin('/pages/common/post-detail?id='+id.value)||contacting.value)return;
@@ -187,13 +189,15 @@ function remove(c: any) {
         ><text class="page-title">{{ post.title }}</text
         ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
-          ><text class="link" @click="showRegs = true"
-            >{{ (post.registration_count || 0) + 1 }}/{{
-              post.max_players
-            }}
-            人</text
+          ><view class="participant-entry" role="button" aria-label="查看已报名列表" @click="showRegs = true"
+            ><text>报名表 {{ participants.length }}/{{ post.max_players }}</text><wd-icon name="arrow-right" size="16px" /></view
           ></view
-        ><view class="section-head"><text class="section-title">活动详情</text></view><view class="activity-description"><text class="body-copy">{{
+        ><view class="participant-preview">
+          <view v-for="person in participants.slice(0, 5)" :key="person.id" class="participant-thumb" role="button" :aria-label="person.nickname + '，查看已报名列表'" @click="showRegs = true">
+            <Photo round width="48px" height="48px" :src="person.avatar" />
+            <text class="participant-nickname">{{ person.nickname }}</text>
+          </view>
+        </view><view class="section-head"><text class="section-title">活动详情</text></view><view class="activity-description"><text class="body-copy">{{
           post.description || post.notes || "发起人暂未填写更多说明。"
         }}</text></view
         ><view class="organizer"
@@ -260,16 +264,17 @@ function remove(c: any) {
                   : "报名参加"
           }}</wd-button
         ></view></view
-      ><wd-popup v-model="showRegs" position="bottom"
-        ><view class="sheet"
-          ><text class="section-title">报名成员</text
-          ><wd-cell
-            v-for="r in post.registrations"
-            :key="r.user_id"
-            :title="r.user_nickname || '球友'"
-            :value="r.status === 'pending' ? '待审核' : r.status === 'approved' ? '已通过' : r.status === 'cancelled' ? '已取消' : '未通过'" /><wd-empty
-            v-if="!post.registrations?.length"
-            tip="还没有人报名" /></view></wd-popup></template
+      ><wd-popup v-model="showRegs" position="bottom" round closable safe-area-inset-bottom
+        ><view class="participant-sheet">
+          <text class="section-title">已报名（{{ participants.length }} 人）</text>
+          <scroll-view scroll-y class="participant-list" :style="{ height: `min(60vh, ${participants.length * 73}px)` }">
+            <view v-for="person in participants" :key="person.id" class="participant-row">
+              <Photo round width="44px" height="44px" :src="person.avatar" />
+              <text class="participant-fullname">{{ person.nickname }}</text>
+              <text class="participant-status" :class="{ 'is-organizer': person.organizer }">{{ person.organizer ? '发起人' : '已报名' }}</text>
+            </view>
+          </scroll-view>
+        </view></wd-popup></template
     ><view v-else-if="postFailed" class="content empty-state">
       <wd-icon name="info-circle" size="44px" color="#728178" />
       <text class="section-title">活动信息加载失败</text>
@@ -289,4 +294,16 @@ function remove(c: any) {
 <style scoped>
 .activity-description { background:#fff; border:1px solid #e5e8e5; border-radius:16px; padding:20px; margin-bottom:24px; }
 .activity-description .body-copy { white-space:pre-wrap; }
+.participant-entry{display:flex;align-items:center;gap:4px;color:#159660;font-size:14px;min-height:40px}
+.participant-preview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 26px}
+.participant-thumb{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+.participant-nickname{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:13px;color:#78867f;line-height:20px}
+.participant-sheet{padding:24px 20px 12px}
+.participant-sheet>.section-title{display:block;padding-right:28px;margin-bottom:16px}
+.participant-list{max-height:60vh}
+.participant-row{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #eef1ef}
+.participant-row:last-child{border-bottom:0}
+.participant-fullname{flex:1;min-width:0;font-size:15px;line-height:1.5;overflow-wrap:anywhere;white-space:normal}
+.participant-status{flex-shrink:0;font-size:12px;color:#839087}
+.participant-status.is-organizer{color:#159660;background:#edf8f1;padding:3px 8px;border-radius:12px}
 </style>
