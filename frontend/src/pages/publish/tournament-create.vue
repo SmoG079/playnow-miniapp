@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { normalizedPrizes, displayedPrizes, type Prize } from "../../domain/prizes";
+import { normalizedPrizes, type Prize } from "../../domain/prizes";
 import { reactive, ref, watch, computed, nextTick } from "vue";
 import { onLoad, onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
@@ -84,7 +84,7 @@ const form = reactive({
   max_participants: 16,
   description:
     "欢迎参加我们的网球比赛！\n时间：{{日期}} {{时间}}\n地点：{{地点}}",
-  prize: "",
+
   level_required: "",
   prizes: [] as Prize[],
   address: "",
@@ -123,7 +123,7 @@ onLoad(async (q) => {
   draftOwner = session.user?.id || "";
   const draft = readTournamentDraft(draftOwner, editId.value);
   if (draft) {
-    Object.assign(form, draft.form); form.prizes=displayedPrizes(draft.form.prizes,draft.form.prize); Object.assign(cfg, draft.config);
+    Object.assign(form, draft.form); Object.assign(cfg, draft.config);
     images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
     if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
     initialized = true;
@@ -154,7 +154,7 @@ onLoad(async (q) => {
     const start = localTime(t.start_time),
       end = localTime(t.end_time);
     Object.assign(form, {
-      prizes: displayedPrizes(t.prizes,t.prize),
+      prizes: t.prizes,
       level_required: t.level_required || "",
       title: t.title,
       auto_title: t.auto_title,
@@ -165,7 +165,7 @@ onLoad(async (q) => {
       entry_fee: String(t.entry_fee),
       max_participants: t.max_participants,
       description: t.description_template || t.description,
-      prize: t.prize || "",
+
       city: t.city || discovery.city,
       latitude: t.latitude ?? null, longitude: t.longitude ?? null,
       address: t.address || "",
@@ -249,7 +249,7 @@ function payload(previewOnly = false) {
     entry_fee: Number(form.entry_fee),
     max_participants: Number(form.max_participants),
     description: form.description,
-    prize: form.prize,
+
     prizes: normalizedPrizes(form.prizes),
     address: form.address,
     contact_name: form.contact_name,

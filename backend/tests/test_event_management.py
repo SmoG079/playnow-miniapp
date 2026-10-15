@@ -7,7 +7,7 @@ from app.schemas.schemas import PostCreate
 from app.schemas.tournament import TournamentCreate, ReasonCommand
 from tests.test_tournaments import db, event, register
 
-POST = dict(title="约球", preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", players_needed=2, price=0)
+POST = dict(title="约球", preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3, price=0)
 TOURNAMENT = dict(title="比赛", club_id=1, address="网球公园", max_participants=8, start_time="2026-11-01T09:00:00+08:00", end_time="2026-11-01T17:00:00+08:00")
 
 
@@ -53,7 +53,7 @@ async def test_comment_total_covers_all_pages_without_counting_replies(db):
     assert len(first.items) == 20 and len(second.items) == 3
     assert len({c.id for c in first.items + second.items}) == 23
 
-@pytest.mark.parametrize("schema,data,field", [(PostCreate,POST,f) for f in ("title","preferred_date","preferred_start","preferred_end","players_needed")]+[(TournamentCreate,TOURNAMENT,f) for f in ("title","start_time","end_time","max_participants","address")])
+@pytest.mark.parametrize("schema,data,field", [(PostCreate,POST,f) for f in ("title","preferred_date","preferred_start","preferred_end","max_players")]+[(TournamentCreate,TOURNAMENT,f) for f in ("title","start_time","end_time","max_participants","address")])
 @pytest.mark.parametrize("missing", [True, False])
 def test_missing_or_null_required_fields_rejected_before_database(schema, data, field, missing):
     payload = dict(data)
@@ -178,7 +178,7 @@ async def test_review_and_cancellation_cannot_reopen_closed_post(db):
     from app.schemas.schemas import RegisterPostRequest, ReviewRegistrationRequest
     owner=await db.get(User,2)
     participant=await db.get(User,3)
-    post=await posts.create_post(PostCreate(**dict(POST,players_needed=1)),owner,db)
+    post=await posts.create_post(PostCreate(**dict(POST,max_players=2)),owner,db)
     await posts.register_post(post.id,RegisterPostRequest(),participant,db)
     await posts.close_post(post.id,owner,db)
     with pytest.raises(HTTPException) as err:

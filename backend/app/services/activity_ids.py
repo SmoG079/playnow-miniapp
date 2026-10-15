@@ -1,5 +1,4 @@
 """One database sequence owns all public post and tournament identifiers."""
-from sqlalchemy import select
 from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from redis.exceptions import RedisError
@@ -29,13 +28,3 @@ async def allocate_activity(db, kind):
         if not 0 < activity.id <= 9007199254740991:
             raise RuntimeError("Activity sequence exceeded the client-safe integer range")
     return activity.id
-
-
-async def resolve_activity_id(db, ident, kind):
-    activity = await db.get(Activity, ident)
-    if activity and activity.kind == kind:
-        return ident
-    alias = await db.scalar(select(Activity.id).where(
-        Activity.kind == kind, Activity.legacy_id == ident,
-    ))
-    return alias if alias is not None else ident

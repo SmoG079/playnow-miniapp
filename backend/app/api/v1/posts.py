@@ -9,7 +9,7 @@ from sqlalchemy import select, func, case, delete, or_
 from math import radians, cos, sin, asin, sqrt
 from app.core.database import get_db
 from app.api.deps import get_optional_user, get_current_user, _v
-from app.services.activity_ids import allocate_activity, resolve_activity_id
+from app.services.activity_ids import allocate_activity
 from app.models.models import (
     User, Club, ClubMember, Venue, MatchPost, MatchRegistration, MatchPostStatus,
     RegistrationStatus, Notification, NotificationType, Comment, BookingOrder,
@@ -139,7 +139,7 @@ def discovery_items(rows,lat=None,lng=None):
             preferred_date=post.preferred_date,
             preferred_start=post.preferred_start,
             preferred_end=post.preferred_end,
-            players_needed=post.players_needed,
+            max_players=post.max_players, min_players=post.min_players,
             level_required=post.level_required,
             status=_v(post.status),
             approval_required=post.approval_required,
@@ -203,7 +203,7 @@ async def create_post(
         preferred_date=req.preferred_date,
         preferred_start=req.preferred_start,
         preferred_end=req.preferred_end,
-        players_needed=req.players_needed,
+        max_players=req.max_players, min_players=req.min_players,
         level_required=req.level_required,
         notes=req.notes,
         description=req.description,
@@ -232,7 +232,7 @@ async def create_post(
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
         preferred_end=post.preferred_end,
-        players_needed=post.players_needed,
+        max_players=post.max_players, min_players=post.min_players,
         level_required=post.level_required,
         status=_v(post.status),
         approval_required=post.approval_required,
@@ -254,7 +254,6 @@ async def update_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
@@ -286,13 +285,15 @@ async def update_post(
             update_data.update(city=venue.city, address=venue.address, latitude=venue.latitude, longitude=venue.longitude)
     approved = await db.scalar(select(func.count(MatchRegistration.id)).where(
         MatchRegistration.post_id == post.id, MatchRegistration.status == RegistrationStatus.approved)) or 0
-    capacity = update_data.get("players_needed", post.players_needed)
-    if capacity < approved:
+    capacity = update_data.get("max_players", post.max_players)
+    if update_data.get("min_players", post.min_players) > capacity:
+        raise HTTPException(422, "最低人数不能大于最大人数")
+    if capacity < approved + 1:
         raise HTTPException(422, "人数不能少于已通过报名人数")
     requested_status = update_data.get("status", _v(post.status))
     if _v(post.status) == "closed" and requested_status != "closed":
         raise HTTPException(409, "已关闭活动不能重新开放")
-    update_data["status"] = MatchPostStatus.closed if requested_status == "closed" else (MatchPostStatus.full if approved >= capacity else MatchPostStatus.open)
+    update_data["status"] = MatchPostStatus.closed if requested_status == "closed" else (MatchPostStatus.full if approved + 1 >= capacity else MatchPostStatus.open)
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -311,7 +312,7 @@ async def update_post(
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
         preferred_end=post.preferred_end,
-        players_needed=post.players_needed,
+        max_players=post.max_players, min_players=post.min_players,
         level_required=post.level_required,
         status=_v(post.status),
         approval_required=post.approval_required,
@@ -328,7 +329,6 @@ async def update_post(
 
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Optional[User] = Depends(get_optional_user)):
-    post_id = await resolve_activity_id(db, post_id, "post")
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
@@ -404,7 +404,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
         preferred_date=post.preferred_date,
         preferred_start=post.preferred_start,
         preferred_end=post.preferred_end,
-        players_needed=post.players_needed,
+        max_players=post.max_players, min_players=post.min_players,
         level_required=post.level_required,
         status=_v(post.status),
         approval_required=post.approval_required,
@@ -429,7 +429,6 @@ async def register_post(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
@@ -439,6 +438,9 @@ async def register_post(
     from app.services.activity_visibility import post_registration_closed
     if post_registration_closed(post):
         raise HTTPException(status_code=409, detail="约球报名已截止，请在我的活动查看已有记录")
+
+    if current_user.id == post.user_id:
+        raise HTTPException(409, "发起人已计入活动人数，无需重复报名")
 
     existing = await db.execute(
         select(MatchRegistration).where(
@@ -477,7 +479,7 @@ async def register_post(
             )
         )
         approved_count = approved_count_result.scalar() or 0
-        if approved_count >= post.players_needed:
+        if approved_count + 1 >= post.max_players:
             post.status = MatchPostStatus.full
 
     return {"msg": "ok"}
@@ -489,7 +491,6 @@ async def cancel_register(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     post = (await db.execute(select(MatchPost).where(MatchPost.id == post_id)
                             .with_for_update())).scalar_one_or_none()
     result = await db.execute(
@@ -508,7 +509,7 @@ async def cancel_register(
             MatchRegistration.post_id == post_id,
             MatchRegistration.status == RegistrationStatus.approved,
         )) or 0
-        if count < post.players_needed:
+        if count + 1 < post.max_players:
             post.status = MatchPostStatus.open
     return {"msg": "ok"}
 
@@ -521,7 +522,6 @@ async def review_registration(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     result = await db.execute(select(MatchPost).where(MatchPost.id == post_id).with_for_update())
     post = result.scalar_one_or_none()
     if not post:
@@ -551,7 +551,7 @@ async def review_registration(
             MatchRegistration.post_id == post_id,
             MatchRegistration.status == RegistrationStatus.approved,
         )) or 0
-        if _v(post.status) not in ("open", "full") or count >= post.players_needed:
+        if _v(post.status) not in ("open", "full") or count + 1 >= post.max_players:
             raise HTTPException(status_code=409, detail="活动已关闭或报名已满")
     reg.status = new_status
     reg.review_reason = req.reason
@@ -585,14 +585,14 @@ async def review_registration(
             )
         )
         approved_count = approved_count_result.scalar() or 0
-        if approved_count >= post.players_needed:
+        if approved_count + 1 >= post.max_players:
             post.status = MatchPostStatus.full
     elif _v(post.status) == "full":
         count = await db.scalar(select(func.count(MatchRegistration.id)).where(
             MatchRegistration.post_id == post_id,
             MatchRegistration.status == RegistrationStatus.approved,
         )) or 0
-        if count < post.players_needed:
+        if count + 1 < post.max_players:
             post.status = MatchPostStatus.open
 
     return {"msg": "ok"}
@@ -606,7 +606,6 @@ async def list_comments(
     db: AsyncSession = Depends(get_db),
 ):
     # Verify post exists
-    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     if not post_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Post not found")
@@ -661,7 +660,6 @@ async def create_comment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = post_result.scalar_one_or_none()
     if not post:
@@ -725,7 +723,6 @@ async def close_post(
     post_id: int, current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     post = (await db.execute(select(MatchPost).where(MatchPost.id == post_id)
                             .with_for_update())).scalar_one_or_none()
     if not post:
@@ -744,7 +741,6 @@ async def delete_comment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    post_id = await resolve_activity_id(db, post_id, "post")
     post_result = await db.execute(select(MatchPost).where(MatchPost.id == post_id))
     post = post_result.scalar_one_or_none()
     if not post:

@@ -165,7 +165,6 @@ class VenueTimeSlot(Base):
     date = Column(Date, nullable=False)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
-    price_override = Column(DECIMAL(10, 2))
     status = Column(Enum(SlotStatus), default=SlotStatus.available, nullable=False)
     locked_by = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     booking_order_id = Column(BigInteger, ForeignKey("booking_orders.id", name="fk_slot_booking_order", use_alter=True), nullable=True, index=True)
@@ -178,7 +177,6 @@ class VenueTimeSlot(Base):
     )
 
     venue = relationship("Venue", back_populates="time_slots")
-    bookings = relationship("BookingOrder", back_populates="slot", foreign_keys="BookingOrder.slot_id")
 
 
 class OrderStatus(str, enum.Enum):
@@ -208,8 +206,7 @@ class BookingOrder(Base):
     order_no = Column(String(32), nullable=False, unique=True, index=True)
     user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
     venue_id = Column(BigInteger, ForeignKey("venues.id"), nullable=True)
-    slot_id = Column(BigInteger, ForeignKey("venue_time_slots.id"), nullable=True)
-    slot_ids = Column(JSON, comment='选中的所有连续时段 ID 列表 [id1, id2, ...]')
+    slot_ids = Column(JSON, nullable=False, default=list, comment='选中的所有连续时段 ID 列表 [id1, id2, ...]')
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True, index=True)
     amount = Column(DECIMAL(10, 2), nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.pending, index=True, nullable=False)
@@ -228,7 +225,6 @@ class BookingOrder(Base):
 
     user = relationship("User", back_populates="bookings")
     venue = relationship("Venue", back_populates="bookings")
-    slot = relationship("VenueTimeSlot", back_populates="bookings", foreign_keys=[slot_id])
     club = relationship("Club", back_populates="bookings")
     settlement = relationship("SettlementRecord", back_populates="order", uselist=False)
     refund_records = relationship("RefundRecord", back_populates="order")
@@ -282,11 +278,9 @@ class Activity(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), nullable=False)
-    legacy_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     __table_args__ = (
         UniqueConstraint("id", "kind", name="uq_activity_id_kind"),
-        UniqueConstraint("kind", "legacy_id", name="uq_activity_legacy"),
         CheckConstraint("kind IN ('post', 'tournament')", name="ck_activity_kind"),
         {"sqlite_autoincrement": True},
     )
@@ -314,7 +308,8 @@ class MatchPost(Base):
     preferred_date = Column(Date, index=True)
     preferred_start = Column(Time)
     preferred_end = Column(Time)
-    players_needed = Column(Integer, default=1)
+    max_players = Column(Integer, nullable=False, default=2, server_default="2")
+    min_players = Column(Integer, nullable=False, default=2, server_default="2")
     price = Column(DECIMAL(10, 2), nullable=True, comment='人均费用')
     level_required = Column(String(32))
     notes = Column(Text)
@@ -412,8 +407,7 @@ class Tournament(Base):
     max_participants = Column(Integer)
     current_participants = Column(Integer, default=0, nullable=False)
     entry_fee = Column(DECIMAL(10, 2), default=0, nullable=False)
-    prize = Column(String(256))
-    prizes = Column(JSON, nullable=True)
+    prizes = Column(JSON, nullable=False, default=list)
     level_required = Column(String(32), nullable=True)
     images = Column(JSON)
     cover_image = Column(String(512))
@@ -617,12 +611,6 @@ class TournamentAudit(Base):
     action = Column(String(32), nullable=False)
     detail = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class UserIDMigration(Base):
-    __tablename__ = "user_id_migrations"
-    legacy_id = Column(BigInteger, primary_key=True, autoincrement=False)
-    openid = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
 
 
 class DirectConversation(Base):

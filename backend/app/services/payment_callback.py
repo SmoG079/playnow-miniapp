@@ -86,7 +86,7 @@ async def _handle_payment_success(data: dict, db: AsyncSession):
         db.add(notif)
     else:
         slots = await locked_order_slots(db, order)
-        expected_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        expected_ids = order.slot_ids
         expired = order.created_at is None or datetime.utcnow() >= order.created_at + timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS)
         anomaly = was_cancelled or expired or not slots or {slot.id for slot in slots} != set(expected_ids)
         anomaly = anomaly or any(slot.booking_order_id != order.id or _v(slot.status) != "locked"

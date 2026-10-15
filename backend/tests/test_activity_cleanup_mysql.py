@@ -24,8 +24,8 @@ def test_cleanup_keeps_valid_records_financial_orders_and_global_numbers():
             u=User(openid='cleanup-'+secrets.token_hex(8));c=Club(name='清理测试');db.add_all([u,c]);db.flush();uid,cid=u.id,c.id
             for kind in ('post','post','tournament','tournament'):
                 a=Activity(kind=kind);db.add(a);db.flush();ids.append(a.id)
-            db.add(MatchPost(id=ids[0],user_id=uid,title='缺时间',players_needed=2,price=0))
-            db.add(MatchPost(id=ids[1],user_id=uid,title='完整',players_needed=2,price=0,preferred_date=datetime.utcnow().date(),preferred_start=datetime.strptime('09:00','%H:%M').time(),preferred_end=datetime.strptime('11:00','%H:%M').time()))
+            db.add(MatchPost(id=ids[0],user_id=uid,title='缺时间',max_players=3,price=0))
+            db.add(MatchPost(id=ids[1],user_id=uid,title='完整',max_players=3,price=0,preferred_date=datetime.utcnow().date(),preferred_start=datetime.strptime('09:00','%H:%M').time(),preferred_end=datetime.strptime('11:00','%H:%M').time()))
             for ident in ids[2:]: db.add(Tournament(id=ident,club_id=cid,title='缺地点',start_time=datetime.utcnow(),end_time=datetime.utcnow()+timedelta(hours=1),max_participants=8))
             db.flush()
             order=BookingOrder(order_no='cleanup-'+secrets.token_hex(8),user_id=uid,club_id=cid,tournament_id=ids[3],business_type='tournament',amount=0,status=OrderStatus.pending)

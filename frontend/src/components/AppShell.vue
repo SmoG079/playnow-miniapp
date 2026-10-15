@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import MainHeader from "./MainHeader.vue";
+import { isTimelinePreview } from "../utils/share";
 defineProps<{ active?: string; back?: boolean; title?: string; simpleHeader?: boolean; flush?: boolean }>();
 </script>
 <template>
   <wd-config-provider>
     <view class="app-shell" :class="{'app-shell-flush':flush}">
-      <MainHeader v-if="back" :title="title || '详情'" back :context="false" />
+      <MainHeader v-if="back" :title="title || '详情'" :back="!isTimelinePreview()" :context="false" />
       <slot />
       <wd-toast />
       <wd-dialog />

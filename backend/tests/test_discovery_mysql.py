@@ -35,7 +35,7 @@ async def test_real_city_distance_date_and_type_pagination(monkeypatch):
             db.add_all([owner,host]);await db.flush();uid,cid=owner.id,host.id
             for place,day,lat,lng in [(city,'2030-11-01',32.4,119.4),(city,'2030-12-01',32.9,119.9),(other_city,'2030-10-01',32.4,119.4)]:
                 p=await posts.create_post(PostCreate(city=place,latitude=lat,longitude=lng,title=place,preferred_date=day,
-                    preferred_start='09:00',preferred_end='11:00',players_needed=2,price=0),owner,db)
+                    preferred_start='09:00',preferred_end='11:00',max_players=3,price=0),owner,db)
                 ids.append(p.id)
             start=datetime(2030,11,1,16,30)
             t=await tournaments.create_tournament(TournamentCreate(city=city,club_id=cid,title='跨日比赛',address='网球场',start_time=start,

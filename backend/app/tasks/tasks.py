@@ -81,14 +81,11 @@ async def _cleanup_old_slots_impl():
         ids = [r[0] for r in result.all()]
         if not ids:
             return 0
-        # JSON slot_ids has no foreign key: protect every slot in historical
-        # orders, including cancelled orders and legacy single-slot bookings.
+        # Preserve every referenced order slot, including cancelled orders.
         referenced = set()
-        orders = await session.stream(select(BookingOrder.slot_id, BookingOrder.slot_ids))
-        async for slot_id, slot_ids in orders:
-            if slot_id is not None:
-                referenced.add(slot_id)
-            referenced.update(slot_ids or [])
+        orders = await session.stream(select(BookingOrder.slot_ids))
+        async for (slot_ids,) in orders:
+            referenced.update(slot_ids)
         from app.models.models import BookingSlot
         detail_ids = await session.stream(select(BookingSlot.slot_id))
         async for row in detail_ids:

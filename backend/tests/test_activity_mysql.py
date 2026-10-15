@@ -48,7 +48,7 @@ async def test_shared_sequence_under_real_mysql_and_redis(monkeypatch):
                 user = await db.get(User, user_id)
                 await barrier.wait()
                 if index % 2:
-                    row = await posts.create_post(PostCreate(title="并发约球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", players_needed=2), user, db)
+                    row = await posts.create_post(PostCreate(title="并发约球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3), user, db)
                     ident = row.id
                 else:
                     row = await tournaments.create_tournament(TournamentCreate(

@@ -159,15 +159,14 @@ async def private_document(filename: str, user=Depends(get_current_user), db: As
     return Response(content, media_type=record.content_type, headers={"Cache-Control":"private, no-store"})
 
 
-# Serve legacy uploaded files. 2026-10-07 起新上传走 COS，此挂载仅为兼容
-# 数据库中已存在的 /uploads/<uuid> 历史链接（storage.py 未配置 COS 时也复用它）。
+# Serve the active local-storage backend when COS is not configured.
 from fastapi.staticfiles import StaticFiles
 
 os.makedirs(storage.LOCAL_DIR, exist_ok=True)
-class LegacyStaticFiles(StaticFiles):
+class UploadStaticFiles(StaticFiles):
     async def get_response(self, path, scope):
         if path.split("/", 1)[0] == "doc":
             raise HTTPException(404, "认证材料需迁移到私有存储")
         return await super().get_response(path, scope)
 
-app.mount("/uploads", LegacyStaticFiles(directory=storage.LOCAL_DIR), name="uploads")
+app.mount("/uploads", UploadStaticFiles(directory=storage.LOCAL_DIR), name="uploads")

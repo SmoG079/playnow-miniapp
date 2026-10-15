@@ -62,7 +62,6 @@ class Settings(BaseSettings):
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
     PREPAY_ID_TTL_SECONDS: int = 300
-    FREE_CANCEL_HOURS: int = 1  # Legacy setting; booking policy is fixed at one hour.
 
     # Settlement / profit-sharing
     # 自动分账执行总开关。平台用自有商户号直接收款时为 false —— 此时

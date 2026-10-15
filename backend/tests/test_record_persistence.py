@@ -46,7 +46,7 @@ async def test_daily_slots_use_club_hours_half_hours_and_preserve_existing_inter
 
 
 @pytest.mark.asyncio
-async def test_cleanup_keeps_legacy_and_all_json_order_slots(db, monkeypatch):
+async def test_cleanup_keeps_all_order_slot_intents(db, monkeypatch):
     from datetime import timedelta
     from zoneinfo import ZoneInfo
     from app.models.models import VenueTimeSlot, BookingOrder
@@ -57,10 +57,10 @@ async def test_cleanup_keeps_legacy_and_all_json_order_slots(db, monkeypatch):
         db.add(VenueTimeSlot(id=ident, venue_id=1, date=old, start_time=time(ident), end_time=time(ident, 30)))
     await db.flush()
     legacy = await db.get(BookingOrder, 1)
-    legacy.slot_id = 1
+    legacy.slot_ids = [1]
     legacy.status = "cancelled"
     db.add(BookingOrder(order_no="review-multi", user_id="1", venue_id=1, club_id=1,
-                        slot_id=2, slot_ids=[2, 3], amount=100, status="cancelled"))
+                         slot_ids=[2, 3], amount=100, status="cancelled"))
     (await db.get(VenueTimeSlot, 5)).status = "booked"
     await db.commit()
     monkeypatch.setattr(tasks, "async_session_factory", async_sessionmaker(db.bind, expire_on_commit=False))
@@ -132,7 +132,7 @@ async def test_cancel_keeps_record_reopens_capacity_and_can_register_again(db):
     user = await db.get(User, 1)
     db.add(Activity(id=1, kind="post"))
     await db.flush()
-    db.add(MatchPost(id=1, user_id='2', title="约球", price=0, players_needed=1, preferred_date=datetime.utcnow().date()+timedelta(days=2), preferred_start=time(9), preferred_end=time(11)))
+    db.add(MatchPost(id=1, user_id='2', title="约球", price=0, max_players=2, preferred_date=datetime.utcnow().date()+timedelta(days=2), preferred_start=time(9), preferred_end=time(11)))
     await db.flush()
     await posts.register_post(1, RegisterPostRequest(message="报名"), user, db)
     assert (await db.get(MatchPost, 1)).status == MatchPostStatus.full

@@ -18,7 +18,7 @@ async def inbox(db,uid='1',scope='todo',kind='all',page=1,size=20):
     return await api.list_applications(scope,kind,page,size,await db.get(User,uid),db)
 async def pending_post(db):
     db.add(Activity(id=100,kind='post'));await db.flush()
-    db.add(MatchPost(id=100,user_id='2',title='约球申请',players_needed=1,approval_required=True));await db.flush()
+    db.add(MatchPost(id=100,user_id='2',title='约球申请',max_players=2,approval_required=True));await db.flush()
     r=MatchRegistration(post_id=100,user_id='3',message='请审核');db.add(r);await db.flush();return r
 
 @pytest.mark.asyncio

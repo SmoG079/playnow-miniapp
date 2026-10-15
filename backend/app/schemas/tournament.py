@@ -79,8 +79,7 @@ class TournamentCreate(BaseModel):
     entry_fee: Decimal = Field(Decimal("0"), ge=0, max_digits=10, decimal_places=2)
     images: list[str] = Field(default_factory=list, max_length=6)
     cover_image: str | None = None
-    prize: str | None = Field(None, max_length=256)
-    prizes: list[TournamentPrize] | None = Field(None, max_length=20)
+    prizes: list[TournamentPrize] = Field(default_factory=list, max_length=20)
     address: str = Field("", max_length=256)
     contact_name: str = Field("", max_length=64)
     contact_phone: str = Field("", max_length=20)

@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "../config";
 import { SESSION_CONTEXT_KEY, sessionContext } from "./session-context";
 import { assertWeChatAppId } from "./wechat-login";
+import { isTimelinePreview } from "../utils/share";
 
 export interface PageResult<T> {
   items: T[];
@@ -148,7 +149,8 @@ export async function request<T = any>(
   url: string,
   options: { method?: Method; data?: any; skipAuth?: boolean; preservePage?: boolean } = {},
 ): Promise<T> {
-  return authenticated(() => rawRequest<T>(url, options.method || "GET", options.data || {}, !!options.skipAuth), !!options.skipAuth, !!options.preservePage);
+  const skipAuth = !!options.skipAuth || isTimelinePreview();
+  return authenticated(() => rawRequest<T>(url, options.method || "GET", options.data || {}, skipAuth), skipAuth, !!options.preservePage);
 }
 
 export async function listAll<T = any>(url: string): Promise<T[]> {

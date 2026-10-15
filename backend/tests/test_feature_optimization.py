@@ -155,10 +155,9 @@ def test_optional_structured_prizes_and_validation():
 
 
 @pytest.mark.asyncio
-async def test_prize_persistence_empty_does_not_revive_legacy(db):
+async def test_structured_prize_persistence_and_clear(db):
     tid,admin=await event(db)
     t=await db.get(Tournament,tid)
-    t.prize='历史奖项'
     t.prizes=[dict(name='冠军',description='奖杯\n奖金')]
     await db.flush()
     assert (await api.get_tournament(tid,None,db))['prizes'][0]['description']=='奖杯\n奖金'
@@ -168,11 +167,11 @@ async def test_prize_persistence_empty_does_not_revive_legacy(db):
 
 
 @pytest.mark.parametrize('count',[3,4,5,6])
-def test_legacy_round_robin_seats_recover_actual_draw_order(count):
+def test_new_round_robin_persists_actual_draw_order(count):
     from app.services import tournament_engine as engine
     ids=list(range(count,0,-1))
     matches=engine.round_robin(ids,1)
-    positions=adj.seats([dict(id=i,group_no=1) for i in sorted(ids)],matches,{})
+    positions=adj.initial_positions([ids],matches)
     assert [s['team_id'] for s in positions]==ids
     rebuilt=adj.rebuild(matches,positions,{i:i for i in ids},False)
     assert [(m['team_a_id'],m['team_b_id']) for m in rebuilt]==[(m['team_a_id'],m['team_b_id']) for m in matches]
@@ -218,13 +217,13 @@ async def test_reopen_refuses_deadline_and_other_users(db):
 
 
 @pytest.mark.asyncio
-async def test_legacy_update_without_prizes_preserves_structured_awards(db):
+async def test_full_update_without_prizes_clears_awards(db):
     tid,admin=await event(db,4)
     t=await db.get(Tournament,tid)
     t.prizes=[dict(name='冠军',description='奖杯\n奖金')]
     req=TournamentCreate(club_id=t.club_id,title=t.title,address=t.address,start_time=t.start_time,end_time=t.end_time,
         max_participants=4)
     await api.apply_request(db,t,req)
-    assert t.prizes==[dict(name='冠军',description='奖杯\n奖金')]
+    assert t.prizes==[]
     await api.apply_request(db,t,req.model_copy(update={'prizes':[]}))
     assert t.prizes==[]

@@ -357,16 +357,12 @@ class BookingCreateRequest(BaseModel):
     model_config = {"extra": "forbid"}
     slot_ids: list[int] = Field(min_length=2, max_length=48)
 
-    def resolved_slot_ids(self) -> list[int]:
-        return self.slot_ids
-
 class BookingDetail(BaseModel):
     id: int
     order_no: str
     user_id: PublicUserID
     venue_id: int
-    slot_id: int
-    slot_ids: Optional[list[int]] = None
+    slot_ids: list[int]
     club_id: int
     amount: Decimal
     status: str
@@ -435,7 +431,8 @@ class PostCreate(BaseModel):
     preferred_date: date
     preferred_start: time
     preferred_end: time
-    players_needed: int = Field(..., ge=1)
+    min_players: int = Field(default=2, ge=2)
+    max_players: int = Field(..., ge=2)
     price: Decimal = Field(..., ge=Decimal("0.00"))
     level_required: Optional[str] = None
     notes: Optional[str] = None
@@ -448,6 +445,8 @@ class PostCreate(BaseModel):
 
     @model_validator(mode="after")
     def required_information(self):
+        if self.min_players > self.max_players:
+            raise ValueError("最低人数不能大于最大人数")
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("活动地点经纬度须同时填写")
         self.title = self.title.strip()
@@ -476,7 +475,8 @@ class PostUpdate(BaseModel):
     preferred_date: Optional[date] = None
     preferred_start: Optional[time] = None
     preferred_end: Optional[time] = None
-    players_needed: Optional[int] = Field(default=None, ge=1)
+    min_players: Optional[int] = Field(default=None, ge=2)
+    max_players: Optional[int] = Field(default=None, ge=2)
     price: Optional[Decimal] = Field(None, ge=0)
     status: Optional[Literal["open", "closed", "full"]] = None
     level_required: Optional[str] = None
@@ -489,9 +489,11 @@ class PostUpdate(BaseModel):
 
     @model_validator(mode="after")
     def preserve_required_information(self):
-        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "players_needed", "status", "approval_required"):
+        for field in ("title", "preferred_date", "preferred_start", "preferred_end", "min_players", "max_players", "status", "approval_required"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError("活动名称、时间和人数不可清空")
+        if self.min_players is not None and self.max_players is not None and self.min_players > self.max_players:
+            raise ValueError("最低人数不能大于最大人数")
         if self.title is not None:
             self.title = self.title.strip()
             if not self.title:
@@ -526,7 +528,8 @@ class PostBrief(BaseModel):
     preferred_date: Optional[date]
     preferred_start: Optional[time]
     preferred_end: Optional[time]
-    players_needed: int
+    min_players: int
+    max_players: int
     price: Optional[DecimalAsFloat] = None
     level_required: Optional[str]
     status: str
@@ -631,82 +634,6 @@ class CommentBrief(BaseModel):
     class Config:
         from_attributes = True
 
-
-# ── Tournament ──
-
-class TournamentCreate(BaseModel):
-    club_id: Optional[int] = None
-    title: str = Field(..., min_length=1, max_length=256)
-    description: Optional[str] = None
-    sport_type: Optional[str] = None
-    start_time: datetime
-    end_time: datetime
-    venue_id: Optional[int] = None
-    lock_venue: bool = False
-    max_participants: Optional[int] = None
-    entry_fee: Decimal = Decimal("0")
-    images: Optional[list[str]] = None
-    cover_image: Optional[str] = None
-    prize: Optional[str] = None
-
-class TournamentUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    sport_type: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    venue_id: Optional[int] = None
-    lock_venue: Optional[bool] = None
-    max_participants: Optional[int] = None
-    entry_fee: Optional[Decimal] = None
-    cover_image: Optional[str] = None
-    status: Optional[str] = None
-    prize: Optional[str] = None
-
-class TournamentBrief(BaseModel):
-    id: int
-    club_id: int
-    title: str
-    sport_type: Optional[str]
-    start_time: datetime
-    end_time: datetime
-    venue_id: Optional[int]
-    entry_fee: Decimal
-    max_participants: Optional[int]
-    current_participants: int
-    cover_image: Optional[str]
-    status: str
-    created_at: datetime
-    club_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-class TournamentDetail(TournamentBrief):
-    description: Optional[str]
-    prize: Optional[str] = None
-    lock_venue: bool
-    registrations: list["TournamentRegBrief"] = []
-
-    class Config:
-        from_attributes = True
-
-class TournamentRegBrief(BaseModel):
-    id: int
-    user_id: PublicUserID
-    status: str
-    user_nickname: Optional[str] = None
-    user_avatar: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-class TournamentListParams(BaseModel):
-    club_id: Optional[int] = None
-    sport: Optional[str] = None
-    status: Optional[str] = None
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=20, ge=1, le=50)
 
 
 # ── Settlement ──

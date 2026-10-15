@@ -1,9 +1,8 @@
 import {describe,it,expect} from 'vitest';
-import {normalizedPrizes,displayedPrizes} from '../src/domain/prizes';
+import {normalizedPrizes} from '../src/domain/prizes';
 import {swapSeats,seatError} from '../src/domain/draw-adjustment';
 describe('optional prizes',()=>{
   it('preserves newlines and removes empty rows',()=>expect(normalizedPrizes([{name:' ',description:''},{name:' 冠军 ',description:'奖杯\n奖金'}])).toEqual([{name:'冠军',description:'奖杯\n奖金'}]));
-  it('uses legacy only when structured data absent',()=>{expect(displayedPrizes(null,'旧奖项')).toHaveLength(1);expect(displayedPrizes([],'旧奖项')).toEqual([]);});
 });
 describe('draw seat exchanges',()=>{
   const seats=[{group_no:1,position:0,team_id:1},{group_no:1,position:1,team_id:2},{group_no:2,position:0,team_id:3},{group_no:2,position:1,team_id:4}];
@@ -15,8 +14,8 @@ describe('draw seat exchanges',()=>{
 import {drawBlockReason} from '../src/domain/draw-readiness';
 import type {Tournament} from '../src/services/tournaments';
 describe('draw eligibility',()=>{
-  const fixture={config:{discipline:'singles',group_count:1},registrations:[{status:'confirmed',admission:'active',approval:'approved',payment:'none'}]} as Tournament;
-  it('blocks a single eligible participant',()=>expect(drawBlockReason(fixture)).toContain('当前 1 名'));
+  const fixture={config:{discipline:'singles',group_count:1},draw_block_reason:'至少需要 2 名符合抽签条件的选手，当前 1 名',registrations:[{status:'confirmed',admission:'active',approval:'approved',payment:'none'}]} as Tournament;
+  it('uses the server eligibility decision',()=>expect(drawBlockReason(fixture)).toContain('当前 1 名'));
   it('prefers server pairing validation',()=>expect(drawBlockReason({...fixture,draw_block_reason:'第1组尚有未配对人员'})).toContain('未配对'));
   it('does not evaluate initial roster in knockout stage',()=>expect(drawBlockReason({...fixture,draw_stage:'knockout'})).toBe(''));
 });

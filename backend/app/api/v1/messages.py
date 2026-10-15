@@ -13,7 +13,6 @@ from app.core.database import get_db
 from app.core.rate_limit import check_rate_limit
 from app.core.logger import get_logger
 from app.models.models import User,MatchPost,DirectConversation,DirectMessage
-from app.services.activity_ids import resolve_activity_id
 router=APIRouter(prefix='/messages',tags=['messages'])
 logger=get_logger(__name__)
 
@@ -54,7 +53,7 @@ def message_data(m,user):
 
 @router.post('/conversations')
 async def contact(req:ContactPost,user:User=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
-    post=await db.get(MatchPost,await resolve_activity_id(db,req.post_id,'post'))
+    post=await db.get(MatchPost,req.post_id)
     if not post:raise HTTPException(404,'约球活动不存在')
     if post.user_id==user.id:raise HTTPException(409,'不能给自己发私信')
     pair=sorted([user.id,post.user_id])

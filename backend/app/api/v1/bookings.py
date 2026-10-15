@@ -63,10 +63,7 @@ async def create_booking(
         window_seconds=60,
     )
 
-    try:
-        slot_ids = req.resolved_slot_ids()
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    slot_ids = req.slot_ids
 
     if not slot_ids:
         raise HTTPException(status_code=422, detail="slot_ids is required")
@@ -164,7 +161,6 @@ async def create_booking(
             order_no=order_no,
             user_id=current_user.id,
             venue_id=venue.id,
-            slot_id=first_slot.id,
             slot_ids=slot_ids,
             club_id=venue.club_id,
             amount=total_price,
@@ -191,7 +187,6 @@ async def create_booking(
         order_no=order.order_no,
         user_id=order.user_id,
         venue_id=order.venue_id,
-        slot_id=order.slot_id,
         slot_ids=order.slot_ids,
         club_id=order.club_id,
         amount=order.amount,
@@ -241,7 +236,7 @@ async def get_booking(
     order, venue, club = row
 
     # Load all slots for the booking to compute the full time range
-    slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+    slot_ids = order.slot_ids
     slots_result = await db.execute(
         select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
     )
@@ -272,7 +267,6 @@ async def get_booking(
         order_no=order.order_no,
         user_id=order.user_id,
         venue_id=order.venue_id,
-        slot_id=order.slot_id,
         slot_ids=order.slot_ids,
         club_id=order.club_id,
         amount=order.amount,
@@ -361,7 +355,7 @@ async def pay_booking(
 
     slots = await locked_order_slots(db, order)
     now = _utc_now()
-    expected_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+    expected_ids = order.slot_ids
     if not slots or {slot.id for slot in slots} != set(expected_ids) or order.created_at is None or now >= order.created_at + timedelta(seconds=settings.BOOKING_LOCK_TTL_SECONDS):
         raise HTTPException(409, "订单锁定已过期，请重新预订")
     for slot in slots:
@@ -940,7 +934,7 @@ async def club_orders(
     for row in rows:
         order, venue_name = row
         # Load all slots for this booking to show the full consecutive range
-        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        slot_ids = order.slot_ids
         slots_result = await db.execute(
             select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
         )
@@ -953,7 +947,7 @@ async def club_orders(
         slot_datetime = datetime.combine(slot_date, slot_start).replace(tzinfo=ZoneInfo("Asia/Shanghai")).isoformat() if first_slot else None
         items.append(BookingDetail(
             id=order.id, order_no=order.order_no, user_id=order.user_id,
-            venue_id=order.venue_id, slot_id=order.slot_id, slot_ids=order.slot_ids,
+            venue_id=order.venue_id, slot_ids=order.slot_ids,
             club_id=order.club_id,
             amount=order.amount, status=_v(order.status), payment_time=order.payment_time,
             wx_transaction_id=order.wx_transaction_id, prepay_id=order.prepay_id,

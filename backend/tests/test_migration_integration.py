@@ -55,7 +55,7 @@ def data_hash(connection, columns=None):
             if key in ("users", "user_ids"): return [user_ids.get(v,v) for v in value]
             return [restore_user_json(v) for v in value]
         return value
-    if "activities" in tables:
+    if "activities" in tables and "legacy_id" in {c["name"] for c in sa.inspect(connection).get_columns("activities")}:
         for row in connection.execute(sa.text("SELECT id, kind, legacy_id FROM activities WHERE legacy_id IS NOT NULL")).mappings():
             aliases[row["kind"]][row["id"]] = row["legacy_id"]
     for name in sa.inspect(connection).get_table_names():
@@ -159,11 +159,12 @@ class MigrationIntegrationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             with engine.connect() as connection:
                 self.assertEqual(before, data_hash(connection, columns))
-                self.assert_model_schema(connection)
                 extra = {c["name"] for c in sa.inspect(connection).get_columns("venues")}
                 self.assertTrue({"open_time", "close_time", "opening_time", "closing_time", "slot_interval_minutes"}.issubset(extra))
             result = run_cli(engine, "-m", "alembic", "upgrade", "head")
             self.assertEqual(result.returncode, 0, result.stderr)
+            with engine.connect() as connection:
+                self.assert_model_schema(connection)
         finally:
             engine.dispose()
 

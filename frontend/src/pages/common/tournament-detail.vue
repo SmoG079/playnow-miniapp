@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { cardState } from "../../domain/activity-card";
 import { drawBlockReason } from "../../domain/draw-readiness";
-import { displayedPrizes } from "../../domain/prizes";
 import { computed, reactive, ref } from "vue";
 import {
   onLoad,
@@ -9,7 +8,10 @@ import {
   onHide,
   onUnload,
   onShareAppMessage,
+  onShareTimeline,
 } from "@dcloudio/uni-app";
+import ActivityShare from "../../components/ActivityShare.vue";
+import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
 import TournamentDrawEditor from "../../components/TournamentDrawEditor.vue";
 import TournamentBracket from "../../components/TournamentBracket.vue";
@@ -47,7 +49,7 @@ const s = useSession(),
   historyVersion = ref(0),
   history = ref<any>(null),
   mineOnly = ref(false);
-const visibleParticipants = computed(() => (t.value?.participants || t.value?.registrations || []).filter(r=>["registered","confirmed"].includes(r.status) && !["cancelled","expired","rejected"].includes(r.admission||"")));
+const visibleParticipants = computed(() => (t.value?.participants || []).filter(r=>["registered","confirmed"].includes(r.status) && !["cancelled","expired","rejected"].includes(r.admission||"")));
 const participantTeams = computed(() => (viewData.value?.teams || []).map((team:any)=>({...team,user_ids:(team.user_ids||[]).filter((uid:string)=>visibleParticipants.value.some(r=>r.user_id===uid))})).filter((team:any)=>team.user_ids.length));
 const showCancelledRecords = ref(false);
 const cancelledRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>r.status==="cancelled" || r.admission==="cancelled"));
@@ -162,6 +164,7 @@ async function load() {
 }
 onLoad((q) => {
   id.value = Number(q?.id);
+  enableActivitySharing();
   invite.value = String(q?.invite || "");
   void s.fetchUser().catch(() => {});
 });
@@ -224,12 +227,12 @@ async function changeGroup(group: number) {
   await run("group", { requested_group: group });
 }
 
-onShareAppMessage(() => ({
-  title: mine.value?.invite_token
-    ? `邀请你成为「${t.value?.title}」的搭档`
-    : t.value?.title || "网球比赛",
-  path: `/pages/common/tournament-detail?id=${id.value}${mine.value?.invite_token ? "&invite=" + mine.value.invite_token : ""}`,
-}));
+onShareAppMessage((event) => activityShare("tournament", id.value, t.value?.title, t.value?.cover_image,
+  event.from === "button" && event.target?.dataset?.shareKind === "partner" ? mine.value?.invite_token || undefined : undefined));
+onShareTimeline(() => {
+  const { title, query, imageUrl } = activityShare("tournament", id.value, t.value?.title, t.value?.cover_image);
+  return { title, query, imageUrl };
+});
 function name(ident?: number | null) {
   return teamName(
     viewData.value?.teams?.length
@@ -488,7 +491,7 @@ function tie() {
       />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
-        ><text class="tag">{{ cardState(t, null, "tournament").label }}</text
+        ><ActivityShare /><text class="tag">{{ cardState(t, null, "tournament").label }}</text
         ><text class="tag">{{
           cfg
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
@@ -539,9 +542,9 @@ function tie() {
           ><wd-tab title="介绍" name="intro">
             <view class="pane intro-pane">
               <view class="intro-section"><text class="intro-heading">赛事介绍</text><text class="intro-copy">{{ t.description || '欢迎报名参加本次赛事' }}</text></view>
-              <view v-if="displayedPrizes(t.prizes,t.prize).length" class="intro-section prizes-section">
+              <view v-if="t.prizes.length" class="intro-section prizes-section">
                 <text class="intro-heading">奖项设置</text>
-                <view v-for="(prize,i) in displayedPrizes(t.prizes,t.prize)" :key="i" class="prize-row">
+                <view v-for="(prize,i) in t.prizes" :key="i" class="prize-row">
                   <view class="prize-name"><wd-icon name="trophy" size="16px" color="#0787c8" /><text>{{ prize.name }}</text></view>
                   <text v-if="prize.description" class="prize-description">{{ prize.description }}</text>
                 </view>
@@ -742,6 +745,7 @@ function tie() {
               ><button
                 v-if="mine.invite_token"
                 open-type="share"
+                data-share-kind="partner"
                 class="share-button"
               >
                 分享搭档邀请
@@ -954,7 +958,7 @@ function tie() {
         </view> </view
       ><view class="fixed-action"
         ><text class="price large">¥{{ t.entry_fee || 0 }}/人</text
-        ><wd-button
+        ><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="
             !canJoin ||
             (!t.can_register && s.loggedIn) ||

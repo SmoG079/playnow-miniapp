@@ -14,8 +14,8 @@ describe("activity card data", () => {
   });
   it("does not invent missing registration counts for personal records", () => {
     expect(cardCapacity({}, "tournament")).toBeNull();
-    expect(cardCapacity({ players_needed: 4 }, "post")).toBeNull();
-    expect(cardCapacity({ registration_count: 0, players_needed: 4 }, "post")?.percent).toBe(0);
+    expect(cardCapacity({ max_players: 5 }, "post")).toBeNull();
+    expect(cardCapacity({ registration_count: 0, max_players: 5 }, "post")).toEqual({count:1,total:5,percent:20,remaining:4});
   });
   it("bounds progress and prioritizes closed or ongoing states over capacity", () => {
     const capacity = cardCapacity({ current_participants: 21, max_participants: 20 }, "tournament");

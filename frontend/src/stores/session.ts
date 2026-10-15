@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { request, clearTokens } from "../services/api";
 import { SESSION_CONTEXT_KEY, sessionContext } from "../services/session-context";
+import { isTimelinePreview, guideToMiniProgram } from "../utils/share";
 
 export interface User {
   id: string;
@@ -30,6 +31,10 @@ export const useSession = defineStore("session", () => {
   const canPublishTournament = computed(() => loggedIn.value);
 
   function syncTokens() {
+    if (isTimelinePreview()) {
+      accessToken.value = ""; refreshToken.value = ""; user.value = null;
+      return;
+    }
     if (uni.getStorageSync("access_token") && uni.getStorageSync(SESSION_CONTEXT_KEY) !== sessionContext()) {
       generation++;
       clearTokens();
@@ -75,6 +80,7 @@ export const useSession = defineStore("session", () => {
     }
   }
   function requireLogin(redirect?: string) {
+    if (isTimelinePreview()) { guideToMiniProgram(); return false; }
     syncTokens();
     if (loggedIn.value) return true;
     uni.navigateTo({

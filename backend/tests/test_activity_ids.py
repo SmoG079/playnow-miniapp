@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261014_direct_messages (head)"
+    assert result.stdout.strip() == "20261015_remove_legacy (head)"
 
 
 @pytest_asyncio.fixture
@@ -61,7 +61,7 @@ async def database(tmp_path, monkeypatch):
 async def create(db, kind):
     user = await db.get(User, 1)
     if kind == "post":
-        return (await posts.create_post(PostCreate(title="约球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", players_needed=2), user, db)).id
+        return (await posts.create_post(PostCreate(title="约球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3), user, db)).id
     result = await tournaments.create_tournament(TournamentCreate(
         address="测试网球场",
         club_id=1, title="比赛", start_time=datetime.utcnow()+timedelta(days=1),
@@ -125,11 +125,10 @@ async def test_unified_personal_records_and_old_links_resolve_by_type(database):
         assert {r["kind"] for r in items} == {"post", "tournament"}
         assert (await activities.get_activity(post, user, db))["kind"] == "post"
         assert (await activities.get_activity(tournament, user, db))["kind"] == "tournament"
-        (await db.get(Activity, post)).legacy_id = 100
-        (await db.get(Activity, tournament)).legacy_id = 100
-        await db.commit()
-        assert (await posts.get_post(100, db)).id == post
-        assert (await tournaments.get_tournament(100, user, db))["id"] == tournament
+        with pytest.raises(HTTPException):
+            await posts.get_post(100, db)
+        with pytest.raises(HTTPException):
+            await tournaments.get_tournament(100, user, db)
 
 
 @pytest.mark.asyncio

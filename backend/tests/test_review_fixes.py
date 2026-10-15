@@ -46,7 +46,7 @@ async def test_registration_review_resolves_public_user_id(db):
             id=901,
             user_id=owner.id,
             title="公开编号审核",
-            players_needed=2,
+            max_players=3,
             price=0,
             status="open",
         )
@@ -109,7 +109,6 @@ async def pending(db, ident, age=0, owner=None):
         user_id=user.id,
         venue_id=1,
         club_id=1,
-        slot_id=11,
         slot_ids=[11, 12],
         amount=100,
         status="pending",
@@ -298,7 +297,7 @@ async def test_closed_post_retains_messages_and_cannot_reopen_or_reduce_approved
 ):
     db.add(Activity(id=1, kind="post"))
     await db.flush()
-    db.add(MatchPost(id=1, user_id="1", title="历史", players_needed=2, price=0))
+    db.add(MatchPost(id=1, user_id="1", title="历史", max_players=3, price=0))
     await db.flush()
     db.add_all(
         [
@@ -314,7 +313,7 @@ async def test_closed_post_retains_messages_and_cannot_reopen_or_reduce_approved
     await db.flush()
     user = await db.get(User, "1")
     with pytest.raises(HTTPException):
-        await posts.update_post(1, PostUpdate(players_needed=1), user, db)
+        await posts.update_post(1, PostUpdate(max_players=2), user, db)
     await posts.close_post(1, user, db)
     assert (await db.get(MatchPost, 1)).status == "closed"
     with pytest.raises(HTTPException) as exc:
@@ -335,7 +334,7 @@ async def test_phone_visibility_public_ids_and_club_document_scope(db):
     db.add(Activity(id=1, kind="post"))
     await db.flush()
     db.add(
-        MatchPost(id=1, user_id="1", club_id=1, title="隐私", players_needed=2, price=0)
+        MatchPost(id=1, user_id="1", club_id=1, title="隐私", max_players=3, price=0)
     )
     await db.flush()
     db.add(
@@ -486,7 +485,7 @@ async def test_private_pdf_upload_is_not_static_and_requires_authorization(
             UploadFile(filename="假.pdf", file=BytesIO(b"not a pdf")), "doc", owner, db
         )
     with pytest.raises(HTTPException):
-        await main.LegacyStaticFiles(directory=tmp_path).get_response("doc/old.pdf", {})
+        await main.UploadStaticFiles(directory=tmp_path).get_response("doc/old.pdf", {})
 
 
 def test_private_cos_documents_refuse_the_public_bucket(monkeypatch):

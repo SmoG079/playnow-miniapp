@@ -17,7 +17,7 @@ async def listing(db,city='扬州市',**options):
 
 async def post(db,city,day,**fields):
     payload=dict(title=city or '历史无城市',city=city,preferred_date=day,
-        preferred_start='10:00',preferred_end='12:00',players_needed=2,price=0)
+        preferred_start='10:00',preferred_end='12:00',max_players=3,price=0)
     payload.update(fields)
     return await posts.create_post(PostCreate(**payload),await db.get(User,2),db)
 
@@ -97,7 +97,7 @@ async def test_location_proxy_handles_credentials_provider_failure_and_success(m
     assert result['city']=='扬州市' and 'key' not in result
 
 @pytest.mark.parametrize('schema,payload',[
-    (PostCreate,dict(title='测试',preferred_date='2030-11-01',preferred_start='09:00',preferred_end='11:00',players_needed=2,price=0)),
+    (PostCreate,dict(title='测试',preferred_date='2030-11-01',preferred_start='09:00',preferred_end='11:00',max_players=3,price=0)),
     (TournamentCreate,dict(title='测试',club_id=1,address='网球场',start_time='2030-11-01T09:00:00',end_time='2030-11-01T11:00:00',max_participants=2)),
 ])
 def test_city_and_location_input_validation(schema,payload):

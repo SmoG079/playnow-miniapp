@@ -343,8 +343,6 @@ async def apply_request(db, t, req):
     fields = req.model_dump(exclude={"config"})
     if "level_required" not in req.model_fields_set:
         fields.pop("level_required", None)
-    if "prizes" not in req.model_fields_set:
-        fields.pop("prizes", None)
     fields["city"] = city_name(req.city)
     if req.venue_id:
         fields.update(city=v.city,latitude=v.latitude,longitude=v.longitude,address=v.address)
@@ -380,7 +378,6 @@ async def update_tournament(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     if req.club_id != t.club_id:
@@ -411,7 +408,6 @@ async def get_tournament(
     user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await db.get(Tournament, ident)
     if not t:
         raise HTTPException(404, "赛事不存在")
@@ -487,7 +483,7 @@ async def get_tournament(
         club_name=club.name if club else None,
         **row_dict(
             t,
-            "description prize prizes images address contact_name contact_phone lock_venue config cancellation_deadline roster_frozen",
+            "description prizes images address contact_name contact_phone lock_venue config cancellation_deadline roster_frozen",
         ),
     )
     if t.venue_id:
@@ -534,7 +530,7 @@ async def get_tournament(
             pass
     data["can_adjust_draw"] = bool(permitted and d and d.version == t.draw_version and
         t.roster_frozen and _v(t.status) not in ("cancelled", "finished") and not adjustment.played(data["matches"]))
-    data["draw_positions"] = adjustment.seats(data["teams"], data["matches"], d.snapshot or {}) if d else []
+    data["draw_positions"] = d.snapshot["positions"] if d else []
     data["draw_block_reason"] = ""
     if manage and t.config and (not d or d.stage == "initial"):
         roster = [row_dict(r, "user_id gender pairing partner_user_id requested_group")
@@ -634,7 +630,6 @@ async def get_draw(
     user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await db.get(Tournament, ident)
     if not t:
         raise HTTPException(404, "赛事不存在")
@@ -658,7 +653,6 @@ async def register_tournament(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await life.refresh_admissions(db, t)
     if t.registration_closed or _v(t.status) != "open":
@@ -715,7 +709,6 @@ async def review(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     creator = await db.scalar(select(TournamentAudit.id).where(
         TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created",
@@ -759,7 +752,6 @@ async def cancel_registration(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     r = await db.get(TournamentRegistration, reg_id)
     if not r or r.tournament_id != ident:
@@ -788,7 +780,6 @@ async def refund_registration(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     r = await db.get(TournamentRegistration, reg_id)
@@ -814,7 +805,6 @@ async def verify_legacy(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     r = await db.get(TournamentRegistration, reg_id)
@@ -845,7 +835,6 @@ async def select_group(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     rows = await life.refresh_admissions(db, t)
     if t.roster_frozen or _v(t.status) != "open":
@@ -878,7 +867,6 @@ async def pairing(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await life.refresh_admissions(db, t)
     r = await own(db, t, user)
@@ -899,7 +887,6 @@ async def accept_invitation(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await life.refresh_admissions(db, t)
     if t.roster_frozen:
@@ -944,7 +931,6 @@ async def pay_tournament(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     await check_rate_limit(
         f"rate:pay:{user.id}",
         max_requests=get_settings().RATE_LIMIT_PAY_PER_MINUTE,
@@ -960,7 +946,6 @@ async def payment_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     r = await own(db, t, user)
     if r.order_id and r.payment == "pending":
@@ -978,7 +963,6 @@ async def close_registration(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     t.registration_closed = True
@@ -990,7 +974,6 @@ async def close_registration(
 @router.post("/{ident}/reopen-registration")
 async def reopen_registration(ident: int, user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     if t.draw_version or _v(t.status) != "open":
@@ -1024,7 +1007,6 @@ async def create_draw(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     regs = await life.refresh_admissions(db, t)
@@ -1167,6 +1149,8 @@ async def create_draw(
         for m in rows:
             for key in ("court", "scheduled_at", "scheduled_end"):
                 m.pop(key, None)
+    from app.services import tournament_adjustment as adjustment
+    d.snapshot = dict(d.snapshot, positions=adjustment.initial_positions(groups, rows))
     await persist_matches(db, d, rows)
     t.draw_version = d.version
     if req.publish:
@@ -1206,7 +1190,6 @@ async def publish_draw(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     d = await draw_for(db, t)
@@ -1251,7 +1234,6 @@ async def record_result(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     d, ms = await editable(db, t, req, user)
     if not d.published_at:
@@ -1309,7 +1291,6 @@ async def reset_result(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     d, ms = await editable(db, t, req, user)
     if not req.reason.strip():
@@ -1342,7 +1323,6 @@ async def schedule_match(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     d, ms = await editable(db, t, req, user)
     cfg = life.config(t)
@@ -1417,7 +1397,6 @@ async def tie_order(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     d, ms = await editable(db, t, req, user)
     ids = [x["id"] for x in await teams_for(db, d) if x["group_no"] == req.group_no]
@@ -1445,7 +1424,6 @@ async def finish(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     d, ms = await editable(db, t, req, user)
     if (
@@ -1470,7 +1448,6 @@ async def cancel_event(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     t.status = TournamentStatus.cancelled
@@ -1488,7 +1465,6 @@ async def audit_log(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await db.get(Tournament, ident)
     if not t:
         raise HTTPException(404, "赛事不存在")
@@ -1512,7 +1488,6 @@ async def audit_log(
 async def adjust_draw(ident: int, req: DrawAdjustCommand,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import tournament_adjustment as adjustment
-    ident = await activity_ids.resolve_activity_id(db, ident, "tournament")
     t = await life.locked_event(db, ident)
     # Deliberately do not use admin(): ordinary creator ownership is insufficient.
     await get_club_admin(t.club_id, user, db)
@@ -1533,7 +1508,7 @@ async def adjust_draw(ident: int, req: DrawAdjustCommand,
     teams = await teams_for(db, d)
     knockout = any(m["kind"] == "knockout" for m in rows)
     try:
-        positions = adjustment.validate_positions(adjustment.seats(teams, rows, d.snapshot or {}),
+        positions = adjustment.validate_positions(d.snapshot["positions"],
             [p.model_dump() for p in req.positions], knockout)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc

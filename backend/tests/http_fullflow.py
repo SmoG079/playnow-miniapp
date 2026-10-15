@@ -79,7 +79,7 @@ assert call('GET','/bookings/settlements',admin)['total']==0
 call('GET','/bookings/settlements',member,expected=403)
 call('POST',f'/bookings/{bid}/cancel',member,json={'reason':'isolated test'})
 assert call('GET',f'/bookings/{bid}',member)['status']=='cancelled'
-post=call('POST','/posts',owner,json={'title':'E2E approval post','preferred_date':date,'preferred_start':'09:00','preferred_end':'11:00','price':0,'players_needed':2,'approval_required':True})['id']
+post=call('POST','/posts',owner,json={'title':'E2E approval post','preferred_date':date,'preferred_start':'09:00','preferred_end':'11:00','price':0,'max_players':3,'approval_required':True})['id']
 call('GET','/discovery/activities?activity_type=post');call('GET',f'/posts/{post}')
 call('PUT',f'/posts/{post}',owner,json={'notes':'updated'})
 call('PUT',f'/posts/{post}',other,expected=403,json={'title':'unauthorized'})

@@ -8,7 +8,7 @@ export interface ActivityCardData {
   preferred_date?: string; preferred_start?: string; preferred_end?: string;
   cover_image?: string; images?: string[]; venue_id?: number | null;
   user_nickname?: string; user_avatar?: string; level_required?: string;
-  registration_count?: number; players_needed?: number;
+  registration_count?: number; min_players?: number; max_players?: number;
   current_participants?: number; max_participants?: number;
 }
 export type ActivityKind = "post" | "tournament";
@@ -32,8 +32,8 @@ export function cardSchedule(item: ActivityCardData, kind: ActivityKind) {
     timeLabel: from ? `${from}${to ? '–' + endDay + to : ''}` : "时间待定" };
 }
 export function cardCapacity(item: ActivityCardData, kind: ActivityKind) {
-  const count = kind === "tournament" ? item.current_participants : item.registration_count;
-  const total = kind === "tournament" ? item.max_participants : item.players_needed;
+  const count = kind === "tournament" ? item.current_participants : typeof item.registration_count === "number" ? item.registration_count + 1 : undefined;
+  const total = kind === "tournament" ? item.max_participants : item.max_players;
   if (typeof count !== "number" || typeof total !== "number" || !Number.isFinite(count) || !Number.isFinite(total) || count < 0 || total <= 0) return null;
   return { count, total, percent: Math.min(100, Math.round(count / total * 100)), remaining: Math.max(0, total - count) };
 }

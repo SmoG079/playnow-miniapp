@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { registrationClosed } from "../../domain/activity-visibility";
 import { computed, ref } from "vue";
-import { onLoad, onPullDownRefresh } from "@dcloudio/uni-app";
+import { onLoad, onPullDownRefresh, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
+import ActivityShare from "../../components/ActivityShare.vue";
+import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
@@ -43,7 +45,7 @@ const registration = computed(() =>
 );
 const full = computed(
   () =>
-    post.value && post.value.registration_count >= post.value.players_needed,
+    post.value && post.value.registration_count + 1 >= post.value.max_players,
 );
 async function load() {
   if (postLoading.value && post.value) return;
@@ -68,11 +70,17 @@ async function loadComments() {
 }
 onLoad((q) => {
   id.value = String(q?.id || "");
+  enableActivitySharing();
   s.fetchUser()
     .catch(() => {})
     .finally(load);
 });
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
+onShareAppMessage(() => activityShare("post", id.value, post.value?.title, post.value?.images?.[0]));
+onShareTimeline(() => {
+  const { title, query, imageUrl } = activityShare("post", id.value, post.value?.title, post.value?.images?.[0]);
+  return { title, query, imageUrl };
+});
 function action() {
   if (!s.requireLogin(`/pages/common/post-detail?id=${id.value}`)) return;
   if (owner.value)
@@ -174,7 +182,7 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><view class="detail-facts"
+        ><ActivityShare /><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人（含发起人） · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="detail-facts"
           ><view class="fact"
             ><view class="fact-icon"><wd-icon name="time-line" size="18px" /></view><view
               ><text class="strong">{{ post.preferred_date }}</text
@@ -187,8 +195,8 @@ function remove(c: any) {
         ><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
           ><text class="link" @click="showRegs = true"
-            >{{ post.registration_count || 0 }}/{{
-              post.players_needed
+            >{{ (post.registration_count || 0) + 1 }}/{{
+              post.max_players
             }}
             人</text
           ></view
@@ -243,11 +251,11 @@ function remove(c: any) {
         ><view
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
-        ><wd-button
+        ><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{
-            owner
+            !s.loggedIn ? "登录后报名" : owner
               ? "管理报名"
               : registration
                 ? registration.status === "pending"

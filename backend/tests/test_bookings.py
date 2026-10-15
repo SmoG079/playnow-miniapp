@@ -247,7 +247,7 @@ async def test_create_booking_accepts_today_future_time(user, venue, club, setti
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
-    assert result.slot_id == 1
+    assert result.slot_ids == [1, 2]
 
 
 @pytest.mark.asyncio
@@ -282,7 +282,7 @@ async def test_create_booking_accepts_tomorrow(user, venue, club, settings_mock)
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
-    assert result.slot_id == 1
+    assert result.slot_ids == [1, 2]
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +326,7 @@ async def test_cancel_booking_free_refund_24_hours_before(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -370,7 +370,7 @@ async def test_cancel_booking_half_refund_1_minute_before(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -415,7 +415,7 @@ async def test_cancel_booking_rejects_exactly_at_start_time(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -461,7 +461,7 @@ async def test_cancel_booking_free_refund_25_hours_before(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -505,7 +505,7 @@ async def test_cancel_booking_half_refund_12_hours_before(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -550,7 +550,7 @@ async def test_cancel_booking_rejects_after_start_time(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -664,7 +664,7 @@ async def test_get_booking_club_admin_other_club_forbidden(user, venue, club):
         order_no="ORD001",
         user_id='999',
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -705,7 +705,7 @@ async def test_get_booking_club_admin_authorized(user, venue, club):
         order_no="ORD001",
         user_id='999',
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -752,7 +752,7 @@ async def test_pay_booking_rejects_past_slot(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,
@@ -796,7 +796,7 @@ async def test_pay_booking_idempotency_rejects_expired_lock(user, venue, club):
         order_no="ORD001",
         user_id=user.id,
         venue_id=venue.id,
-        slot_id=slot.id,
+        slot_ids=[slot.id],
         club_id=club.id,
         amount=Decimal("100.00"),
         status=OrderStatus.pending,

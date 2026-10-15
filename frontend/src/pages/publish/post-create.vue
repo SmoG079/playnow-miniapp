@@ -34,7 +34,7 @@ const defaultForm = () => ({
   preferred_date: today(),
   preferred_start: "19:00",
   preferred_end: "21:00",
-  players_needed: 1,
+  min_players: 2, max_players: 2,
   price: "0",
   level_required: "",
   description: "",
@@ -157,11 +157,10 @@ async function submit() {
     return uni.showToast({ title: "请选择日期和时间", icon: "none" });
   if (form.preferred_end <= form.preferred_start)
     return uni.showToast({ title: "结束时间必须晚于开始时间", icon: "none" });
-  if (
-    !Number.isInteger(Number(form.players_needed)) ||
-    Number(form.players_needed) < 1
-  )
-    return uni.showToast({ title: "人数至少为 1", icon: "none" });
+  if (![form.min_players, form.max_players].every(value => Number.isInteger(Number(value)) && Number(value) >= 2 && Number(value) <= 31))
+    return uni.showToast({ title: "人数须为 2–31 的整数（含发起人）", icon: "none" });
+  if (Number(form.min_players) > Number(form.max_players))
+    return uni.showToast({ title: "最低人数不能大于最大人数", icon: "none" });
   if (Number(form.price) < 0 || !Number.isFinite(Number(form.price)))
     return uni.showToast({ title: "请填写有效费用", icon: "none" });
   if (form.booking_id && clubIndex.value < 0)
@@ -183,7 +182,7 @@ async function submit() {
         venue_id: form.booking_id ? form.venue_id : null,
         booking_id: form.booking_id || null,
         price: Number(form.price),
-        players_needed: Number(form.players_needed),
+        min_players: Number(form.min_players), max_players: Number(form.max_players),
         level_required: form.level_required || null,
         images: urls.length ? urls : null,
       },
@@ -294,12 +293,12 @@ function returnToPublish() {
         ><wd-input
           v-model="form.level_required"
           placeholder="不限，例如 2.5-3.5"
-        /><text class="field-label">还需要几人</text
+        /><text class="field-label">最低人数（含发起人）</text
         ><wd-input-number
-          v-model="form.players_needed"
-          :min="1"
-          :max="30"
-        /><text class="field-label">人均费用（元）</text
+          v-model="form.min_players"
+          :min="2"
+          :max="31"
+        /><text class="field-label">最大人数（含发起人）</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /><text class="muted small">达到最低人数即成团，满最大人数停止报名；未成团不自动取消或退款。</text><text class="field-label">人均费用（元）</text
         ><wd-input v-model="form.price" type="digit" /><text class="field-label"
           >活动说明</text
         ><wd-textarea

@@ -100,7 +100,7 @@ async def my_activities(
                 admission=r.admission, payment=r.payment, requested_group=r.requested_group, review_reason=r.review_reason) if r else None)
         else:
             item.update(preferred_date=e.preferred_date, preferred_start=e.preferred_start,
-                preferred_end=e.preferred_end, players_needed=e.players_needed, address=e.address, cover_image=(e.images or [None])[0],
+                preferred_end=e.preferred_end, min_players=e.min_players, max_players=e.max_players, address=e.address, cover_image=(e.images or [None])[0],
                 registration=dict(status=_v(r.status), review_reason=r.review_reason) if r else None)
         items.append(item)
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
@@ -317,7 +317,7 @@ async def my_bookings(
     for row in rows:
         order = row[0]
         # Load full consecutive slot range for display
-        slot_ids = order.slot_ids or ([order.slot_id] if order.slot_id else [])
+        slot_ids = order.slot_ids
         slots_result = await db.execute(
             select(VenueTimeSlot).where(VenueTimeSlot.id.in_(slot_ids))
         )
@@ -330,7 +330,6 @@ async def my_bookings(
                 order_no=order.order_no,
                 user_id=order.user_id,
                 venue_id=order.venue_id,
-                slot_id=order.slot_id,
                 slot_ids=order.slot_ids,
                 club_id=order.club_id,
                 amount=order.amount,
@@ -384,7 +383,7 @@ async def my_posts(
             preferred_date=post.preferred_date,
             preferred_start=post.preferred_start,
             preferred_end=post.preferred_end,
-            players_needed=post.players_needed,
+            max_players=post.max_players, min_players=post.min_players,
             level_required=post.level_required,
             status=post.status.value,
             created_at=post.created_at,

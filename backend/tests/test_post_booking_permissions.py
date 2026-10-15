@@ -44,7 +44,7 @@ async def db(monkeypatch):
 
 
 def request(**kwargs):
-    return PostCreate(title="一起打球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", players_needed=2, **kwargs)
+    return PostCreate(title="一起打球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3, **kwargs)
 
 
 @pytest.mark.asyncio

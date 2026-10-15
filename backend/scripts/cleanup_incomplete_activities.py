@@ -13,7 +13,7 @@ import sqlalchemy as sa
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.engine import make_url
 
-POST_BAD = "TRIM(COALESCE(title,''))='' OR preferred_date IS NULL OR preferred_start IS NULL OR preferred_end IS NULL OR preferred_end<=preferred_start OR players_needed IS NULL OR players_needed<1"
+POST_BAD = "TRIM(COALESCE(title,''))='' OR preferred_date IS NULL OR preferred_start IS NULL OR preferred_end IS NULL OR preferred_end<=preferred_start OR min_players IS NULL OR min_players<2 OR max_players IS NULL OR max_players<min_players"
 TOURNAMENT_BAD = "TRIM(COALESCE(title,''))='' OR start_time IS NULL OR end_time IS NULL OR end_time<=start_time OR max_participants IS NULL OR max_participants<2 OR (venue_id IS NULL AND TRIM(COALESCE(address,''))='')"
 
 
