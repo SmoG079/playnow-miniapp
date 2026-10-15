@@ -10,6 +10,7 @@ import {
   onShareAppMessage,
   onShareTimeline,
 } from "@dcloudio/uni-app";
+import { sharedActivityId } from "../../services/activity-sharing";
 import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
@@ -163,7 +164,7 @@ async function load() {
   }
 }
 onLoad((q) => {
-  id.value = Number(q?.id);
+  id.value = Number(sharedActivityId(q));
   enableActivitySharing();
   invite.value = String(q?.invite || "");
   void s.fetchUser().catch(() => {});
@@ -958,7 +959,7 @@ function tie() {
         </view> </view
       ><view class="fixed-action"
         ><text class="price large">¥{{ t.entry_fee || 0 }}/人</text
-        ><view class="registration-actions"><ActivityShare /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><ActivityShare kind="tournament" :id="id" :title="t.title" :schedule="localTime(t.start_time)" :place="t.address || t.city" :people="`最多 ${t.max_participants} 人`" :fee="Number(t.entry_fee)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="
             !canJoin ||
             (!t.can_register && s.loggedIn) ||

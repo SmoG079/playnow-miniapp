@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from app.core.config import get_settings
+from app.services.wechat_access import get_wx_access_token
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.api.deps import get_current_user
 from app.models.models import User
@@ -12,35 +13,6 @@ from app.schemas.schemas import WxLoginRequest, TokenResponse, RefreshRequest, P
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
-
-
-async def _get_wx_access_token():
-    """Get cached mini-program access token, or fetch a new one."""
-    import redis.asyncio as redis
-    r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    try:
-        key = f"wx:access_token:{settings.WX_APP_ID}"
-        token = await r.get(key)
-        if token:
-            return token
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://api.weixin.qq.com/cgi-bin/token",
-                params={
-                    "grant_type": "client_credential",
-                    "appid": settings.WX_APP_ID,
-                    "secret": settings.WX_APP_SECRET,
-                },
-            )
-            data = resp.json()
-        token = data.get("access_token")
-        if not token:
-            raise HTTPException(status_code=500, detail=f"WeChat token failed: {data.get('errmsg', 'unknown')}")
-        expires = data.get("expires_in", 7200)
-        await r.setex(key, expires - 60, token)
-        return token
-    finally:
-        await r.close()
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -132,7 +104,7 @@ async def get_phone(
         await db.commit()
         return {"msg": "ok", "phone": current_user.phone}
 
-    token = await _get_wx_access_token()
+    token = await get_wx_access_token()
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token={token}",

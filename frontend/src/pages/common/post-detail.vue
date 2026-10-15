@@ -2,6 +2,7 @@
 import { registrationClosed } from "../../domain/activity-visibility";
 import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
+import { sharedActivityId } from "../../services/activity-sharing";
 import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
@@ -69,7 +70,7 @@ async function loadComments() {
   }
 }
 onLoad((q) => {
-  id.value = String(q?.id || "");
+  id.value = sharedActivityId(q);
   enableActivitySharing();
   s.fetchUser()
     .catch(() => {})
@@ -251,7 +252,7 @@ function remove(c: any) {
         ><view
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
-        ><view class="registration-actions"><ActivityShare /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><ActivityShare kind="post" :id="id" :title="post.title" :schedule="`${post.preferred_date} ${post.preferred_start}–${post.preferred_end}`" :place="post.address || post.city" :people="`${post.min_players}–${post.max_players} 人（含发起人）`" :fee="Number(post.price)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{

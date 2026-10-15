@@ -11,7 +11,7 @@ from fastapi.responses import Response, FileResponse
 from app.models.models import PrivateUpload, Club
 from app.core.logger import setup_logging, RequestLogMiddleware, get_logger
 from app.api.deps import get_current_user
-from app.api.v1 import auth, users, clubs, venues, bookings, posts, tournaments, activities, discovery, applications, messages
+from app.api.v1 import sharing, auth, users, clubs, venues, bookings, posts, tournaments, activities, discovery, applications, messages
 from app.services import storage
 
 settings = get_settings()
@@ -71,6 +71,7 @@ app.add_middleware(RequestLogMiddleware)
 # Register routers
 api_prefix = settings.API_V1_PREFIX
 app.include_router(auth.router, prefix=api_prefix)
+app.include_router(sharing.router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
 app.include_router(clubs.router, prefix=api_prefix)
 app.include_router(venues.router, prefix=api_prefix)
