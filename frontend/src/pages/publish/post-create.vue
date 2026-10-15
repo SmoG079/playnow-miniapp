@@ -173,7 +173,7 @@ async function submit() {
       urls.push(
         await uploadedImage(path, "post"),
       );
-    await request("/posts", {
+    const created = await request<{ id: number }>("/posts", {
       method: "POST",
       data: {
         ...form,
@@ -190,7 +190,7 @@ async function submit() {
     completed = true;
     clearActivityDraft("post", draftOwner, 0);
     uni.showToast({ title: "发布成功", icon: "success" });
-    setTimeout(() => uni.switchTab({ url: "/pages/home/index" }), 800);
+    setTimeout(() => uni.redirectTo({ url: `/pages/common/post-detail?id=${created.id}` }), 800);
   } catch (e: any) {
     uni.showToast({ title: e.message || "发布失败", icon: "none" });
   } finally {
