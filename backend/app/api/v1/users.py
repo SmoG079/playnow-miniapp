@@ -5,17 +5,29 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update, literal, String, union_all, cast, or_, case, and_
 from app.core.database import get_db
-from app.api.deps import get_current_user, _v
+from app.api.deps import get_current_user, get_platform_admin, _v
 from app.models.models import (
-    User, ClubMember, Notification, BookingOrder, Venue, Club,
+    User, UserUtrRecord, ClubMember, Notification, BookingOrder, Venue, Club,
     VenueTimeSlot, OrderStatus, MatchPost, MatchRegistration, Tournament, TournamentRegistration,
 )
 from app.schemas.schemas import (
     UserMeResponse, UserUpdate, PaginatedResponse, NotificationBrief,
     BookingDetail, PostBrief, MyPostRegistration, RatingAssessmentRequest, RatingAssessmentResponse,
+    UserUtrRecordResponse,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me/utr-record", response_model=UserUtrRecordResponse)
+async def my_utr_record(current_user: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)):
+    """Read stored official UTR values; never derive results or rank locally."""
+    stats = await db.get(UserUtrRecord, current_user.id)
+    return UserUtrRecordResponse(
+        nickname=current_user.nickname, avatar_url=current_user.avatar_url,
+        ntrp_level=current_user.ntrp_level, rating=current_user.utr_rating,
+        **{key: getattr(stats, key, None) for key in ("matches_played", "wins", "losses", "world_rank", "age_group")},
+    )
 
 
 @router.get("/me/managed-tournaments", response_model=PaginatedResponse)

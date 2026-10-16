@@ -29,7 +29,7 @@ class User(Base):
     phone = Column(String(20))
     session_key = Column(String(64))
     ntrp_level = Column(DECIMAL(2,1), nullable=True, comment='NTRP网球等级')
-    utr_rating = Column(DECIMAL(4,2), nullable=True, comment='预留UTR等级，当前不赋值或展示')
+    utr_rating = Column(DECIMAL(4,2), nullable=True, comment='UTR官网积分')
     rating_assessment = Column(JSON, nullable=True, comment='定级问卷答案及算法版本')
     rating_assessed_at = Column(DateTime, nullable=True)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
@@ -43,6 +43,19 @@ class User(Base):
     managed_clubs = relationship("ClubMember", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     comments = relationship("Comment", back_populates="user")
+
+
+class UserUtrRecord(Base):
+    __tablename__ = "user_utr_records"
+
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), primary_key=True)
+    matches_played = Column(Integer, nullable=True)
+    wins = Column(Integer, nullable=True)
+    losses = Column(Integer, nullable=True)
+    world_rank = Column(Integer, nullable=True)
+    age_group = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class PrivateUpload(Base):

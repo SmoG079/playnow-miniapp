@@ -9,15 +9,22 @@ import { openPage } from "../../utils/navigation";
 const s = useSession();
 const identities = computed(() => identityLabels(s.user));
 const allowed = ref(false);
+const utrAccessVerified = ref(false);
+async function refreshProfile() {
+  utrAccessVerified.value = false;
+  try { const user = await s.fetchUser(); utrAccessVerified.value = user?.role === "platform_admin"; }
+  catch { /* Keep the administrator-only entry hidden until a successful refresh. */ }
+}
 onShow(() => {
   allowed.value = false;
+  utrAccessVerified.value = false;
   s.syncTokens();
   if (!s.loggedIn) {
     uni.redirectTo({ url: "/pages/common/login?redirect=" + encodeURIComponent("/pages/profile/index") });
     return;
   }
   allowed.value = true;
-  s.fetchUser().catch(() => {});
+  void refreshProfile();
 });
 const menus = computed(() => {
   const common = [
@@ -63,7 +70,7 @@ function logout() {
               <text v-if="s.user?.ntrp_level" class="tag yellow">NTRP {{ s.user.ntrp_level }}</text>
             </view></view
           ></view
-        ><view class="profile-menu-list">
+        ><view v-if="utrAccessVerified && s.isPlatformAdmin" class="utr-entry-card" role="button" aria-label="我的 UTR 战绩" @click="openPage('/pages/profile/utr-record')"><view class="utr-entry-mark">UTR</view><view class="utr-entry-copy"><text class="utr-entry-title">我的 UTR 战绩</text><text class="utr-entry-subtitle">积分 · 等级 · 战绩 · 世界排名</text></view><wd-icon name="arrow-right" size="18px" color="#56dfef" /></view><view class="profile-menu-list">
           <view v-for="m in menus" :key="m[2]" class="profile-menu-card">
             <wd-cell :title="m[1]" :prefix-icon="m[0]" icon-size="22px"
               title-width="calc(100% - 40px)" center is-link :border="false"
@@ -75,13 +82,14 @@ function logout() {
             >退出登录</wd-button
           ></view
         ></template
-      ><view v-else-if="s.loggedIn" class="empty-state"><text class="muted">{{ s.loading ? "正在确认登录信息" : "登录信息暂不可用" }}</text><wd-button size="small" @click="s.fetchUser().catch(() => {})">重试</wd-button></view
+      ><view v-else-if="s.loggedIn" class="empty-state"><text class="muted">{{ s.loading ? "正在确认登录信息" : "登录信息暂不可用" }}</text><wd-button size="small" @click="refreshProfile">重试</wd-button></view
       ></view
     ></AppShell
   >
 </template>
 
 <style scoped>
+.utr-entry-card{display:flex;align-items:center;gap:12px;padding:19px 16px;margin-bottom:14px;border:1px solid #294550;border-radius:16px;background:#080d11;}.utr-entry-mark{flex:none;color:#56dfef;font-size:25px;line-height:32px;letter-spacing:-1px;}.utr-entry-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;}.utr-entry-title{font-size:17px;line-height:24px;font-weight:600;color:#fff;}.utr-entry-subtitle{font-size:11px;line-height:18px;color:#9fb5c0;}
 .profile-info { flex:1; min-width:0; }
 .profile-info .page-title { font-size:20px; font-weight:650; }
 .identity-tags .yellow { background:#f2f3e5; color:#70744c; }

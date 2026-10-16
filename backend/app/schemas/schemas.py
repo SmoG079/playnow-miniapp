@@ -84,6 +84,18 @@ class RatingAssessmentResponse(BaseModel):
     rating_source: Literal["self_assessment"] = "self_assessment"
 
 
+class UserUtrRecordResponse(BaseModel):
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    ntrp_level: Optional[DecimalAsFloat] = None
+    rating: Optional[DecimalAsFloat] = None
+    matches_played: Optional[int] = None
+    wins: Optional[int] = None
+    losses: Optional[int] = None
+    world_rank: Optional[int] = None
+    age_group: Optional[str] = None
+
+
 # ── Club ──
 
 class ClubCreate(BaseModel):
