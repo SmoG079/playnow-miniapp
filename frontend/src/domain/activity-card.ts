@@ -1,17 +1,52 @@
-import { utcInput } from "../services/tournaments";
+import { utcInput, disciplineNames, formatNames, type TournamentConfig } from "../services/tournaments";
+export interface CardParticipant {
+  user_id: string;
+  user_nickname?: string | null;
+  user_avatar?: string | null;
+}
 export interface ActivityCardData {
   id?: number; title?: string; status?: string; phase?: string;
   registration_deadline?: string; registration_closed?: boolean;
   result_summary?: {score?: string; winner?: string; is_draw?: boolean; walkover?: boolean};
-  city?: string; address?: string; club_name?: string;
+  city?: string; address?: string; location_name?: string; club_name?: string; contact_name?: string;
   start_time?: string; end_time?: string;
   preferred_date?: string; preferred_start?: string; preferred_end?: string;
   cover_image?: string; images?: string[]; venue_id?: number | null;
   user_nickname?: string; user_avatar?: string; level_required?: string;
   registration_count?: number; min_players?: number; max_players?: number;
   current_participants?: number; max_participants?: number;
+  price?: number | string | null; entry_fee?: number | string | null;
+  config?: Pick<TournamentConfig, "discipline" | "format" | "pairing"> | null;
+  card_participants?: CardParticipant[];
 }
 export type ActivityKind = "post" | "tournament";
+export function cardDetails(item: ActivityCardData, kind: ActivityKind) {
+  const tournament = kind === "tournament", cfg = item.config;
+  const typeLabel = tournament ? `${cfg ? disciplineNames[cfg.discipline] : ''}比赛`
+    : item.venue_id === undefined ? "约球活动" : item.venue_id ? "定场约球" : "自由约球";
+  const tags: string[] = [];
+  if (item.level_required) tags.push(`NTRP ${item.level_required}`);
+  if (tournament && cfg) {
+    if (cfg.discipline !== "singles" && cfg.pairing) tags.push(cfg.pairing === "fixed" ? "固定搭档" : "随机搭档");
+    tags.push(formatNames[cfg.format]);
+  } else if (!tournament && item.min_players && item.max_players) {
+    tags.push(item.min_players === item.max_players ? `${item.max_players}人` : `${item.min_players}–${item.max_players}人`);
+  }
+  const raw = tournament ? item.entry_fee : item.price;
+  const fee = raw === null || raw === undefined || raw === "" ? NaN : Number(raw);
+  return { typeLabel, tags,
+    host: tournament ? item.club_name || item.contact_name || "个人主办" : item.user_nickname || "球友",
+    place: item.location_name || "地点待补充", address: item.address || item.city || "",
+    feeLabel: Number.isFinite(fee) && fee >= 0 ? fee === 0 ? "免费" : `¥${Number(fee.toFixed(2))}` : "",
+    feeSuffix: fee > 0 && Number.isFinite(fee) ? "/ 人" : "" };
+}
+
+export function cardStatus(item: ActivityCardData, kind: ActivityKind) {
+  const capacity = cardCapacity(item, kind), state = cardState(item, capacity, kind);
+  if (state.label !== "报名中" || !capacity) return state;
+  const formed = kind === "post" && typeof item.min_players === "number" && capacity.count >= item.min_players;
+  return { ...state, label: `${formed ? '已成团' : state.label} · 余${capacity.remaining}位` };
+}
 function shanghai(value?: string) {
   if (!value) return "";
   const stamp = Date.parse(utcInput(value));

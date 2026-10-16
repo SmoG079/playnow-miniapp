@@ -106,3 +106,63 @@ async def test_old_collection_routes_removed(db):
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://isolated') as client:
         assert (await client.get('/posts')).status_code==405
         assert (await client.get('/tournaments')).status_code==405
+
+
+@pytest.mark.asyncio
+async def test_card_thumbnails_include_owner_and_only_public_approved_people(db):
+    from sqlalchemy import event as sql_event
+    from app.models.models import MatchPost, MatchRegistration, RegistrationStatus
+    a, _, c, _, _ = await fixtures(db)
+    for uid, state in [('2', 'approved'), ('3', 'approved'), ('4', 'approved'),
+                       ('5', 'approved'), ('6', 'pending'), ('7', 'rejected'), ('8', 'cancelled')]:
+        db.add(MatchRegistration(post_id=a, user_id=uid, status=RegistrationStatus(state)))
+    # An owner must never appear a second time in the public thumbnails.
+    owner_post = await db.get(MatchPost, a)
+    user = await db.get(User, '3'); user.nickname = '卡片球友'; user.avatar_url = 'https://example.com/3.jpg'
+    await db.flush()
+    selects = []
+    def capture(_conn, _cursor, statement, _params, _context, _many):
+        if 'row_number()' in statement.lower(): selects.append(statement)
+    sql_event.listen(db.bind.sync_engine, 'before_cursor_execute', capture)
+    try:
+        result = await list_activities(db, '南京市', activity_type='post')
+    finally:
+        sql_event.remove(db.bind.sync_engine, 'before_cursor_execute', capture)
+    cards = {card['id']: card for card in result['items']}
+    people = cards[a]['card_participants']
+    assert people[0]['user_id'] == owner_post.user_id
+    assert len(people) == 4 and len({p['user_id'] for p in people}) == 4
+    assert {p['user_id'] for p in people}.isdisjoint({'6', '7', '8'})
+    assert next(p for p in people if p['user_id'] == '3')['user_avatar'] == 'https://example.com/3.jpg'
+    assert cards[c]['card_participants'] == [dict(user_id=cards[c]['user_id'], user_nickname=cards[c]['user_nickname'], user_avatar=cards[c]['user_avatar'])]
+    assert len(selects) == 1  # One bounded query covers every post on the page.
+    assert set(people[0]) == {'user_id', 'user_nickname', 'user_avatar'}
+    from tests.test_my_activities import records
+    personal = await records(db, uid='2', kind='post', relation='published')
+    own_card = next(card for card in personal.items if card['id'] == a)
+    assert own_card['card_participants'] == people and own_card['can_manage'] is True
+    assert own_card['registration_count'] == cards[a]['registration_count']
+
+
+@pytest.mark.asyncio
+async def test_tournament_card_uses_confirmed_roster_and_display_config(db):
+    from app.models.models import TournamentRegistration, TournamentRegStatus
+    _, tid, _, _, _ = await fixtures(db)
+    t = await db.get(Tournament, tid)
+    t.location_name = '测试网球中心'; t.address = '测试区体育路8号'
+    t.config = {**t.config, 'discipline': 'doubles', 'pairing': 'fixed'}
+    states = [dict(), dict(approval='pending'), dict(payment='unpaid'), dict(admission='waitlist'),
+              dict(status=TournamentRegStatus.cancelled), dict(status=TournamentRegStatus.registered), dict(payment='verified')]
+    for uid, extra in enumerate(states, 2):
+        fields = dict(status=TournamentRegStatus.confirmed, approval='approved', admission='active', payment='none')
+        db.add(TournamentRegistration(tournament_id=tid, user_id=str(uid), **{**fields, **extra}))
+    await db.flush()
+    card = (await list_activities(db, '南京市', activity_type='tournament'))['items'][0]
+    assert [p['user_id'] for p in card['card_participants']] == ['2', '8']
+    assert card['location_name'] == '测试网球中心' and card['address'] == '测试区体育路8号'
+    assert card['config'] == dict(format='knockout', discipline='doubles', pairing='fixed')
+    from tests.test_my_activities import records
+    personal = await records(db, uid='1', relation='published')
+    own_card = next(item for item in personal.items if item['id'] == tid)
+    assert own_card['card_participants'] == card['card_participants']
+    assert own_card['config'] == card['config'] and own_card['can_manage'] is True

@@ -273,7 +273,10 @@ async def discovery_items(db,rows,lat=None,lng=None):
         for tid, match, winner in result_rows:
             if tid not in summaries:
                 summaries[tid] = dict(score=match.score, winner=winner, is_draw=match.is_draw, walkover=match.walkover)
-    return [dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng, "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
+    return [dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng,
+         "address": t.address, "contact_name": t.contact_name,
+         "config": {key: t.config[key] for key in ('format', 'discipline', 'pairing') if key in t.config} if t.config else None,
+         "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
          clat,clng))
          for t,name,clat,clng,actual_city in rows]
 

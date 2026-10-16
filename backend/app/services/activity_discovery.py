@@ -1,10 +1,42 @@
 """Sort and paginate both activity kinds together before loading card data."""
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, case, literal, text, cast, String
-from app.models.models import MatchPost, Tournament, Venue
+from app.models.models import (MatchPost, Tournament, Venue, User, MatchRegistration,
+    RegistrationStatus, TournamentRegistration, TournamentRegStatus)
 from app.services.discovery import city_name, ordered
 from app.services.activity_visibility import public_listing_condition
 from app.api.v1 import posts, tournaments
+
+
+async def load_card_participants(db, cards):
+    """Public thumbnails for the current page, bounded to four people per card."""
+    for kind, model in [('post', MatchRegistration), ('tournament', TournamentRegistration)]:
+        selected = {ident: card for (k, ident), card in cards.items() if k == kind}
+        if not selected:
+            continue
+        for card in selected.values():
+            card['card_participants'] = ([dict(user_id=str(card['user_id']),
+                user_nickname=card['user_nickname'], user_avatar=card['user_avatar'])]
+                if kind == 'post' else [])
+        event_id = model.post_id if kind == 'post' else model.tournament_id
+        query = select(event_id.label('event_id'), User.id.label('user_id'),
+            User.nickname.label('user_nickname'), User.avatar_url.label('user_avatar'),
+            func.row_number().over(partition_by=event_id,
+                order_by=(model.created_at, model.id)).label('position')).join(User, User.id == model.user_id)
+        query = query.where(event_id.in_(selected))
+        if kind == 'post':
+            query = query.join(MatchPost, MatchPost.id == model.post_id).where(
+                model.status == RegistrationStatus.approved, model.user_id != MatchPost.user_id)
+        else:
+            query = query.where(model.status == TournamentRegStatus.confirmed,
+                model.admission == 'active', model.approval == 'approved',
+                model.payment.in_(['none', 'paid', 'verified']))
+        ranked = query.subquery()
+        rows = (await db.execute(select(ranked).where(ranked.c.position <= (3 if kind == 'post' else 4))
+            .order_by(ranked.c.event_id, ranked.c.position))).mappings().all()
+        for row in rows:
+            selected[row['event_id']]['card_participants'].append(dict(
+                user_id=str(row['user_id']), user_nickname=row['user_nickname'], user_avatar=row['user_avatar']))
 
 async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_date=None,
                           sort_by='date_asc', lat=None, lng=None, page=1, page_size=20, status=None):
@@ -50,4 +82,5 @@ async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_da
         for item in items:
             data=item.model_dump() if kind=='post' else item
             cards[(kind,data['id'])]=dict(**data,kind=kind)
+    await load_card_participants(db, cards)
     return dict(items=[cards[(kind,ident)] for ident,kind in seats],total=total,page=page,page_size=page_size)

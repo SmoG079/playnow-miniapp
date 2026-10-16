@@ -1,62 +1,65 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import Photo from "./Photo.vue";
-import { cardSchedule, cardCapacity, cardState, type ActivityCardData, type ActivityKind } from "../domain/activity-card";
+import { cardSchedule, cardCapacity, cardDetails, cardStatus, type ActivityCardData, type ActivityKind } from "../domain/activity-card";
 const props = defineProps<{ item: ActivityCardData; kind: ActivityKind }>();
 const emit = defineEmits<{ (e: "open"): void }>();
 const tournament = computed(() => props.kind === "tournament");
-const typeLabel = computed(() => tournament.value ? "比赛" : props.item.venue_id === undefined ? "约球活动" : props.item.venue_id ? "定场约球" : "自由约球");
+const details = computed(() => cardDetails(props.item, props.kind));
 const schedule = computed(() => cardSchedule(props.item, props.kind));
 const capacity = computed(() => cardCapacity(props.item, props.kind));
-const state = computed(() => cardState(props.item, capacity.value, props.kind));
+const state = computed(() => cardStatus(props.item, props.kind));
 const resultCaption = computed(() => {
-  const r=props.item.result_summary;
+  const r = props.item.result_summary;
   return r ? `${r.score || ""} ${r.is_draw ? "平局" : r.winner ? r.winner + " 胜" : "已完赛"}${r.walkover ? "（弃权）" : ""}` : "";
 });
 const cover = computed(() => props.item.cover_image || props.item.images?.[0]);
-const place = computed(() => props.item.address || props.item.club_name || props.item.city);
+const participants = computed(() => (props.item.card_participants || []).slice(0, 3));
+const extraPeople = computed(() => participants.value.length && capacity.value ? Math.max(0, capacity.value.count - participants.value.length) : 0);
+const hostAvatar = computed(() => tournament.value ? undefined : props.item.user_avatar);
 </script>
 <template>
   <view class="play-card" :class="{ 'play-card-tournament': tournament, 'play-card-post': !tournament }">
-    <view class="play-card-main" @click="emit('open')">
-      <view class="card-topline">
-        <wd-tag size="small" round variant="light" :color="tournament ? '#007ac2' : '#006633'" :bg-color="tournament ? '#e5f4ff' : '#e7f3e9'" :icon="tournament ? 'trophy' : 'user-group'">{{ typeLabel }}</wd-tag>
-        <view class="event-state" :class="{ 'event-state-active': state.active }"><view v-if="state.active" class="state-dot" /><text>{{ state.label }}</text></view>
+    <view class="play-card-main" hover-class="play-card-pressed" role="button" :aria-label="'查看' + (item.title || '网球活动')" @click="emit('open')">
+      <view class="card-host">
+        <view class="host-avatar"><Photo v-if="hostAvatar" :src="hostAvatar" width="30px" height="30px" round /><text v-else>{{ details.host.slice(0, 1) }}</text></view>
+        <text class="host-name">{{ details.host }}</text><text class="host-caption">{{ tournament ? '主办' : '发起的球局' }}</text>
       </view>
-      <text class="card-event-title">{{ item.title || '网球活动' }}</text>
+      <view class="card-title-row">
+        <text class="card-event-title">{{ item.title || '网球活动' }}</text>
+        <view class="card-kind"><wd-tag size="medium" round :variant="tournament ? 'dark' : 'plain'" :color="tournament ? '#ffffff' : '#00633c'" :bg-color="tournament ? '#00633c' : '#dce8df'" :icon="tournament ? 'trophy' : 'user-group'" :custom-style="`padding:3px 8px;font-size:11px;line-height:18px;color:${tournament ? '#ffffff' : '#00633c'};--wot-tag-info-color:#dce8df;`">{{ details.typeLabel }}</wd-tag></view>
+      </view>
       <view class="card-schedule">
-        <view class="date-block"><text class="date-month">{{ schedule.month }}</text><text class="date-day">{{ schedule.day }}</text></view>
-        <view class="schedule-copy"><text class="card-time">{{ schedule.timeLabel }}</text><text class="schedule-caption">{{ resultCaption || schedule.weekday }}{{ !tournament && item.user_nickname ? ' · ' + item.user_nickname + ' 发起' : '' }}{{ item.level_required ? ' · NTRP ' + item.level_required : '' }}</text></view>
-        <view v-if="cover || tournament" class="card-thumbnail"><Photo :src="cover" fallback="/static/tennis.jpg" width="48px" height="40px" /></view>
-        <view v-else class="post-court" aria-hidden="true"><view class="post-court-net" /><view class="court-ball" /></view>
+        <view class="card-thumbnail"><Photo :src="cover" :fallback="tournament ? '/static/tennis.jpg' : '/static/court.jpg'" /><view class="cover-caption">{{ tournament ? '网球赛事' : '一起上场' }}</view></view>
+        <view class="schedule-copy">
+          <text class="card-date">{{ schedule.dateLabel }}</text><text class="card-time">{{ schedule.timeLabel }}</text>
+          <text class="card-place">{{ details.place }}</text><text v-if="details.address" class="card-address">{{ details.address }}</text>
+        </view>
       </view>
-      <view class="card-place"><wd-icon :name="item.address ? 'location' : 'company'" size="13px" /><text class="card-place-text">{{ place || '地点待补充' }}</text></view>
+      <view class="card-specs">
+        <view class="card-middle"><view class="event-state" :class="{ 'event-state-active': state.active }"><view v-if="state.active" class="state-dot" /><text>{{ state.label }}</text></view><text v-if="resultCaption" class="card-result">{{ resultCaption }}</text><view v-if="details.tags.length" class="card-tags"><wd-tag v-for="tag in details.tags" :key="tag" size="small" variant="light" color="#718579" bg-color="#f2f6f3" custom-style="padding:3px 6px;border-radius:5px;line-height:16px;font-size:11px;">{{ tag }}</wd-tag></view></view>
+        <view v-if="details.feeLabel" class="card-fee"><text class="fee-amount">{{ details.feeLabel }}</text><text v-if="details.feeSuffix" class="fee-unit">{{ details.feeSuffix }}</text></view>
+      </view>
       <view class="card-bottom">
-        <view v-if="capacity" class="capacity-copy"><view class="capacity-numbers"><template v-if="tournament"><text class="capacity-count">{{ capacity.count }}</text><text class="capacity-total">/ {{ capacity.total }} 人已报名</text></template><template v-else><text class="capacity-count">{{ item.min_players === item.max_players ? item.max_players : `${item.min_players}–${item.max_players}` }} 人</text><text class="capacity-total">已有 {{ capacity.count }} 人</text></template></view><view class="capacity-track"><view class="capacity-fill" :style="{ width: capacity.percent + '%' }" /></view></view>
-        <text v-else class="card-number">{{ item.id ? '#' + item.id : '网球活动' }}</text>
-        <view class="card-open"><text>查看{{ tournament ? '比赛' : '球局' }}</text><wd-icon name="arrow-right" size="12px" /></view>
+        <view class="card-people">
+          <view v-if="participants.length" class="card-avatars"><view v-for="person in participants" :key="person.user_id" class="participant-avatar" :aria-label="person.user_nickname || '球友'"><Photo v-if="person.user_avatar" :src="person.user_avatar" width="24px" height="24px" round /><text v-else>{{ (person.user_nickname || '球友').slice(0, 1) }}</text></view><view v-if="extraPeople" class="participant-avatar extra-people">+{{ extraPeople }}</view></view>
+          <view class="capacity-copy"><template v-if="capacity"><text class="capacity-count">{{ capacity.count }} / {{ capacity.total }} 人</text><text class="capacity-caption">已报名</text></template><text v-else class="card-number">{{ item.id ? '#' + item.id : '网球活动' }}</text></view>
+        </view>
+        <view class="card-open"><text>查看{{ tournament ? '比赛' : '球局' }}</text><view class="card-open-arrow"><wd-icon name="arrow-right" size="13px" /></view></view>
       </view>
     </view>
     <slot />
   </view>
 </template>
 <style scoped>
-.play-card {margin-bottom:12px;overflow:hidden;border:1px solid #e0e9e2;border-radius:14px;background:#fff;box-shadow:0 3px 10px rgba(25,63,42,.035);}
-.play-card-main {height:176px;padding:12px;display:grid;grid-template-rows:18px 22px 44px 18px 26px;gap:6px;}
-.card-topline,.card-bottom {display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
-.event-state {display:flex;align-items:center;gap:5px;color:#7d8b81;font-size:11px;line-height:18px;flex-shrink:0;}
-.event-state-active {color:#217647;font-weight:600;}.state-dot {width:5px;height:5px;border-radius:50%;background:#81b83d;}
-.card-event-title {display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:16px;font-weight:750;line-height:22px;color:#203c2b;}
-.card-schedule {display:flex;align-items:center;gap:10px;padding:2px 8px;border-radius:8px;background:#f2f7ec;overflow:hidden;}
-.date-block {width:36px;flex:none;display:flex;flex-direction:column;align-items:center;border-right:1px solid #d9e7d0;padding-right:8px;}
-.date-month {font-size:9px;color:#6c8357;line-height:12px;}.date-day {font-size:22px;font-weight:800;color:#336d32;line-height:24px;}
-.schedule-copy {flex:1;min-width:0;}.card-time {display:block;font-size:14px;font-weight:700;color:#2c5438;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.schedule-caption {display:block;font-size:10px;color:#738565;line-height:14px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-.card-thumbnail {flex:none;border-radius:6px;overflow:hidden;}.post-court {position:relative;width:34px;height:34px;flex:none;border:1px solid #b3cb98;border-radius:4px;background:#e4efd6;}
-.post-court::before {content:'';position:absolute;top:4px;right:7px;bottom:4px;left:7px;border:1px solid #b3cb98;}.post-court-net {position:absolute;left:0;right:0;top:50%;height:1px;background:#b3cb98;}.court-ball {position:absolute;right:1px;bottom:3px;width:8px;height:8px;border-radius:50%;background:#b9dc6c;}
-.card-place {display:flex;align-items:center;gap:5px;font-size:11px;line-height:18px;color:#718174;min-width:0;}.card-place-text {flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-.card-bottom {border-top:1px solid #edf1e9;padding-top:3px;}.capacity-copy {flex:1;min-width:0;}.capacity-numbers {display:flex;align-items:baseline;gap:4px;}.capacity-count {font-size:15px;font-weight:750;color:#256c46;line-height:18px;}.capacity-total {font-size:10px;color:#83917f;}.capacity-track {max-width:145px;height:2px;margin-top:3px;border-radius:4px;overflow:hidden;background:#e9efe2;}.capacity-fill {height:100%;background:linear-gradient(90deg,#248258,#a2cc59);}
-.card-open {display:flex;align-items:center;gap:4px;flex:none;border-radius:14px;padding:5px 8px;color:#277348;background:#edf6e4;font-size:10px;font-weight:600;line-height:16px;}.card-number {font-size:11px;color:#8b978d;}
-.play-card-post{border-color:#cfe4d4;border-left:3px solid #006633}.play-card-tournament{border-color:#cfe6f6;border-left:3px solid #0085ca}.play-card-tournament .card-schedule{background:#edf7ff}.play-card-tournament .date-block{border-color:#cbe3f5}.play-card-tournament .date-month,.play-card-tournament .schedule-caption{color:#638da8}.play-card-tournament .date-day,.play-card-tournament .card-time,.play-card-tournament .capacity-count,.play-card-tournament .event-state-active{color:#087fc0}.play-card-tournament .card-open{background:#e7f4fd;color:#087fc0}.play-card-tournament .capacity-fill{background:linear-gradient(90deg,#0085ca,#65c8ee)}.play-card-tournament .capacity-track{background:#e3f0f8}.play-card-tournament .state-dot{background:#0085ca}.play-card-post .state-dot{background:#006633}
-@media (max-width:350px) {.card-schedule{gap:6px;}.card-thumbnail{display:none;}.card-time{font-size:13px;}}
+.play-card{margin-bottom:16px;overflow:hidden;border:1px solid #dce8df;border-radius:20px;background:#fff;box-shadow:0 4px 12px rgba(18,62,41,.025);color:#183326;}
+.play-card-main{padding:15px 14px 0;}.play-card-pressed{background:#fafcfb;}
+.card-host{display:flex;align-items:center;gap:7px;min-width:0;min-height:30px;}.host-avatar{display:flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border-radius:50%;overflow:hidden;background:#edf6ef;color:#006b42;font-size:12px;font-weight:600;}.host-name{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;font-weight:600;line-height:20px;}.host-caption{flex:none;font-size:11px;color:#718579;line-height:18px;}
+.card-title-row{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:12px 0;min-width:0;}.card-event-title{flex:1;min-width:0;font-size:17px;font-weight:700;line-height:25px;overflow-wrap:anywhere;}.card-kind{flex:none;}
+.card-schedule{display:flex;align-items:center;gap:13px;min-width:0;}.card-thumbnail{position:relative;flex:none;width:91px;height:104px;border-radius:10px;overflow:hidden;}.cover-caption{position:absolute;left:0;right:0;bottom:0;padding:12px 7px 6px;background:linear-gradient(transparent,rgba(9,47,33,.45));color:#fff;font-size:10px;line-height:16px;letter-spacing:1px;pointer-events:none;}
+.schedule-copy{flex:1;min-width:0;}.card-date{display:block;font-size:12px;font-weight:500;line-height:18px;}.card-time{display:block;margin:1px 0 9px;font-size:18px;font-weight:750;line-height:25px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}.card-place{display:block;font-size:13px;font-weight:600;line-height:20px;overflow-wrap:anywhere;}.card-address{display:block;margin-top:3px;color:#718579;font-size:11px;line-height:17px;overflow-wrap:anywhere;}
+.card-specs{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;min-width:0;}.card-middle{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}.event-state{display:flex;align-items:center;gap:5px;color:#718579;font-size:11px;line-height:17px;}.event-state-active{color:#006b42;}.state-dot{flex:none;width:5px;height:5px;border-radius:50%;background:#006b42;}.card-result{font-size:11px;line-height:17px;color:#718579;overflow-wrap:anywhere;}.card-tags{display:flex;flex-wrap:wrap;gap:5px;min-width:0;}.card-fee{display:flex;align-items:baseline;gap:3px;flex:none;white-space:nowrap;}.fee-amount{color:#006b42;font-size:19px;font-weight:750;line-height:26px;}.fee-unit{font-size:10px;color:#718579;line-height:16px;}
+.card-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #dce8df;padding:12px 0;min-width:0;}.card-people{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-width:0;}.card-avatars{display:flex;align-items:center;flex:none;}.participant-avatar{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:28px;height:28px;border:2px solid #fff;border-radius:50%;overflow:hidden;background:#daeee0;color:#006b42;font-size:11px;font-weight:600;}.participant-avatar+.participant-avatar{margin-left:-9px;}.extra-people{background:#edf6ef;font-size:10px;}.capacity-copy{display:flex;flex-direction:column;}.capacity-count{font-size:11px;font-weight:600;line-height:17px;}.capacity-caption,.card-number{font-size:10px;color:#718579;line-height:15px;}.card-open{display:flex;align-items:center;justify-content:center;gap:3px;flex:none;padding:9px 11px;border-radius:10px;background:#edf6ef;color:#006b42;font-size:12px;font-weight:600;line-height:20px;}
+.card-open-arrow{display:flex;transform:rotate(-45deg);}
+@media(max-width:350px){.play-card-main{padding:13px 11px 0;}.card-schedule{gap:10px;}.card-thumbnail{width:72px;height:102px;}.card-time{font-size:16px;}.host-caption{display:none;}.card-open{padding:9px 8px;}.card-people{gap:5px;}.fee-amount{font-size:17px;}}
 </style>

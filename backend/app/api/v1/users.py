@@ -103,6 +103,17 @@ async def my_activities(
                 preferred_end=e.preferred_end, min_players=e.min_players, max_players=e.max_players, address=e.address, cover_image=(e.images or [None])[0],
                 registration=dict(status=_v(r.status), review_reason=r.review_reason) if r else None)
         items.append(item)
+    # The shared card uses the same public display data in discovery and personal lists.
+    # Keep the user's relation, management flags and registration result above intact.
+    if items:
+        from app.api.v1 import posts, tournaments
+        from app.services.activity_discovery import load_card_participants
+        model, factory = (MatchPost, posts.discovery_query) if kind == 'post' else (Tournament, tournaments.discovery_query)
+        card_rows = (await db.execute(factory().where(model.id.in_([item['id'] for item in items])))).all()
+        public_cards = posts.discovery_items(card_rows) if kind == 'post' else await tournaments.discovery_items(db, card_rows)
+        by_id = {card.id: card.model_dump() for card in public_cards} if kind == 'post' else {card['id']: card for card in public_cards}
+        items = [{**by_id[item['id']], **item} for item in items]
+        await load_card_participants(db, {(kind, item['id']): item for item in items})
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
