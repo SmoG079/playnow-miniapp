@@ -7,7 +7,7 @@ from sqlalchemy import delete
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine,async_sessionmaker
 from sqlalchemy.pool import NullPool
-from app.models.models import Club,User,MatchPost,Tournament,TournamentAudit,Activity
+from app.models.models import Club,User,MatchPost,Tournament,TournamentAudit,TournamentEntryTeam,Activity
 from app.api.v1 import posts,tournaments
 from app.services.activity_discovery import list_activities
 from tests.test_discovery import listing
@@ -55,6 +55,7 @@ async def test_real_city_distance_date_and_type_pagination(monkeypatch):
         async with factory() as db:
             if ids:
                 await db.execute(delete(TournamentAudit).where(TournamentAudit.tournament_id.in_(ids)))
+                await db.execute(delete(TournamentEntryTeam).where(TournamentEntryTeam.tournament_id.in_(ids)))
                 await db.execute(delete(Tournament).where(Tournament.id.in_(ids)))
                 await db.execute(delete(MatchPost).where(MatchPost.id.in_(ids)))
                 await db.execute(delete(Activity).where(Activity.id.in_(ids)))

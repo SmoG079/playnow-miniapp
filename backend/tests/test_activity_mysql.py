@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import NullPool
-from app.models.models import Activity, Club, User, UserRole, MatchPost, Tournament, TournamentAudit
+from app.models.models import Activity, Club, User, UserRole, MatchPost, Tournament, TournamentAudit, TournamentEntryTeam
 from app.api.v1 import posts, tournaments
 from app.schemas.schemas import PostCreate
 from app.schemas.tournament import TournamentCreate, TournamentConfig
@@ -75,6 +75,7 @@ async def test_shared_sequence_under_real_mysql_and_redis(monkeypatch):
         async with factory() as db:
             if created:
                 await db.execute(delete(TournamentAudit).where(TournamentAudit.tournament_id.in_(created)))
+                await db.execute(delete(TournamentEntryTeam).where(TournamentEntryTeam.tournament_id.in_(created)))
                 await db.execute(delete(Tournament).where(Tournament.id.in_(created)))
                 await db.execute(delete(MatchPost).where(MatchPost.id.in_(created)))
                 await db.execute(delete(Activity).where(Activity.id.in_(created)))
