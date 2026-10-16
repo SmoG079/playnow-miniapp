@@ -30,3 +30,5 @@
 `import_utr_snapshot(db, user_id, payload)` 使用用户表主键 `users.id`（微信 ID），锁定用户行，按主键创建或更新 `user_utr_records`。同一事务更新已有的 `users.utr_rating`；NTRP 和角色不受影响，提交由调用方负责。重复导入更新同一记录，后续 UTR 同步接口可调用此服务，本次没有新增公开写接口。
 
 数据库实际结构已核对：`user_utr_records.user_id` 是主键，同时外键指向 `users.id`；没有重复战绩记录，用户主键与微信 openid 一致。页面移除积分和 NTRP 数字下方的辅助说明文字，保留字段标题。
+
+MySQL 回归测试覆盖旧事务快照下重复导入：用户行串行锁配合战绩行锁定读取，确保读取最新已提交记录，避免 REPEATABLE READ 快照误判为无记录后重复插入。

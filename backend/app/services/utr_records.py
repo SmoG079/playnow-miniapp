@@ -68,7 +68,9 @@ async def import_utr_snapshot(db: AsyncSession, user_id: str, payload: Mapping[s
     user = await db.get(User, user_id, with_for_update=True)
     if user is None:
         raise ValueError('UTR target user does not exist')
-    record = await db.get(UserUtrRecord, user.id)
+    # Locking reads see the latest committed row even if a prior source/user
+    # lookup established an older MySQL REPEATABLE READ snapshot.
+    record = await db.get(UserUtrRecord, user.id, with_for_update=True)
     if record is None:
         record = UserUtrRecord(user_id=user.id)
         db.add(record)

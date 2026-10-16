@@ -2,6 +2,7 @@
 import os
 import uuid
 from decimal import Decimal
+import asyncio
 from pathlib import Path
 import pytest
 import sqlalchemy as sa
@@ -42,6 +43,28 @@ def test_utr_schema_upgrade_preserves_values(previous):
                 assert tuple(c.execute(sa.text('SELECT matches_played,wins,losses,world_rank,age_group FROM user_utr_records')).one()) == (1,0,1,329791,'22–29')
                 c.execute(sa.text('UPDATE user_utr_records SET wins=NULL,world_rank=NULL')); c.commit()
                 assert tuple(c.execute(sa.text('SELECT wins,world_rank FROM user_utr_records')).one()) == (None,None)
+                c.execute(sa.text('DELETE FROM user_utr_records')); c.commit()
+                # A source lookup may have established a REPEATABLE READ snapshot
+                # before another importer commits its first record. The subsequent
+                # locked read must see that record and update it, not insert twice.
+                async def repeat_import_after_older_snapshot():
+                    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+                    from app.models.models import User, UserUtrRecord
+                    from app.services.utr_records import import_utr_snapshot
+                    engine = create_async_engine(database.url.set(drivername='mysql+asyncmy'), hide_parameters=True)
+                    factory = async_sessionmaker(engine, expire_on_commit=False)
+                    try:
+                        async with factory() as first, factory() as stale:
+                            await stale.execute(sa.select(User).where(User.id == 'utr-migration'))
+                            payload = dict(label='Ages 30 & Over',lose='0',played='1',rank='121029',rating='3.59',won='1')
+                            await import_utr_snapshot(first,'utr-migration',payload); await first.commit()
+                            await import_utr_snapshot(stale,'utr-migration',dict(payload,rating='3.60')); await stale.commit()
+                            assert await stale.scalar(sa.select(sa.func.count()).select_from(UserUtrRecord)) == 1
+                            user = await stale.get(User,'utr-migration')
+                            assert user.utr_rating == Decimal('3.60') and user.ntrp_level == Decimal('4.5')
+                    finally:
+                        await engine.dispose()
+                asyncio.run(repeat_import_after_older_snapshot())
     finally:
         database.dispose()
         with admin.begin() as c: c.execute(sa.text('DROP DATABASE '+name))
