@@ -4,6 +4,7 @@ export type Discipline = "singles" | "doubles" | "mixed";
 export interface TournamentConfig {
   format: TournamentFormat;
   discipline: Discipline;
+  pairing: "random" | "fixed" | null;
   group_count: number;
   courts: string[];
   match_minutes: number;
@@ -29,6 +30,7 @@ export function defaultConfig(): TournamentConfig {
   return {
     format: "knockout",
     discipline: "singles",
+    pairing: null,
     group_count: 1,
     courts: ["1号场地"],
     match_minutes: 45,
@@ -70,6 +72,9 @@ export interface Match {
   scheduled_end?: string;
 }
 export interface Registration {
+  user_ntrp_level?: number | null;
+  entry_team_id?: number | null;
+  entry_seat?: number | null;
   requested_group?: number;
   id: number;
   user_id: string;
@@ -79,7 +84,6 @@ export interface Registration {
   admission?: string;
   approval?: string;
   payment?: string;
-  pairing?: string;
   gender?: string;
   partner_user_id?: string;
   invite_token?: string;
@@ -88,6 +92,8 @@ export interface Registration {
   refund_status?: string;
 }
 export interface Tournament {
+  organizer_user_id?: string | null;
+  entry_teams: EntryTeam[];
   phase?: string;
   level_required?: string | null;
   participants: Registration[];
@@ -160,6 +166,13 @@ export interface Tournament {
     published: boolean;
     reason?: string;
   }[];
+}
+export interface EntryTeam {
+  id: number;
+  group_no: number;
+  position: number;
+  seats: { seat: number; occupied: boolean; gender: "male" | "female" | null;
+    participant: { user_id: string; user_nickname?: string; user_avatar?: string; confirmed: boolean } | null }[];
 }
 export function utcInput(value: string): string {
   return /(?:Z|[+-]\d\d:\d\d)$/.test(value) ? value : value + "Z";

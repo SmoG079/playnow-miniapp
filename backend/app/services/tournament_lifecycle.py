@@ -24,6 +24,7 @@ from app.models.models import (
 )
 from app.schemas.tournament import TournamentConfig
 from app.services.settlement import _to_cents
+from app.services import tournament_entries as entries
 
 logger = get_logger(__name__)
 
@@ -125,6 +126,8 @@ def group_available(t, r, active):
 
 
 async def reserve(db, t, r):
+    if t.config and not r.entry_team_id:
+        await entries.claim(db, t, r)
     r.admission = "active"
     if t.entry_fee > 0:
         r.payment = "pending"
@@ -187,6 +190,8 @@ async def refresh_admissions(db, t):
                 continue
             if not group_available(t, r, active):
                 continue
+            if t.config and not await entries.available(db, t, r):
+                continue
             await reserve(db, t, r)
             active.append(r)
             db.add(
@@ -215,6 +220,8 @@ async def admit(db, t, r):
     full = len(active) >= (t.max_participants or 128) or not group_available(
         t, r, active
     )
+    if t.config and not await entries.available(db, t, r):
+        full = True
     if cfg and cfg.discipline == "mixed":
         full = (
             full or sum(p.gender == r.gender for p in active) >= t.max_participants // 2
@@ -234,20 +241,7 @@ async def admit(db, t, r):
 
 
 async def unpair(db, t, r):
-    if r.partner_user_id:
-        partner = (
-            await db.execute(
-                select(TournamentRegistration).where(
-                    TournamentRegistration.tournament_id == t.id,
-                    TournamentRegistration.user_id == r.partner_user_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if partner:
-            partner.partner_user_id = None
-            partner.pairing = "fixed"
-            partner.invite_token = None
-    r.partner_user_id = None
+    await entries.release(db, t, r)
 
 
 async def request_refund(db, order, reason):

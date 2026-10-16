@@ -16,6 +16,7 @@ class TournamentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     format: Literal["knockout", "round_robin", "groups_knockout"] = "knockout"
     discipline: Literal["singles", "doubles", "mixed"] = "singles"
+    pairing: Literal["random", "fixed"] | None = None
     group_count: int = Field(1, ge=1, le=16)
     courts: list[str] = Field(
         default_factory=lambda: ["1号场地"], min_length=1, max_length=16
@@ -31,6 +32,10 @@ class TournamentConfig(BaseModel):
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.discipline != "singles" and self.pairing is None:
+            raise ValueError("双打和混双必须选择搭档方式")
+        if self.discipline == "singles":
+            self.pairing = None
         self.courts = [s.strip() for s in self.courts]
         if any(not s or len(s) > 64 for s in self.courts) or len(
             set(self.courts)
@@ -85,7 +90,7 @@ class TournamentCreate(BaseModel):
     contact_name: str = Field("", max_length=64)
     contact_phone: str = Field("", max_length=20)
     auto_title: bool = False
-    config: TournamentConfig | None = None
+    config: TournamentConfig = Field(default_factory=TournamentConfig)
     registration_deadline: datetime | None = None
     cancellation_deadline: datetime | None = None
 
@@ -149,9 +154,11 @@ class TournamentCreate(BaseModel):
 
 
 class RegistrationCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     requested_group: int = Field(0, ge=0, le=16)
     gender: Literal["male", "female"] | None = None
-    pairing: Literal["random", "fixed"] = "random"
+    entry_team_id: int | None = Field(None, ge=1)
+    entry_seat: int | None = Field(None, ge=1, le=2)
 
 
 class ReasonCommand(BaseModel):

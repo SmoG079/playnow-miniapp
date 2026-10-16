@@ -94,7 +94,7 @@ async def test_expiry_removal_notifies_once(db):
 async def test_adjust_draw_keeps_teams_public_version_and_idempotence(db,discipline):
     from app.schemas.tournament import TournamentConfig
     people=4 if discipline=='singles' else 8
-    tid,admin=await event(db,people,TournamentConfig(discipline=discipline))
+    tid,admin=await event(db,people,TournamentConfig(discipline=discipline, pairing="random" if discipline != "singles" else None))
     for uid in range(2,people+2):await register(db,tid,uid,gender='male' if uid%2==0 else 'female')
     await api.close_registration(tid,admin,db)
     await api.create_draw(tid,DrawCommand(expected_version=0,idempotency_key='first-draw'),admin,db)
@@ -183,7 +183,7 @@ async def test_insufficient_roster_reports_draw_reason_before_request(db):
     await register(db,tid,2)
     await api.close_registration(tid,admin,db)
     detail=await api.get_tournament(tid,admin,db)
-    assert '每组至少需要两队' in detail['draw_block_reason']
+    assert '每组至少需要两支已完成报名的队伍' in detail['draw_block_reason']
     assert not detail['can_adjust_draw']
     assert detail['draw_version']==0
     assert (await api.get_tournament(tid,None,db))['draw_block_reason']==''

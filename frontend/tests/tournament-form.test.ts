@@ -22,7 +22,7 @@ describe("actionable tournament form validation",()=>{
   const issues=tournamentFieldIssues({...valid(),end:"08:00"},cfg,null);
   expect(issues.map(i=>i.field)).toEqual(expect.arrayContaining(["end_date","match_minutes","qualifiers_per_group"]));
   expect(issues.find(i=>i.field==="qualifiers_per_group")?.panel).toBe("rules");
-  expect(tournamentFieldIssues({...valid(),max_participants:7},{...defaultConfig(),discipline:"doubles"},null)[0].message).toContain("偶数");
+  expect(tournamentFieldIssues({...valid(),max_participants:7},{...defaultConfig(),pairing:"random",discipline:"doubles"},null)[0].message).toContain("偶数");
  });
 });
 
@@ -31,4 +31,11 @@ it.each(["3.3","4.0-3.0","3.0-","NaN"])("rejects invalid tournament NTRP %s",val
 });
 it.each(["","不限","3.5","3.0–4.0"])("accepts optional tournament NTRP %s",value=>{
  expect(tournamentFieldIssues({...valid(),level_required:value},defaultConfig(),null)).toEqual([]);
+});
+
+it.each(['doubles','mixed'] as const)('requires an explicit organizer pairing policy for %s', discipline => {
+ const config = {...defaultConfig(), discipline};
+ expect(tournamentFieldIssues(valid(),config,null).some(i=>i.field==='pairing')).toBe(true);
+ expect(tournamentFieldIssues(valid(),{...config,pairing:'fixed'},null)).toEqual([]);
+ expect(tournamentFieldIssues(valid(),{...config,pairing:'random'},null)).toEqual([]);
 });

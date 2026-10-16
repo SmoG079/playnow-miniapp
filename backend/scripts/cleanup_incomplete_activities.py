@@ -47,7 +47,7 @@ def cleanup(connection, expected):
         connection.execute(sa.text("DELETE m FROM tournament_matches m JOIN tournament_draws d ON d.id=m.draw_id WHERE d.tournament_id=:id"),args)
         connection.execute(sa.text("DELETE m FROM tournament_team_members m JOIN tournament_draws d ON d.id=m.draw_id WHERE d.tournament_id=:id"),args)
         connection.execute(sa.text("DELETE t FROM tournament_teams t JOIN tournament_draws d ON d.id=t.draw_id WHERE d.tournament_id=:id"),args)
-        for table in ("tournament_draws","tournament_audits","tournament_registrations"):
+        for table in ("tournament_draws","tournament_audits","tournament_registrations","tournament_entry_teams"):
             connection.execute(sa.text("DELETE FROM "+table+" WHERE tournament_id=:id"),args)
         connection.execute(sa.text("DELETE FROM notifications WHERE ref_type='tournament' AND ref_id=:id"),args)
         connection.execute(sa.text("DELETE FROM tournaments WHERE id=:id"),args)

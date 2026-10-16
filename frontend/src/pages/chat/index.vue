@@ -38,7 +38,7 @@ onReachBottom(()=>{if(more)void load(true);});
    </view>
    <view v-for="c in conversations" :key="c.id" class="conv-item direct-conversation" @click="openPage('/pages/chat/conversation?id='+c.id)">
     <wd-badge :value="c.unread_count" :max="99" :hidden="c.unread_count===0" :top="2" :right="2" border><Photo :src="c.peer.avatar_url" width="46px" height="46px" round /></wd-badge>
-    <view class="conv-body"><view class="row between"><text class="strong peer-name">{{ c.peer.nickname }}</text><text class="muted small">{{ notificationTime(c.last_message_at) }}</text></view><text class="muted line-clamp">{{ c.last_message || '开始聊天' }}</text><text class="conversation-post">{{ c.post.title }}</text></view>
+    <view class="conv-body"><view class="row between"><text class="strong peer-name">{{ c.peer.nickname }}</text><text class="muted small">{{ notificationTime(c.last_message_at) }}</text></view><text class="muted line-clamp">{{ c.last_message || '开始聊天' }}</text><text class="conversation-post">{{ c.activity.title }}</text></view>
    </view>
    <view v-if="error" class="list-error"><text>{{ error }}</text><text @click="load()">重试</text></view>
    <view v-else-if="!conversations.length" class="empty-state message-empty"><wd-icon name="message" size="42px" color="#147553" /><text class="section-title">和球友聊聊下一场球</text><text class="muted">在约球详情点击「发消息」即可联系发起人</text></view>

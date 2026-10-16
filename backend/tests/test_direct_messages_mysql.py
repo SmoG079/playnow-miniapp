@@ -47,7 +47,7 @@ async def test_concurrent_contact_send_and_read(monkeypatch):
             async with factory() as db:
                 # Authentication reads before the competing write establish a snapshot.
                 user = await db.get(User, user_ids[1])
-                result = await messages.contact(messages.ContactPost(post_id=post_id), user, db)
+                result = await messages.contact(messages.ContactActivity(activity_id=post_id), user, db)
                 await db.commit()
                 return result['id']
 
@@ -78,9 +78,9 @@ async def test_concurrent_contact_send_and_read(monkeypatch):
     finally:
         async with factory() as db:
             if post_id is not None:
-                convs = select(DirectConversation.id).where(DirectConversation.post_id == post_id)
+                convs = select(DirectConversation.id).where(DirectConversation.activity_id == post_id)
                 await db.execute(delete(DirectMessage).where(DirectMessage.conversation_id.in_(convs)))
-                await db.execute(delete(DirectConversation).where(DirectConversation.post_id == post_id))
+                await db.execute(delete(DirectConversation).where(DirectConversation.activity_id == post_id))
                 await db.execute(delete(MatchPost).where(MatchPost.id == post_id))
                 await db.execute(delete(Activity).where(Activity.id == post_id))
             if user_ids:

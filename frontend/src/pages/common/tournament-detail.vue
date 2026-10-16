@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import ParticipantIdentity from "../../components/ParticipantIdentity.vue";
 import { cardState } from "../../domain/activity-card";
 import { drawBlockReason } from "../../domain/draw-readiness";
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, nextTick } from "vue";
+import TournamentEntryTeams from "../../components/TournamentEntryTeams.vue";
 import {
   onLoad,
   onShow,
@@ -38,6 +40,7 @@ import {
   type Tournament,
   type Match,
   type Registration,
+  type EntryTeam,
 } from "../../services/tournaments";
 const s = useSession(),
   id = ref(0),
@@ -52,8 +55,20 @@ const s = useSession(),
   historyVersion = ref(0),
   history = ref<any>(null),
   mineOnly = ref(false);
-const visibleParticipants = computed(() => (t.value?.participants || []).filter(r=>["registered","confirmed"].includes(r.status) && !["cancelled","expired","rejected"].includes(r.admission||"")));
-const participantTeams = computed(() => (viewData.value?.teams || []).map((team:any)=>({...team,user_ids:(team.user_ids||[]).filter((uid:string)=>visibleParticipants.value.some(r=>r.user_id===uid))})).filter((team:any)=>team.user_ids.length));
+const contactingOrganizer = ref(false);
+async function contactOrganizer() {
+  if (t.value?.club_id) {
+    if (t.value.contact_phone) uni.makePhoneCall({phoneNumber:t.value.contact_phone});
+    return;
+  }
+  if (!s.requireLogin(`/pages/common/tournament-detail?id=${id.value}`) || contactingOrganizer.value) return;
+  contactingOrganizer.value = true;
+  try {
+    const c = await request<{id:string}>('/messages/conversations',{method:'POST',data:{activity_id:id.value}});
+    uni.navigateTo({url:'/pages/chat/conversation?id='+c.id});
+  } catch(e:any) { uni.showToast({title:e.message || '暂时无法联系主办方',icon:'none'}); }
+  finally { contactingOrganizer.value = false; }
+}
 const showCancelledRecords = ref(false);
 const cancelledRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>r.status==="cancelled" || r.admission==="cancelled"));
 const managementRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>showCancelledRecords.value || !(r.status==="cancelled" || r.admission==="cancelled")));
@@ -80,9 +95,10 @@ const myPosition = computed(() =>
   ),
 );
 const registration = reactive({
+  entry_team_id: null as number | null,
+  entry_seat: null as number | null,
   requested_group: 0,
   gender: "" as "" | "male" | "female",
-  pairing: "random" as "random" | "fixed",
 });
 const form = reactive({
   winner: 0,
@@ -280,6 +296,13 @@ async function join() {
   )
     return;
   if (!t.value?.can_register || !canJoin.value) return;
+  if (cfg.value?.pairing === 'fixed' && !registration.entry_team_id) {
+    tab.value = 'players';
+    await nextTick();
+    uni.pageScrollTo({selector:'.entry-roster',duration:250});
+    uni.showToast({title:'请选择队伍中的空位报名',icon:'none'});
+    return;
+  }
   if (cfg.value?.discipline === "mixed" && !registration.gender) {
     uni.showToast({ title: "请选择报名性别", icon: "none" });
     return;
@@ -292,9 +315,31 @@ async function join() {
   const r = await run("register", {
     requested_group: registration.requested_group,
     gender: registration.gender || null,
-    pairing: registration.pairing,
+    entry_team_id: registration.entry_team_id,
+    entry_seat: registration.entry_seat,
   });
+  registration.entry_team_id = registration.entry_seat = null;
   if (r?.payment === "pending") await pay();
+}
+async function chooseEntrySeat(team: EntryTeam, seat: EntryTeam['seats'][number]) {
+  if (!s.requireLogin(`/pages/common/tournament-detail?id=${id.value}`)) return;
+  if (seat.occupied || busy.value || !t.value?.can_register) return;
+  try {
+    if (!canJoin.value) {
+      if (await confirm(`更换到第${team.group_no}组${team.position}队？原有搭档关系会解除。`)) {
+        await run('team-seat',{entry_team_id:team.id,entry_seat:seat.seat});
+      }
+      return;
+    }
+    registration.entry_team_id = team.id;
+    registration.entry_seat = seat.seat;
+    registration.requested_group = team.group_no;
+    if (seat.gender) registration.gender = seat.gender;
+    await join();
+  } catch(e:any) {
+    uni.showToast({title:e.message || '报名失败，请重试',icon:'none'});
+    await load();
+  } finally { registration.entry_team_id = registration.entry_seat = null; }
 }
 async function pay() {
   busy.value = true;
@@ -315,18 +360,24 @@ async function review(r: Registration, approved: boolean) {
   const why = await reason(approved ? "通过报名审核" : "拒绝报名");
   if (why) await run(`registrations/${r.id}/review`, { reason: why, approved });
 }
-async function pairing(fixed: boolean) {
-  await run("pairing", { pairing: fixed ? "fixed" : "random" });
-}
 async function accept() {
   if (!s.requireLogin()) return;
-  if (!mine.value) {
-    uni.showToast({ title: "请先完成个人报名，再确认搭档", icon: "none" });
-    return;
+  try {
+    if (canJoin.value) {
+      const spot = await request<{entry_team_id:number;entry_seat:number}>(`/tournaments/${id.value}/invitations/${invite.value}`);
+      const team = t.value?.entry_teams.find(team=>team.id === spot.entry_team_id);
+      const seat = team?.seats.find(seat=>seat.seat === spot.entry_seat);
+      if (!team || !seat) throw new Error('队伍席位已变化，请刷新后重试');
+      await chooseEntrySeat(team,seat);
+      if (mine.value?.entry_team_id === team.id) invite.value = '';
+      return;
+    }
+    await run(`invitations/${invite.value}/accept`);
+    invite.value = "";
+    uni.showToast({ title: "搭档已确认", icon: "success" });
+  } catch(e:any) {
+    uni.showToast({title:e.message || '无法加入搭档队伍',icon:'none'});
   }
-  await run(`invitations/${invite.value}/accept`);
-  invite.value = "";
-  uni.showToast({ title: "搭档已确认", icon: "success" });
 }
 async function draw(stage = "initial") {
   if(stage === "initial" && drawBlockReason(t.value)) {
@@ -548,72 +599,13 @@ function tie() {
                 </view>
               </view>
               <view v-if="t.images?.length" class="intro-section"><text class="intro-heading">赛事图片</text><view class="gallery"><Photo v-for="img in t.images" :key="img" :src="img" width="100%" height="180px" /></view></view>
-              <view class="intro-section"><text class="intro-heading">主办与联系</text><text class="intro-copy">{{ t.club_name || '个人主办' }}{{ t.contact_name ? ' · '+t.contact_name : '' }}</text><wd-button v-if="t.contact_phone" size="small" variant="plain" @click="uni.makePhoneCall({ phoneNumber: t.contact_phone })">联系主办方</wd-button></view>
+              <view class="intro-section"><text class="intro-heading">主办与联系</text><text class="intro-copy">{{ t.club_name || '个人主办' }}{{ t.contact_name ? ' · '+t.contact_name : '' }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
               <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="muted small">截止前全额原路退款，之后由管理员处理；主办方取消全退。</text></view>
             </view>
           </wd-tab>
-          <wd-tab title="参与者" name="players"
-            ><view class="pane">
-              <template
-                v-if="!cfg?.ungrouped_display && participantTeams.length"
-                ><view
-                  v-for="team in participantTeams"
-                  :key="team.id"
-                  class="list-card"
-                  ><view class="participant-avatars"
-                    ><Photo
-                      v-for="uid in team.user_ids || []"
-                      :key="uid"
-                      :src="
-                        visibleParticipants.find((r) => r.user_id === uid)
-                          ?.user_avatar
-                      "
-                      width="32px"
-                      height="32px"
-                      round /></view
-                  ><text>第 {{ team.group_no }} 组 · {{ teamName(participantTeams,team.id,visibleParticipants) }}</text
-                  ><text class="muted"
-                    >队伍 #{{ team.id }}
-                    {{
-                      team.origin_group
-                        ? " · 原第" + team.origin_group + "组"
-                        : ""
-                    }}</text
-                  ></view
-                ></template
-              >
-              <template v-else
-                ><view
-                  v-for="r in visibleParticipants"
-                  :key="r.id"
-                  class="list-card"
-                  ><Photo
-                    :src="r.user_avatar"
-                    width="32px"
-                    height="32px"
-                    round
-                  /><text>{{ r.user_nickname || "未设置昵称" }}</text
-                  ><text v-if="r.admission" class="muted"
-                    >{{ stateNames[r.admission] }} ·
-                    {{ stateNames[r.approval || ""] }} ·
-                    {{ stateNames[r.payment || ""] }}</text
-                  ></view
-                ></template
-              >
-              <text v-if="!visibleParticipants.length" class="muted"
-                >暂无参与者；双打每队两人，混双每队一男一女</text
-              >
-              <text v-if="!t.roster_frozen" class="muted"
-                >待确认席位：{{
-                  Math.max(
-                    0,
-                    (t.max_participants || 0) - t.current_participants,
-                  )
-                }}
-                人（含待审核、待支付席位）</text
-              >
-            </view></wd-tab
-          >
+          <wd-tab title="参与者" name="players"><view class="pane">
+            <TournamentEntryTeams :teams="t.entry_teams" :ungrouped="cfg?.ungrouped_display" :selectable="cfg?.pairing === 'fixed' && t.can_register && !t.roster_frozen" :my-user-id="s.user?.id" :busy="busy" @select="chooseEntrySeat" />
+          </view></wd-tab>
           <wd-tab title="赛程" name="bracket"
             ><view class="pane"
               ><text class="muted">{{
@@ -677,7 +669,7 @@ function tie() {
                 : "自动分组"
             }}</text
           ><view
-            v-if="cfg && cfg.group_count > 1 && !t.roster_frozen && !canJoin"
+            v-if="cfg && cfg.pairing !== 'fixed' && cfg.group_count > 1 && !t.roster_frozen && !canJoin && !mine.partner_user_id"
             class="choices"
             ><wd-button size="small" variant="plain" @click="changeGroup(0)"
               >改为自动分组</wd-button
@@ -723,7 +715,7 @@ function tie() {
           >
           <template
             v-if="
-              cfg?.discipline !== 'singles' &&
+              cfg?.pairing === 'fixed' &&
               cfg &&
               !t.roster_frozen &&
               !canJoin
@@ -731,15 +723,11 @@ function tie() {
             ><text class="muted">{{
               mine.partner_user_id
                 ? "搭档已确认"
-                : mine.pairing === "fixed"
+                : cfg.pairing === "fixed"
                   ? "待确认搭档"
                   : "随机搭档，抽签时配对"
             }}</text
             ><view class="choices"
-              ><wd-button size="small" variant="plain" @click="pairing(true)"
-                >邀请固定搭档</wd-button
-              ><wd-button size="small" variant="plain" @click="pairing(false)"
-                >改为随机搭档</wd-button
               ><button
                 v-if="mine.invite_token"
                 open-type="share"
@@ -757,7 +745,7 @@ function tie() {
             >确认搭档邀请</wd-button
           ></view
         >
-        <view v-if="canJoin && t.can_register" class="list-card"
+        <view v-if="canJoin && t.can_register && cfg?.pairing !== 'fixed'" class="list-card"
           ><template v-if="cfg && cfg.group_count > 1"
             ><text>选择参赛组（抽签保持所选组别）</text
             ><view class="choices"
@@ -792,21 +780,6 @@ function tie() {
                 :variant="registration.gender === 'female' ? 'base' : 'plain'"
                 @click="registration.gender = 'female'"
                 >女</wd-button
-              ></view
-            ></template
-          ><template v-if="cfg && cfg.discipline !== 'singles'"
-            ><text>搭档方式</text
-            ><view class="choices"
-              ><wd-button
-                size="small"
-                :variant="registration.pairing === 'random' ? 'base' : 'plain'"
-                @click="registration.pairing = 'random'"
-                >随机搭档</wd-button
-              ><wd-button
-                size="small"
-                :variant="registration.pairing === 'fixed' ? 'base' : 'plain'"
-                @click="registration.pairing = 'fixed'"
-                >固定搭档</wd-button
               ></view
             ></template
           ></view
@@ -885,10 +858,7 @@ function tie() {
           >
           <wd-button v-if="cancelledRegistrations.length" size="small" variant="text" @click="showCancelledRecords=!showCancelledRecords">{{ showCancelledRecords ? '收起取消记录' : '查看取消记录' }}（{{ cancelledRegistrations.length }}）</wd-button>
           <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
-            ><text
-              >{{ r.user_nickname || "未设置昵称" }} ·
-              {{ stateNames[r.admission || ""] }}</text
-            ><text class="muted"
+            ><view class="registration-profile"><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view><text class="muted small">{{ stateNames[r.admission || ""] }}</text></view><text class="muted"
               >{{ stateNames[r.approval || ""] }} ·
               {{ stateNames[r.payment || ""] }}</text
             ><view class="choices"
@@ -1136,3 +1106,5 @@ function tie() {
   overflow: auto;
 }
 </style>
+
+<style scoped>.registration-profile{display:flex;align-items:center;gap:12px}.registration-profile>.registration-identity{flex:1;min-width:0}.registration-profile>.muted{flex-shrink:0}</style>

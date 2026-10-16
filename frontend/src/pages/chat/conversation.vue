@@ -73,7 +73,7 @@ async function send(){
 <template>
   <AppShell back flush :title="conversation?.peer.nickname || '私信'">
     <view class="direct-chat" :style="{height:chatHeight,paddingBottom:keyboardHeight?'0':'env(safe-area-inset-bottom)'}">
-      <view v-if="conversation" class="post-context" @click="openPage('/pages/common/post-detail?id='+conversation.post.id)"><wd-icon name="user-group" size="17px" /><text>关于：{{ conversation.post.title }}</text><wd-icon name="arrow-right" size="12px" /></view>
+      <view v-if="conversation" class="post-context" @click="openPage('/pages/common/'+(conversation.activity.kind === 'post' ? 'post' : 'tournament')+'-detail?id='+conversation.activity.id)"><wd-icon name="user-group" size="17px" /><text>关于：{{ conversation.activity.title }}</text><wd-icon name="arrow-right" size="12px" /></view>
       <scroll-view scroll-y class="message-history" :scroll-into-view="scrollTo" @scrolltoupper="loadOlder">
         <view v-if="older" class="older-action" @click="loadOlder">{{ loadingOlder?'加载中…':'查看更早消息' }}</view>
         <view v-if="conversation&&!messages.length" class="start-hint">给发起人发条消息，聊聊这场球局</view>

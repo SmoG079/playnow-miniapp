@@ -1,0 +1,26 @@
+.creation-form {
+  padding: 18px 16px 32px;
+  .creation-section { background:#fff;border:1px solid #e1e7e3;border-radius:18px;padding:18px;margin-bottom:16px;overflow:hidden; }
+  .creation-heading { display:block;font-size:18px;font-weight:650;color:#243c2e;margin:0 0 18px;line-height:1.5; }
+  .creation-section > .field-label:first-child { margin-top:0; }
+  .field-label { display:flex;align-items:center;font-size:14px;font-weight:550;line-height:24px;margin:18px 0 8px;color:#344a3b; }
+  .creation-label { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+  .creation-row { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-top:1px solid #edf0ee; }
+  .creation-row .field-label { margin:0; }
+  .form-two { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+  .picker-field { width:100%;box-sizing:border-box;min-height:46px;background:#f7f9f7;border:1px solid #dfe6e1;border-radius:10px;padding:12px;font-size:14px; }
+  :deep(.wd-input), :deep(.wd-textarea) { border:1px solid #dfe6e1;border-radius:10px;background:#f7f9f7;padding:10px 12px;box-sizing:border-box; }
+  :deep(.wd-input__body) { min-height:24px; }
+  :deep(.wd-input:after), :deep(.wd-textarea:after) { display:none; }
+  .choices { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+  .choices :deep(.wd-button) { width:100%;margin:0; }
+  .switch-row { min-height:30px;border-top:1px solid #edf0ee;gap:16px;font-size:14px; }
+  .switch-row > view { display:flex;align-items:center; }
+  .creation-collapse { padding:2px 14px; }
+  .creation-collapse :deep(.wd-collapse-item__title) { font-size:15px; }
+  .creation-collapse :deep(.wd-collapse-item__body) { padding:0 2px 18px; }
+  .creation-section .section-title { margin:0 0 12px; }
+  .publish-action { display:flex;flex-direction:column;gap:12px;padding:4px 0; }
+  .publish-action .creation-label :deep(.wd-button) { flex:1;min-width:0; }
+  .venue-association { display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-bottom:0; }
+}

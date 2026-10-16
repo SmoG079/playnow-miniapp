@@ -16,17 +16,17 @@ async def setup(db,monkeypatch):
     db.add_all([Activity(id=800,kind='post'),Activity(id=801,kind='post')]);await db.flush()
     db.add_all([MatchPost(id=800,user_id='1',title='约球',preferred_date=date.today()+timedelta(days=1),preferred_start=time(10),preferred_end=time(12)),MatchPost(id=801,user_id='1',title='另一场约球')]);await db.flush()
     sender=await db.get(User,'2');receiver=await db.get(User,'1');outsider=await db.get(User,'3')
-    c=await messages.contact(messages.ContactPost(post_id=800),sender,db)
+    c=await messages.contact(messages.ContactActivity(activity_id=800),sender,db)
     return c,sender,receiver,outsider
 
 @pytest.mark.asyncio
 async def test_contact_reuses_pair_and_does_not_reveal_private_identity(db,monkeypatch):
     c,s,r,_=await setup(db,monkeypatch)
-    assert (await messages.contact(messages.ContactPost(post_id=801),s,db))['id']==c['id']
+    assert (await messages.contact(messages.ContactActivity(activity_id=801),s,db))['id']==c['id']
     assert await db.scalar(select(func.count()).select_from(DirectConversation))==1
     assert 'phone' not in c['peer'] and 'openid' not in c['peer'] and 'id' not in c['peer']
     assert (await messages.conversations(1,20,r,db))['items']==[]
-    with pytest.raises(HTTPException) as e:await messages.contact(messages.ContactPost(post_id=800),r,db)
+    with pytest.raises(HTTPException) as e:await messages.contact(messages.ContactActivity(activity_id=800),r,db)
     assert e.value.status_code==409
 
 @pytest.mark.asyncio

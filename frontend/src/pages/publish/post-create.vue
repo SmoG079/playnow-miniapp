@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FieldHelp from "../../components/FieldHelp.vue";
 import { reactive, ref, watch } from "vue";
 import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import { chooseUploadedImages, uploadedImage } from "../../services/media";
@@ -195,97 +196,49 @@ function returnToPublish() {
 <template>
   <AppShell>
     <MainHeader title="发布约球" back :back-action="returnToPublish" />
-    <view class="content publish-content">
+    <view class="content publish-content creation-form">
       <view class="post-form">
         <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
-        <text class="field-label">标题 *</text
-        ><wd-input
-          v-model="form.title"
-          placeholder="例如：周五下班，一起打双打"
-          :maxlength="40"
-          clearable
-        /><text class="field-label">场地（可选）</text>
-        <view class="venue-association">
-          <text v-if="form.booking_id" class="linked-venue"
-            >{{ venueName }} · {{ form.preferred_date }}
-            {{ form.preferred_start }}–{{ form.preferred_end }}</text
-          >
-          <text v-else class="muted">未预订场地 · 自由约球</text>
-          <wd-button custom-class="post-booking-select-button" variant="plain" @click="goBook">{{ form.booking_id ? '重新选择并预订场地' : '选择并预订场地' }}</wd-button>
-          <wd-button v-if="form.booking_id" variant="text" @click="unlinkVenue">移除关联</wd-button>
+        <view class="creation-section">
+          <text class="creation-heading">基本信息</text>
+          <text class="field-label">标题 *</text><wd-input v-model="form.title" placeholder="例如：周五下班，一起打双打" :maxlength="40" clearable />
+          <text class="field-label">活动说明</text><wd-textarea v-model="form.description" show-word-limit :maxlength="1000" placeholder="介绍这场球局" />
         </view>
-        <view class="comparison-help"><wd-button variant="text" size="small" @click="showPostComparison = true">自由约球与定场约球有什么区别？</wd-button></view>
-        <text class="field-label">活动地点</text>
-        <ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
-        <text class="field-label">地点名称</text><wd-input v-model="form.location_name" :disabled="!!form.booking_id" placeholder="例如：某某网球中心（某某店）" :maxlength="256" /><text class="field-label">日期</text
-        ><picker
-          mode="date"
-          :start="today()"
-          :value="form.preferred_date"
-          @change="form.preferred_date = $event.detail.value"
-          ><view class="picker-field">{{ form.preferred_date }}</view></picker
-        ><view class="form-two"
-          ><view
-            ><text class="field-label">开始</text
-            ><picker
-              mode="time"
-              :value="form.preferred_start"
-              @change="form.preferred_start = $event.detail.value"
-              ><view class="picker-field">{{
-                form.preferred_start
-              }}</view></picker
-            ></view
-          ><view
-            ><text class="field-label">结束</text
-            ><picker
-              mode="time"
-              :value="form.preferred_end"
-              @change="form.preferred_end = $event.detail.value"
-              ><view class="picker-field">{{
-                form.preferred_end
-              }}</view></picker
-            ></view
-          ></view
-        ><text class="field-label">NTRP 要求</text
-        ><wd-input
-          v-model="form.level_required"
-          placeholder="不限，例如 2.5-3.5"
-        /><text class="field-label">最低人数</text
-        ><wd-input-number
-          v-model="form.min_players"
-          :min="2"
-          :max="31"
-        /><text class="field-label">最大人数</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /><text class="muted small">达到最低人数成团，满员停止报名；未成团不自动取消或退款。</text><text class="field-label">人均费用（元）</text
-        ><wd-input v-model="form.price" type="digit" /><text class="field-label"
-          >活动说明</text
-        ><wd-textarea
-          v-model="form.description"
-          show-word-limit
-          :maxlength="1000"
-        /><text class="field-label">活动图片 · 首张为封面</text
-        ><view class="image-grid"
-          ><Photo
-            v-for="(img, i) in images"
-            :key="img"
-            width="72px"
-            height="72px"
-            :src="img"
-            @click="images.splice(i, 1)" /><button
-            class="upload-box"
-            @click="pickImages"
-          >
-            <wd-icon name="plus" /></button></view
-        ><wd-cell title="报名需要审核"
-          ><wd-switch v-model="form.approval_required" /></wd-cell
-        ><view class="publish-action"
-          ><wd-button block variant="plain" :disabled="loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
-          ><text class="muted small">草稿保存在当前设备，退出后可继续填写。</text
-          ><wd-button block :loading="loading || coverUploading || locationSelecting" @click="submit"
-            >发布约球</wd-button
-          ></view
-        ></view
-      ></view
-    ><wd-popup
+        <view class="creation-section">
+          <text class="creation-heading">时间与地点</text>
+          <text class="field-label">日期 *</text><picker mode="date" :start="today()" :value="form.preferred_date" @change="form.preferred_date = $event.detail.value"><view class="picker-field">{{ form.preferred_date }}</view></picker>
+          <view class="form-two">
+            <view><text class="field-label">开始时间</text><picker mode="time" :value="form.preferred_start" @change="form.preferred_start = $event.detail.value"><view class="picker-field">{{ form.preferred_start }}</view></picker></view>
+            <view><text class="field-label">结束时间</text><picker mode="time" :value="form.preferred_end" @change="form.preferred_end = $event.detail.value"><view class="picker-field">{{ form.preferred_end }}</view></picker></view>
+          </view>
+          <text class="field-label">活动地点 *</text><ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
+          <text class="field-label">地点名称</text><wd-input v-model="form.location_name" :disabled="!!form.booking_id" placeholder="例如：某某网球中心（某某店）" :maxlength="256" />
+          <view class="creation-label"><text class="field-label">关联预订场地（选填）</text><wd-button variant="text" size="small" @click="showPostComparison = true">了解区别</wd-button></view>
+          <view class="venue-association">
+            <text v-if="form.booking_id" class="linked-venue">{{ venueName }} · {{ form.preferred_date }} {{ form.preferred_start }}–{{ form.preferred_end }}</text>
+            <wd-button custom-class="post-booking-select-button" variant="plain" @click="goBook">{{ form.booking_id ? '重新选择并预订场地' : '选择并预订场地' }}</wd-button>
+            <wd-button v-if="form.booking_id" variant="text" @click="unlinkVenue">移除关联</wd-button>
+          </view>
+        </view>
+        <view class="creation-section">
+          <text class="creation-heading">报名设置</text>
+          <view class="field-label">NTRP 要求<FieldHelp title="NTRP 要求" content="留空表示不限等级，也可以填写等级或范围，例如 2.5–3.5。" /></view><wd-input v-model="form.level_required" placeholder="不限，例如 2.5-3.5" />
+          <view class="creation-row"><view class="field-label">最低人数<FieldHelp title="成团人数" content="达到最低人数成团，满最大人数停止报名；未成团不自动取消或退款。" /></view><wd-input-number v-model="form.min_players" :min="2" :max="31" /></view>
+          <view class="creation-row"><text class="field-label">最大人数</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /></view>
+          <text class="field-label">人均费用（元）</text><wd-input v-model="form.price" type="digit" />
+          <view class="creation-row"><view class="field-label">报名需要审核<FieldHelp title="报名审核" content="开启后，报名须经发起人通过；关闭后报名直接生效。" /></view><wd-switch v-model="form.approval_required" /></view>
+        </view>
+        <view class="creation-section">
+          <view class="field-label">活动图片<FieldHelp title="活动图片" content="最多上传六张图片，第一张作为封面。点击图片可以移除。" /></view>
+          <view class="image-grid"><Photo v-for="(img,i) in images" :key="img" width="72px" height="72px" :src="img" @click="images.splice(i,1)" /><button class="upload-box" @click="pickImages"><wd-icon name="plus" /></button></view>
+        </view>
+        <view class="publish-action">
+          <view class="creation-label"><wd-button block variant="plain" :disabled="loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button><FieldHelp title="保存草稿" content="草稿保存在当前设备，退出后可继续填写。" /></view>
+          <wd-button block :loading="loading || coverUploading || locationSelecting" @click="submit">发布约球</wd-button>
+        </view>
+      </view>
+    </view>
+    <wd-popup
       v-model="showPostComparison"
       position="bottom"
       round
@@ -385,4 +338,8 @@ function returnToPublish() {
 .comparison-header text {
   color: #284d39;
 }
+</style>
+
+<style scoped lang="scss">
+@use "../../styles/creation-form.scss";
 </style>

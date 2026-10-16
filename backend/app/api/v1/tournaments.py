@@ -37,6 +37,7 @@ from app.schemas.tournament import (
 )
 from app.services import tournament_lifecycle as life
 from app.services import tournament_engine as engine
+from app.services import tournament_entries as entries
 from app.services import activity_ids
 from app.services.discovery import city_name, ordered
 from app.api.v1.posts import haversine
@@ -367,6 +368,7 @@ async def create_tournament(
     db.add(t)
     await db.flush()
     await db.refresh(t)
+    await entries.create(db, t)
     life.audit(db, t, user, "created", {})
     return brief(t)
 
@@ -391,12 +393,14 @@ async def update_tournament(
             t.config is not None
             and t.config != (req.config.model_dump() if req.config else None)
         )
-        or req.max_participants < (t.max_participants or req.max_participants)
+        or req.max_participants != t.max_participants
     ):
-        raise HTTPException(409, "已有报名时不能修改费用、赛制或减少名额")
+        raise HTTPException(409, "已有报名时不能修改费用、赛制或队伍数量")
     if t.venue_id and req.venue_id != t.venue_id:
         raise HTTPException(409, "已关联球场的比赛不能变更地点")
     await apply_request(db, t, req)
+    if not regs:
+        await entries.rebuild(db, t)
     life.audit(db, t, user, "updated", {})
     await db.flush()
     return brief(t)
@@ -418,7 +422,7 @@ async def get_tournament(
     d = await draw_for(db, t, t.draw_version if manage else t.published_version)
     rows = (
         await db.execute(
-            select(TournamentRegistration, User.nickname, User.avatar_url)
+            select(TournamentRegistration, User.nickname, User.avatar_url, User.ntrp_level)
             .join(User, TournamentRegistration.user_id == User.id)
             .where(TournamentRegistration.tournament_id == ident)
             .order_by(TournamentRegistration.created_at)
@@ -426,19 +430,21 @@ async def get_tournament(
     ).all()
     regs = []
     mine = None
-    for r, nick, avatar in rows:
+    for r, nick, avatar, level in rows:
         public = dict(
             id=r.id,
             user_id=r.user_id,
             user_nickname=nick,
             user_avatar=avatar,
+            user_ntrp_level=float(level) if level is not None else None,
             status=_v(r.status),
             partner_user_id=r.partner_user_id,
             requested_group=r.requested_group,
+            entry_team_id=r.entry_team_id, entry_seat=r.entry_seat,
         )
         private = row_dict(
             r,
-            "approval payment admission gender pairing seat_expires_at review_reason invite_token",
+            "approval payment admission gender seat_expires_at review_reason invite_token",
         )
         if manage or (user and user.id == r.user_id):
             public.update(private)
@@ -457,14 +463,11 @@ async def get_tournament(
         if (
             manage
             or life.eligible(r)
-            or (
-                not t.config and _v(r.status) == "confirmed" and r.admission == "active"
-            )
         ):
             regs.append(public)
     matches = await matches_for(db, d)
     frozen_ids = {uid for team in await teams_for(db, d) for uid in team["user_ids"]}
-    for r, nick, avatar in rows:
+    for r, nick, avatar, level in rows:
         if r.user_id in frozen_ids and not any(x["user_id"] == r.user_id for x in regs):
             regs.append(
                 dict(
@@ -472,6 +475,7 @@ async def get_tournament(
                     user_id=r.user_id,
                     user_nickname=nick,
                     user_avatar=avatar,
+            user_ntrp_level=float(level) if level is not None else None,
                     status=_v(r.status),
                     partner_user_id=r.partner_user_id,
                     requested_group=r.requested_group,
@@ -491,6 +495,10 @@ async def get_tournament(
         if venue:
             data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
     data["auto_title"] = t.auto_title
+    data["organizer_user_id"] = await db.scalar(select(TournamentAudit.actor_id).where(
+        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created").order_by(TournamentAudit.id).limit(1))
+    if not t.club_id:
+        data["contact_phone"] = None
     data["description_template"] = t.description
     local_start = t.start_time + timedelta(hours=8)
     local_end = t.end_time + timedelta(hours=8)
@@ -520,6 +528,22 @@ async def get_tournament(
         rankings=await rankings(db, d, matches),
         prepay_enabled=get_settings().TOURNAMENT_PREPAY_ENABLED,
     )
+    entry_teams = await entries.teams(db, t)
+    data["entry_teams"] = []
+    for team in entry_teams:
+        seats = []
+        for seat_no in range(1, entries.size(t) + 1):
+            member = next(((r, nick, av, level) for r, nick, av, level in rows
+                           if r.entry_team_id == team.id and r.entry_seat == seat_no), None)
+            participant = None
+            if member:
+                r, nick, av, level = member
+                if manage or life.eligible(r) or (user and user.id == r.user_id):
+                    participant = dict(user_id=r.user_id, user_nickname=nick, user_avatar=av,
+                                       confirmed=life.eligible(r), user_ntrp_level=float(level) if level is not None else None)
+            seats.append(dict(seat=seat_no, occupied=member is not None, participant=participant,
+                              gender=("male" if seat_no == 1 else "female") if t.config and life.config(t).discipline == "mixed" else None))
+        data["entry_teams"].append(dict(id=team.id, group_no=team.group_no, position=team.position, seats=seats))
     from app.services import tournament_adjustment as adjustment
     permitted = False
     if user:
@@ -533,10 +557,8 @@ async def get_tournament(
     data["draw_positions"] = d.snapshot["positions"] if d else []
     data["draw_block_reason"] = ""
     if manage and t.config and (not d or d.stage == "initial"):
-        roster = [row_dict(r, "user_id gender pairing partner_user_id requested_group")
-            for r, _, _ in rows if life.eligible(r)]
         try:
-            engine.pair_grouped(roster, life.config(t), "draw-readiness", t.max_participants or 128)
+            entries.ready(t, entry_teams, [r for r, _, _, _ in rows], life.eligible)
         except ValueError as exc:
             data["draw_block_reason"] = str(exc)
     data["my_draw"] = (
@@ -545,7 +567,7 @@ async def get_tournament(
         else None
     )
     active = [
-        r for r, _, _ in rows if r.admission == "active" and r.approval == "approved"
+        r for r, _, _, _ in rows if r.admission == "active" and r.approval == "approved"
     ]
     data["registration_groups"] = [
         dict(
@@ -571,19 +593,12 @@ async def get_tournament(
         except ValueError:
             data["bracket_preview"] = None
     if not t.published_version and t.config:
-        roster = [
-            row_dict(r, "user_id gender pairing partner_user_id requested_group")
-            for r, _, _ in rows
-            if life.eligible(r)
-        ]
         try:
             cfg = life.config(t)
-            grouped = engine.pair_grouped(
-                roster, cfg, f"preview-{t.id}", t.max_participants or 128
-            )
+            grouped = entries.ready(t, entry_teams, [r for r, _, _, _ in rows], life.eligible)
             preview_teams = [
-                dict(id=i, group_no=g, name=f"队伍{i}", user_ids=players)
-                for i, (g, players) in enumerate(grouped, 1)
+                dict(id=p["entry_team_id"], group_no=p["group_no"], name=f"队伍{i}", user_ids=p["user_ids"])
+                for i, p in enumerate(grouped, 1)
             ]
             preview_matches = []
             for g in range(1, cfg.group_count + 1):
@@ -667,7 +682,7 @@ async def register_tournament(
             select(TournamentRegistration).where(
                 TournamentRegistration.tournament_id == ident,
                 TournamentRegistration.user_id == user.id,
-            )
+            ).with_for_update().execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
     if r and r.admission not in ("cancelled", "expired", "rejected"):
@@ -678,7 +693,6 @@ async def register_tournament(
     life.group_capacity(t, req.requested_group)
     r.requested_group = req.requested_group
     r.gender = req.gender
-    r.pairing = req.pairing
     r.partner_user_id = None
     r.invite_token = None
     r.order_id = None
@@ -689,6 +703,12 @@ async def register_tournament(
     r.created_at = life.now()
     r.review_reason = None
     await db.flush()
+    if cfg and cfg.pairing == "fixed":
+        if req.entry_team_id is None or req.entry_seat is None:
+            raise HTTPException(422, "请先选择队伍空位")
+        await entries.claim(db, t, r, req.entry_team_id, req.entry_seat)
+    elif req.entry_team_id is not None or req.entry_seat is not None:
+        raise HTTPException(422, "本比赛不支持自选搭档席位")
     if r.approval == "approved":
         await life.admit(db, t, r)
     life.audit(db, t, user, "registered", {"registration_id": r.id})
@@ -730,6 +750,7 @@ async def review(
     else:
         r.admission = "rejected"
         r.status = TournamentRegStatus.cancelled
+        await entries.release(db, t, r)
     life.audit(
         db,
         t,
@@ -842,14 +863,18 @@ async def select_group(
     r = await own(db, t, user)
     if r.admission not in ("active", "review", "waitlisted"):
         raise HTTPException(409, "当前报名不能选组")
+    if life.config(t).pairing == "fixed":
+        raise HTTPException(409, "固定搭档比赛请通过队伍空位选组")
     life.group_capacity(t, req.requested_group)
     if r.partner_user_id and r.requested_group != req.requested_group:
-        raise HTTPException(409, "请先解除固定搭档，再重新选组和确认搭档")
+        raise HTTPException(409, "已组队后不能单独换组，请先取消报名后重新组队")
     r.requested_group = req.requested_group
     if r.admission == "active" and not life.group_available(
         t, r, [p for p in rows if p.admission == "active" and p.approval == "approved"]
     ):
         raise HTTPException(409, "该组名额已满或混双性别名额已满")
+    if r.entry_team_id:
+        await entries.claim(db, t, r)
     life.audit(
         db,
         t,
@@ -860,24 +885,35 @@ async def select_group(
     return {"msg": "ok"}
 
 
-@router.post("/{ident}/pairing")
-async def pairing(
-    ident: int,
-    req: RegistrationCommand,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+@router.post("/{ident}/team-seat")
+async def select_team_seat(ident: int, req: RegistrationCommand,
+                          user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     t = await life.locked_event(db, ident)
     await life.refresh_admissions(db, t)
+    if t.roster_frozen or t.registration_closed or _v(t.status) != "open":
+        raise HTTPException(409, "名单已冻结或报名已关闭")
+    if life.config(t).pairing != "fixed":
+        raise HTTPException(409, "仅固定搭档比赛可自选队伍")
     r = await own(db, t, user)
-    if t.roster_frozen or r.admission in ("cancelled", "expired", "rejected"):
-        raise HTTPException(409, "当前不能调整搭档")
-    if life.config(t).discipline == "singles":
-        raise HTTPException(409, "单打无需搭档")
-    await life.unpair(db, t, r)
-    r.pairing = req.pairing
-    r.invite_token = secrets.token_urlsafe(24) if req.pairing == "fixed" else None
-    return dict(invite_token=r.invite_token)
+    if r.admission not in ("active", "review"):
+        raise HTTPException(409, "当前报名不能选择队伍")
+    if req.entry_team_id is None or req.entry_seat is None:
+        raise HTTPException(422, "请选择队伍空位")
+    await entries.claim(db, t, r, req.entry_team_id, req.entry_seat)
+    life.audit(db, t, user, "team_seat_selected", {"registration_id": r.id, "entry_team_id": r.entry_team_id, "seat": r.entry_seat})
+    return {"msg": "ok"}
+
+
+@router.get("/{ident}/invitations/{token}")
+async def invitation_seat(ident: int, token: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    t = await db.get(Tournament, ident)
+    if not t or t.roster_frozen or t.registration_closed or life.now() >= (t.registration_deadline or t.start_time) or _v(t.status) != "open":
+        raise HTTPException(409, "报名已关闭")
+    sender = await db.scalar(select(TournamentRegistration).where(
+        TournamentRegistration.tournament_id == ident, TournamentRegistration.invite_token == token))
+    if not sender or not sender.entry_team_id or sender.partner_user_id or life.config(t).pairing != "fixed":
+        raise HTTPException(409, "搭档邀请已失效")
+    return dict(entry_team_id=sender.entry_team_id, entry_seat=3-sender.entry_seat)
 
 
 @router.post("/{ident}/invitations/{token}/accept")
@@ -889,7 +925,7 @@ async def accept_invitation(
 ):
     t = await life.locked_event(db, ident)
     await life.refresh_admissions(db, t)
-    if t.roster_frozen:
+    if t.roster_frozen or t.registration_closed or _v(t.status) != "open":
         raise HTTPException(409, "名单已冻结")
     sender = (
         await db.execute(
@@ -914,13 +950,9 @@ async def accept_invitation(
         "female",
     }:
         raise HTTPException(422, "混双搭档必须一男一女")
-    if sender.requested_group != receiver.requested_group:
-        raise HTTPException(409, "固定搭档须选择相同分组（或双方均选自动分组）")
-    sender.partner_user_id = user.id
-    receiver.partner_user_id = sender.user_id
-    sender.pairing = receiver.pairing = "fixed"
-    sender.invite_token = None
-    receiver.invite_token = None
+    if life.config(t).pairing != "fixed" or not sender.entry_team_id:
+        raise HTTPException(409, "本比赛不支持固定搭档邀请")
+    await entries.claim(db, t, receiver, sender.entry_team_id, 3 - sender.entry_seat)
     life.audit(db, t, user, "partner_confirmed", {"users": [sender.user_id, user.id]})
     return {"msg": "ok"}
 
@@ -1074,18 +1106,14 @@ async def create_draw(
         }
     else:
         roster = [
-            row_dict(r, "user_id gender pairing partner_user_id requested_group")
+            row_dict(r, "user_id gender partner_user_id requested_group")
             for r in regs
             if life.eligible(r)
         ]
         try:
-            grouped = engine.pair_grouped(roster, cfg, seed, t.max_participants or 128)
-            paired = [pair for group, pair in grouped]
+            players = entries.ready(t, await entries.teams(db, t), regs, life.eligible)
         except ValueError as exc:
             raise HTTPException(409, str(exc))
-        if len(paired) < 2 * cfg.group_count:
-            raise HTTPException(409, "每组至少需要两队")
-        players = [dict(user_ids=p, group_no=g, origin_group=None) for g, p in grouped]
         snapshot = {"roster": roster}
     d = TournamentDraw(
         tournament_id=ident,

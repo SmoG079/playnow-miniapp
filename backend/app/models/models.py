@@ -412,7 +412,7 @@ class Tournament(Base):
     level_required = Column(String(32), nullable=True)
     images = Column(JSON)
     cover_image = Column(String(512))
-    config = Column(JSON, nullable=True)
+    config = Column(JSON, nullable=False, default=lambda: {"format":"knockout", "discipline":"singles", "pairing":None, "group_count":1})
     address = Column(String(256))
     location_name = Column(String(256), nullable=False, default="", server_default="")
     contact_name = Column(String(64))
@@ -446,6 +446,15 @@ class TournamentRegStatus(str, enum.Enum):
     cancelled = "cancelled"
 
 
+class TournamentEntryTeam(Base):
+    __tablename__ = "tournament_entry_teams"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=False)
+    group_no = Column(Integer, nullable=False)
+    position = Column(Integer, nullable=False)
+    __table_args__ = (UniqueConstraint("tournament_id", "group_no", "position", name="uq_entry_team_position"),)
+
+
 class TournamentRegistration(Base):
     __tablename__ = "tournament_registrations"
 
@@ -459,7 +468,8 @@ class TournamentRegistration(Base):
     admission = Column(String(16), default="active", nullable=False)
     gender = Column(String(16))
     requested_group = Column(Integer, default=0, server_default="0", nullable=False)
-    pairing = Column(String(16), default="random", nullable=False)
+    entry_team_id = Column(BigInteger, ForeignKey("tournament_entry_teams.id"))
+    entry_seat = Column(Integer)
     partner_user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     invite_token = Column(String(64), unique=True)
     seat_expires_at = Column(DateTime)
@@ -467,6 +477,8 @@ class TournamentRegistration(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("tournament_id", "user_id", name="uq_tournament_user"),
+                     UniqueConstraint("entry_team_id", "entry_seat", name="uq_entry_team_seat"),
+                     CheckConstraint("(entry_team_id IS NULL AND entry_seat IS NULL) OR (entry_team_id IS NOT NULL AND entry_seat IS NOT NULL AND entry_seat IN (1, 2))", name="ck_entry_team_seat"),
                      Index("idx_tournament_registration_user_created", "user_id", "created_at", "id"),
                      Index("idx_tournament_review", "tournament_id", "approval", "admission"))
 
@@ -621,7 +633,7 @@ class DirectConversation(Base):
     pair_key = Column(String(64), nullable=False, unique=True)
     participant_a = Column(String(64).with_variant(mysql.VARCHAR(64, collation='utf8mb4_bin'), 'mysql'), ForeignKey('users.id'), nullable=False)
     participant_b = Column(String(64).with_variant(mysql.VARCHAR(64, collation='utf8mb4_bin'), 'mysql'), ForeignKey('users.id'), nullable=False)
-    post_id = Column(BigInteger, ForeignKey('match_posts.id'), nullable=False)
+    activity_id = Column(BigInteger, ForeignKey('activities.id'), nullable=False)
     read_a = Column(BigInteger, nullable=False, default=0)
     read_b = Column(BigInteger, nullable=False, default=0)
     last_message_id = Column(BigInteger, nullable=True)

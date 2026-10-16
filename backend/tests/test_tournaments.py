@@ -140,23 +140,24 @@ async def test_waitlist_review_and_cancellation(db):
 
 @pytest.mark.asyncio
 async def test_pair_invitation_and_partner_cancel(db):
-    tid, admin = await event(db, 4, TournamentConfig(discipline="mixed"))
-    await register(db, tid, 2, gender="male", pairing="fixed")
-    await register(db, tid, 3, gender="female")
-    u2 = await db.get(User, 2)
-    u3 = await db.get(User, 3)
-    invite = await api.pairing(tid, RegistrationCommand(pairing="fixed"), u2, db)
+    tid, admin = await event(db, 4, TournamentConfig(pairing="fixed", discipline="mixed"))
+    detail = await api.get_tournament(tid, admin, db)
+    first, second = detail["entry_teams"]
+    await register(db, tid, 2, gender="male", entry_team_id=first["id"], entry_seat=1)
+    await register(db, tid, 3, gender="female", entry_team_id=second["id"], entry_seat=2)
+    u2, u3 = await db.get(User, 2), await db.get(User, 3)
+    invite = {"invite_token": (await api.own(db, await life.locked_event(db, tid), u2)).invite_token}
+    spot = await api.invitation_seat(tid, invite["invite_token"], u3, db)
+    assert spot == {"entry_team_id": first["id"], "entry_seat": 2}
     await api.accept_invitation(tid, invite["invite_token"], u3, db)
     t = await life.locked_event(db, tid)
-    r = await api.own(db, t, u2)
-    partner = await api.own(db, t, u3)
-    assert partner.partner_user_id == "2"
+    r, partner = await api.own(db, t, u2), await api.own(db, t, u3)
+    assert partner.partner_user_id == "2" and partner.entry_team_id == first["id"]
+    assert partner.entry_seat == 2
     await api.cancel_registration(tid, r.id, ReasonCommand(reason="退出"), u2, db)
-    assert (
-        partner.partner_user_id is None
-        and partner.pairing == "fixed"
-        and partner.status.value == "confirmed"
-    )
+    assert partner.partner_user_id is None and partner.entry_team_id == first["id"]
+    assert partner.status.value == "confirmed"
+    assert r.entry_team_id is None and partner.invite_token
 
 
 @pytest.mark.asyncio
@@ -407,7 +408,7 @@ async def test_default_payment_gate_and_mixed_gender_capacity(db, monkeypatch):
         await register(db, paid, 2)
     assert err.value.status_code == 503
     tid, admin = await event(
-        db, 4, TournamentConfig(discipline="mixed", waitlist_enabled=True)
+        db, 4, TournamentConfig(pairing="random", discipline="mixed", waitlist_enabled=True)
     )
     for uid in (2, 3, 4):
         await register(db, tid, uid, gender="male")
@@ -541,18 +542,17 @@ async def test_tournament_callback_commits_before_ack_and_is_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_legacy_visibility_requires_explicit_payment_verification(db):
+async def test_unverified_payment_requires_explicit_verification(db):
     tid, admin = await event(db, 2)
     await register(db, tid, 2)
     t = await life.locked_event(db, tid)
     r = await api.own(db, t, await db.get(User, 2))
-    t.config = None
     t.entry_fee = Decimal("20")
     r.payment = "unverified"
     await db.flush()
     public = await api.get_tournament(tid, None, db)
-    assert len(public["registrations"]) == 1 and public["teams"] == []
-    assert "payment" not in public["registrations"][0]
+    assert public["registrations"] == [] and public["teams"] == []
+    assert public["entry_teams"][0]["seats"][0]["participant"] is None or public["entry_teams"][1]["seats"][0]["participant"] is None
     t.config = TournamentConfig().model_dump()
     assert not life.eligible(r)
     await api.verify_legacy(
@@ -708,22 +708,18 @@ async def test_group_capacity_waitlist_and_invitation_mismatch(db):
             tid, RegistrationCommand(requested_group=3), await db.get(User, 3), db
         )
     doubles, admin = await event(
-        db, 8, TournamentConfig(group_count=2, discipline="doubles")
+        db, 8, TournamentConfig(group_count=2, pairing="random", discipline="doubles")
     )
     for uid, g in ((2, 1), (3, 2)):
-        await register(db, doubles, uid, requested_group=g, pairing="fixed")
-    invite = await api.pairing(
-        doubles, RegistrationCommand(pairing="fixed"), await db.get(User, 2), db
-    )
-    with pytest.raises(HTTPException):
-        await api.accept_invitation(
-            doubles, invite["invite_token"], await db.get(User, 3), db
-        )
+        await register(db, doubles, uid, requested_group=g)
+    # Individual pairing preferences are no longer accepted by the API.
+    with pytest.raises(ValueError):
+        RegistrationCommand(pairing="fixed")
 
 
 @pytest.mark.asyncio
 async def test_auto_players_fill_selected_mixed_groups(db):
-    tid, admin = await event(db, 8, TournamentConfig(group_count=2, discipline="mixed"))
+    tid, admin = await event(db, 8, TournamentConfig(group_count=2, pairing="random", discipline="mixed"))
     for uid, g, gender in (
         (2, 1, "male"),
         (3, 1, "female"),

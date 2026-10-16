@@ -4,6 +4,7 @@ const blank = (v:unknown) => v == null || String(v).trim() === "";
 export function tournamentFieldIssues(form:any, config:TournamentConfig, linked:any, previewOnly=false): TournamentFieldIssue[] {
   const issues:TournamentFieldIssue[]=[];
   const add=(field:string,panel:string,message:string)=>issues.push({field,panel,message});
+  if (config.discipline !== "singles" && !config.pairing) add("pairing","settings","请选择搭档方式");
   if (!blank(form.level_required) && String(form.level_required).trim() !== "不限") {
     const parts=String(form.level_required).trim().replace(/[–—]/g,"-").split("-");
     const values=parts.map(v=>Number(v.trim()));

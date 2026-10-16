@@ -31,7 +31,7 @@ async function contactOrganizer() {
   if(!s.requireLogin('/pages/common/post-detail?id='+id.value)||contacting.value)return;
   contacting.value=true;
   try{
-    const conversation=await request<{id:string}>('/messages/conversations',{method:'POST',data:{post_id:Number(id.value)}});
+    const conversation=await request<{id:string}>('/messages/conversations',{method:'POST',data:{activity_id:Number(id.value)}});
     openPage('/pages/chat/conversation?id='+conversation.id);
   }catch(e:any){uni.showToast({title:e.message||'暂时无法联系发起人',icon:'none'});}
   finally{contacting.value=false;}

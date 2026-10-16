@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FieldHelp from "../../components/FieldHelp.vue";
 import { normalizedPrizes, type Prize } from "../../domain/prizes";
 import { reactive, ref, watch, computed, nextTick } from "vue";
 import { onLoad, onShow, onHide, onUnload } from "@dcloudio/uni-app";
@@ -109,10 +110,6 @@ const placeholderHint =
   ["日期", "时间", "地点"].map((x) => "{{" + x + "}}").join(" ");
 const autoTitle = computed(
   () => `${form.start_date} ${disciplineNames[cfg.discipline]}比赛`,
-);
-const summary = computed(
-  () =>
-    `${formatNames[cfg.format]} · ${disciplineNames[cfg.discipline]} · ${cfg.group_count}组`,
 );
 watch([form, cfg, images, linked, clubIndex, panels], cacheDraft, { deep:true, flush:"sync" });
 onLoad(async (q) => {
@@ -257,7 +254,7 @@ function payload(previewOnly = false) {
     address: form.address,
     location_name: form.location_name,
     contact_name: form.contact_name,
-    contact_phone: form.contact_phone,
+    contact_phone: clubs.value[clubIndex.value]?.id ? form.contact_phone : "",
     images: [] as string[],
     venue_id: linked.value?.venue_id || null,
     lock_venue: false,
@@ -318,22 +315,23 @@ async function save() {
 </script>
 <template>
   <AppShell back :title="editId ? '编辑赛事' : '创建赛事'"
-    ><view class="content publish-content">
+    ><view class="content publish-content creation-form">
       <ActivityCoverUpload v-model="images" :disabled="loading || coverUploading" @busy="coverUploading = $event" />
-      <view v-if="fieldIssues.length" class="validation-summary"><text class="strong">请补充或修改以下信息</text><text v-for="issue in fieldIssues" :key="issue.field" class="validation-item" @click="locateIssue(issue)">· {{ issue.message }}</text></view>
-      <view id="basic"
-        ><text class="section-title">基本信息</text
-        ><text class="field-label">主办俱乐部（选填）</text>
-        <view class="picker-field" @click="chooseClub()"><text>{{ clubLoading ? '正在加载…' : clubs[clubIndex]?.name || '不设置主办俱乐部' }}</text><wd-icon v-if="!editId" name="arrow-down" /></view>
-        <text class="field-label" id="required-title">赛事名称 *</text><wd-input
+      <view v-if="fieldIssues.length" class="validation-summary"><view class="strong">请补充或修改以下信息</view><view v-for="issue in fieldIssues" :key="issue.field" class="validation-item" @click="locateIssue(issue)">· {{ issue.message }}</view></view>
+      <view id="basic" class="creation-section"
+        ><view class="creation-heading">基本信息</view
+        ><view class="field-label">主办俱乐部（选填）</view>
+        <view class="picker-field" @click="chooseClub()"><view>{{ clubLoading ? '正在加载…' : clubs[clubIndex]?.name || '不设置主办俱乐部' }}</view><wd-icon v-if="!editId" name="arrow-down" /></view>
+        <view class="field-label" id="required-title">赛事名称 *</view><wd-input
           v-model="form.title"
           :placeholder="form.auto_title ? autoTitle : '输入赛事名称'"
           :disabled="form.auto_title"
         />
         <view class="switch-row"
-          ><text>自动生成标题</text><wd-switch v-model="form.auto_title"
+          ><view>自动生成标题</view><wd-switch v-model="form.auto_title"
         /></view>
-        <text class="field-label" id="required-start_date">开始日期与时间 *</text><view class="form-two"
+        </view><view class="creation-section"><view class="creation-heading">时间与地点</view>
+        <view class="field-label" id="required-start_date">开始日期与时间 *</view><view class="form-two"
           ><picker
             mode="date"
             :value="form.start_date"
@@ -346,7 +344,7 @@ async function save() {
             ><view class="picker-field">{{ form.start }}</view></picker
           ></view
         >
-        <text class="field-label" id="required-end_date">结束日期与时间 *</text><view class="form-two"
+        <view class="field-label" id="required-end_date">结束日期与时间 *</view><view class="form-two"
           ><picker
             mode="date"
             :value="form.end_date"
@@ -359,15 +357,13 @@ async function save() {
             ><view class="picker-field">{{ form.end }}</view></picker
           ></view
         >
-        <text class="field-label" id="required-level_required">NTRP 等级（选填）</text>
-        <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
-        <text class="field-label" id="required-address">比赛地点 *</text>
+        <view class="field-label" id="required-address">比赛地点 *<FieldHelp title="比赛地点与预订" content="在地图中选择地点仅用于展示地址；关联预订场地需要先完成订场。比赛排场名称不会自动预订场地。" /></view>
         <wd-input v-model="form.location_name" :disabled="!!linked?.venue_id" placeholder="地点名称，例如：某某网球中心" :maxlength="256" /><ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
         <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
-        <text class="muted">比赛排场名称不会自动预订场地</text></view
+        </view
       >
       <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
-      <wd-collapse v-model="panels">
+      <view class="creation-section creation-collapse"><wd-collapse v-model="panels">
         <wd-collapse-item name="prizes" :title="`奖项设置（选填） · ${normalizedPrizes(form.prizes).length} 条`">
           <view v-for="(prize,i) in form.prizes" :key="i" class="prize-editor">
             <wd-input v-model="prize.name" :maxlength="64" placeholder="奖项名称，例如冠军" />
@@ -376,21 +372,19 @@ async function save() {
           </view>
           <wd-button custom-class="add-prize-button" variant="plain" :disabled="form.prizes.length>=20" @click="form.prizes.push({name:'',description:''})">新增奖项</wd-button>
         </wd-collapse-item>
-      </wd-collapse>
-      <wd-collapse v-model="panels">
+      </wd-collapse></view>
+      <view class="creation-section creation-collapse"><wd-collapse v-model="panels">
         <wd-collapse-item name="details" title="更多基础信息 · 介绍、图片"
           ><view id="details">
-            <text class="field-label">赛事介绍</text
-            ><wd-textarea v-model="form.description" /><text class="muted">{{
-              placeholderHint
-            }}</text>
-            <text class="field-label"
-              >联系人</text
-            ><wd-input v-model="form.contact_name" /><text class="field-label"
-              >联系电话</text
-            ><wd-input v-model="form.contact_phone" type="tel" />
-            <text class="field-label"
-              >图片 {{ images.length }}/6 · 首张为封面</text
+            <view class="field-label">赛事介绍<FieldHelp title="介绍模板" :content="placeholderHint" /></view
+            ><wd-textarea v-model="form.description" />
+            <view class="field-label"
+              >联系人</view
+            ><wd-input v-model="form.contact_name" /><view v-if="clubs[clubIndex]?.id" class="field-label"
+              >联系电话<FieldHelp title="联系主办方" content="俱乐部主办使用电话联系；个人主办通过小程序内私信联系，不公开电话号码。" /></view
+            ><wd-input v-if="clubs[clubIndex]?.id" v-model="form.contact_phone" type="tel" />
+            <view class="field-label"
+              >图片 {{ images.length }}/6 · 首张为封面</view
             ><view class="images"
               ><view v-for="(img, i) in images" :key="img"
                 ><Photo :src="img" width="90px" height="90px" /><wd-button
@@ -411,10 +405,9 @@ async function save() {
             >
           </view></wd-collapse-item
         >
-      </wd-collapse>
-      <text class="section-title">比赛设置</text
-      ><text class="muted">{{ summary }}</text
-      ><text class="field-label">赛制 *</text><view class="choices"
+      </wd-collapse></view>
+      <view class="creation-section"><view class="creation-heading">比赛设置</view
+      ><view class="field-label">赛制 *</view><view class="choices"
         ><wd-button
           v-for="(label, key) in formatNames"
           :key="key"
@@ -427,27 +420,35 @@ async function save() {
           >{{ label }}</wd-button
         ></view
       >
-      <text class="field-label">比赛项目 *</text><view class="choices"
+      <view class="field-label">比赛项目 *</view><view class="choices"
         ><wd-button
           v-for="(label, key) in disciplineNames"
           :key="key"
           size="small"
           :variant="cfg.discipline === key ? 'base' : 'plain'"
-          @click="cfg.discipline = key"
+          @click="cfg.discipline = key; cfg.pairing = null"
           >{{ label }}</wd-button
         ></view
       >
-      <text class="field-label" id="required-max_participants">人数上限（个人） *</text><wd-input v-model="form.max_participants" type="number" /><text
+      <template v-if="cfg.discipline !== 'singles'">
+        <view class="field-label" id="required-pairing">搭档方式 *<FieldHelp title="搭档方式" content="固定搭档：参与者点击队伍空位组队。随机搭档：报名后由系统安排队伍。抽签只排列已组好的队伍；单打每队一人，双打及混双每队两人。" /></view>
+        <view class="choices">
+          <wd-button size="small" :variant="cfg.pairing === 'random' ? 'base' : 'plain'" @click="cfg.pairing = 'random'">随机搭档</wd-button>
+          <wd-button size="small" :variant="cfg.pairing === 'fixed' ? 'base' : 'plain'" @click="cfg.pairing = 'fixed'">固定搭档</wd-button>
+        </view>
+      </template>
+        <view class="field-label" id="required-level_required">NTRP 等级（选填）</view>
+        <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
+      <view class="field-label" id="required-max_participants">人数上限（个人） *</view><wd-input v-model="form.max_participants" type="number" /><view
         class="field-label"
-         id="required-entry_fee">报名费（每人） *</text><wd-input v-model="form.entry_fee" type="digit" /><text class="muted"
-        >线上预付需经支付退款验收后启用</text
-      >
-      <text class="field-label" id="required-group_count">分组数量 *</text><wd-input v-model="cfg.group_count" type="number" /><text
+         id="required-entry_fee">报名费（每人） *<FieldHelp title="报名费用" content="线上预付需开放赛事支付后才可使用。免费比赛无需付款；付费比赛按每位参赛者收取。" /></view><wd-input v-model="form.entry_fee" type="digit" />
+      <view class="field-label" id="required-group_count">分组数量 *</view><wd-input v-model="cfg.group_count" type="number" /><view
         class="field-label"
-         id="required-courts">场地名称（每行一个） *</text><wd-textarea v-model="form.courts" /><text class="field-label"
-         id="required-match_minutes">每场预计分钟 *</text><wd-input v-model="cfg.match_minutes" type="number" />
+         id="required-courts">场地名称（每行一个） *</view><wd-textarea v-model="form.courts" /><view class="field-label"
+         id="required-match_minutes">每场预计分钟 *</view><wd-input v-model="cfg.match_minutes" type="number" />
+      </view>
       <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
-      <wd-collapse v-model="panels">
+      <view class="creation-section creation-collapse"><wd-collapse v-model="panels">
         <wd-collapse-item
           name="advanced"
           :title="
@@ -458,28 +459,28 @@ async function save() {
           "
           ><view id="advanced">
             <view class="switch-row"
-              ><text>报名需要审核</text
+              ><view>报名需要审核<FieldHelp title="报名审核" content="开启后，参赛者须由比赛发起者审核通过。待审核的固定队伍席位会保留，拒绝后释放。" /></view
               ><wd-switch v-model="cfg.approval_required" /></view
             ><view class="switch-row"
-              ><text>开启候补</text
+              ><view>开启候补<FieldHelp title="候补" content="随机搭档和单打比赛名额满后可以候补，递补后按要求完成付款。固定搭档请选择可用队伍空位。" /></view
               ><wd-switch v-model="cfg.waitlist_enabled" /></view
             ><view class="switch-row"
-              ><text>参与者不分组展示</text
+              ><view>参与者不分组展示</view
               ><wd-switch v-model="cfg.ungrouped_display"
             /></view>
-            <text class="field-label" id="required-registration_hours">报名截止（开赛前小时） *</text><wd-input v-model="form.registration_hours" type="digit" /><text
+            <view class="field-label" id="required-registration_hours">报名截止（开赛前小时） *</view><wd-input v-model="form.registration_hours" type="digit" /><view
               class="field-label"
-               id="required-cancellation_hours">取消截止（开赛前小时） *</text><wd-input v-model="form.cancellation_hours" type="digit" /> </view
+               id="required-cancellation_hours">取消截止（开赛前小时） *</view><wd-input v-model="form.cancellation_hours" type="digit" /> </view
         ></wd-collapse-item>
         <wd-collapse-item name="rules" title="赛制高级设置"
           ><view id="rules">
             <view v-if="cfg.format !== 'round_robin'" class="switch-row"
-              ><text>季军赛</text><wd-switch v-model="cfg.third_place"
+              ><view>季军赛</view><wd-switch v-model="cfg.third_place"
             /></view>
             <view v-if="cfg.format !== 'knockout'" class="switch-row"
-              ><text>循环赛允许平局</text><wd-switch v-model="cfg.allow_draw"
+              ><view>循环赛允许平局</view><wd-switch v-model="cfg.allow_draw"
             /></view>
-            <text class="field-label" id="required-max_parallel">每轮最多同时场次（留空按场地数）</text><wd-input
+            <view class="field-label" id="required-max_parallel">每轮最多同时场次（留空按场地数）</view><wd-input
               :model-value="cfg.max_parallel || ''"
               type="number"
               @update:model-value="
@@ -487,18 +488,15 @@ async function save() {
               "
             />
             <template v-if="cfg.format === 'groups_knockout'"
-              ><text class="field-label" id="required-qualifiers_per_group">每组晋级队数 *</text><wd-input v-model="cfg.qualifiers_per_group" type="number"
+              ><view class="field-label" id="required-qualifiers_per_group">每组晋级队数 *</view><wd-input v-model="cfg.qualifiers_per_group" type="number"
             /></template>
-            <text class="muted"
-              >比分由管理员填写并指定胜者；淘汰赛支持轮空。</text
-            >
+            <view class="creation-label"><view class="field-label">计分与结果</view><FieldHelp title="比赛结果" content="比分由管理员填写并指定胜者；淘汰赛支持轮空。" /></view>
           </view></wd-collapse-item
         >
-      </wd-collapse>
+      </wd-collapse></view>
       <view class="publish-action"
-        ><wd-button block variant="plain" :disabled="!draftReady || loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
-        ><text class="muted small">草稿保存在当前设备，退出后可继续填写。</text
-        ><wd-button
+        ><view class="creation-label"><wd-button block variant="plain" :disabled="!draftReady || loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
+        ><FieldHelp title="保存草稿" content="草稿保存在当前设备，退出后可继续填写。" /></view><wd-button
           block
           variant="plain"
           :loading="loading || coverUploading || locationSelecting"
@@ -575,4 +573,8 @@ async function save() {
 <style scoped>
 .prize-editor { margin-bottom:16px; padding:12px; border:1px solid #e5e8e5; border-radius:12px; }
 :deep(.prize-textarea) { min-height:140px; }
+</style>
+
+<style scoped lang="scss">
+@use "../../styles/creation-form.scss";
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ParticipantIdentity from "../../components/ParticipantIdentity.vue";
 import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -33,13 +34,8 @@ async function review(r: any, status: string) {
         :key="r.user_id"
         class="record-card"
         ><view class="registration-person"
-          ><Photo
-            round
-            width="42px"
-            height="42px"
-            :src="r.user_avatar"
-          /><text class="registration-name strong">{{ r.user_nickname || "球友" }}</text
-          ><text class="registration-status" :class="'status-' + r.status">{{ statusLabels[r.status] }}</text
+          ><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
+          <text class="registration-status" :class="'status-' + r.status">{{ statusLabels[r.status] }}</text
           ></view
         ><view v-if="r.status === 'pending'" class="registration-actions"
           ><wd-button size="small" @click="review(r, 'approved')"
@@ -60,6 +56,7 @@ async function review(r: any, status: string) {
 
 <style scoped>
 .registration-person{display:flex;align-items:center;justify-content:flex-start;gap:10px;text-align:left}
+.registration-identity{flex:1;min-width:0}
 .registration-name{flex:1;min-width:0;line-height:1.5;overflow-wrap:anywhere}
 .registration-status{flex-shrink:0;font-size:12px;color:#839087}
 .status-approved{color:#159660}

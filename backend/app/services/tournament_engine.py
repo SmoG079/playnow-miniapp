@@ -1,4 +1,4 @@
-"""Pure, reproducible tournament pairing, brackets, standings and scheduling."""
+"""Pure, reproducible team brackets, standings and scheduling."""
 
 from collections import defaultdict
 from datetime import timedelta
@@ -192,41 +192,6 @@ def standings(teams, matches, tie_orders=None):
     return output
 
 
-def pair_players(players, discipline, seed):
-    rng = random.Random(seed)
-    players = {p["user_id"]: p for p in players}
-    if discipline == "singles":
-        return [[u] for u in players]
-    fixed, remaining = [], dict(players)
-    for u, p in players.items():
-        partner = p.get("partner_user_id")
-        if p.get("pairing") == "fixed" and not partner:
-            raise ValueError(f"用户 {u} 尚未确认搭档")
-        if partner:
-            if partner not in players or players[partner].get("partner_user_id") != u:
-                raise ValueError("固定搭档必须双方确认且均具备参赛资格")
-            if discipline == "mixed" and {
-                p.get("gender"),
-                players[partner].get("gender"),
-            } != {"male", "female"}:
-                raise ValueError("混双固定搭档必须一男一女")
-            if u in remaining:
-                fixed.append([u, partner])
-                remaining.pop(u)
-                remaining.pop(partner)
-    ids = list(remaining)
-    rng.shuffle(ids)
-    if discipline == "mixed":
-        males = [u for u in ids if players[u].get("gender") == "male"]
-        females = [u for u in ids if players[u].get("gender") == "female"]
-        if len(males) != len(females) or len(males) + len(females) != len(ids):
-            raise ValueError("混双男女名额不足或性别未填写")
-        return fixed + [list(x) for x in zip(males, females)]
-    if len(ids) % 2:
-        raise ValueError("双打尚有未配对人员")
-    return fixed + [ids[i : i + 2] for i in range(0, len(ids), 2)]
-
-
 def schedule(matches, config, start):
     by_key = {m["key"]: m for m in matches}
     courts = (
@@ -301,59 +266,6 @@ def qualified_draw(qualifiers, origins, seed, third_place):
     first = [a for a, b in pairs] + bye_teams
     second = [b for a, b in pairs]
     return knockout(first + second, 1, third_place)
-
-
-def pair_grouped(players, config, seed, max_people):
-    """Honor chosen groups, filling pairing gaps from consenting random entrants."""
-    rng = random.Random(seed)
-    players = [dict(p) for p in players]
-    auto = [p for p in players if not p.get("requested_group")]
-    rng.shuffle(auto)
-    size = 1 if config.discipline == "singles" else 2
-    total = max_people // size
-    capacities = {
-        g: total // config.group_count + int(g <= total % config.group_count)
-        for g in range(1, config.group_count + 1)
-    }
-    groups = {g: [] for g in capacities}
-    for g in groups:
-        selected = [p for p in players if p.get("requested_group") == g]
-        # A selected group must form complete teams; fill only random preferences.
-        need = []
-        if config.discipline == "mixed":
-            male = sum(p.get("gender") == "male" for p in selected)
-            female = sum(p.get("gender") == "female" for p in selected)
-            need = ["female"] * max(0, male - female) + ["male"] * max(0, female - male)
-        elif config.discipline == "doubles" and len(selected) % 2:
-            need = [None]
-        for gender in need:
-            candidate = next(
-                (
-                    p
-                    for p in auto
-                    if p.get("pairing") != "fixed"
-                    and (gender is None or p.get("gender") == gender)
-                ),
-                None,
-            )
-            if candidate is None:
-                raise ValueError(f"第 {g} 组尚有未配对人员，请调整报名分组或搭档")
-            auto.remove(candidate)
-            selected.append(candidate)
-        if selected:
-            groups[g] = pair_players(selected, config.discipline, seed + str(g))
-            if len(groups[g]) > capacities[g]:
-                raise ValueError(f"第 {g} 组名额已满")
-    if auto:
-        for pair in pair_players(auto, config.discipline, seed):
-            available = [g for g in groups if len(groups[g]) < capacities[g]]
-            if not available:
-                raise ValueError("分组名额已满")
-            g = min(available, key=lambda g: len(groups[g]))
-            groups[g].append(pair)
-    if any(len(pairs) < 2 for pairs in groups.values()):
-        raise ValueError("每组至少需要两队，请调整分组报名或补充参赛者")
-    return [(g, pair) for g, pairs in groups.items() for pair in pairs]
 
 
 def personal_position(teams, matches, user_id):

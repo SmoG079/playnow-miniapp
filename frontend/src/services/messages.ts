@@ -1,5 +1,5 @@
 import { request, type PageResult } from './api';
-export interface Conversation {id:string;peer:{nickname:string;avatar_url?:string};post:{id:number;title:string};last_message?:string;last_message_at?:string;unread_count:number}
+export interface Conversation {id:string;peer:{nickname:string;avatar_url?:string};activity:{id:number;kind:"post"|"tournament";title:string};last_message?:string;last_message_at?:string;unread_count:number}
 export interface DirectMessage {id:number;client_id:string;content:string;is_mine:boolean;created_at:string}
 export interface History {items:DirectMessage[];has_more:boolean}
 export function getConversations(page=1){return request<PageResult<Conversation>>(`/messages/conversations?page=${page}&page_size=20`);}

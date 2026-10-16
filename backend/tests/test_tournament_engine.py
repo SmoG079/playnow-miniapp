@@ -56,19 +56,17 @@ def test_round_robin_every_pair_once_and_no_overlap(count):
                 }
 
 
-def test_fixed_and_random_mixed_pairing():
-    p = [
-        dict(user_id='1', gender="male", pairing="fixed", partner_user_id='2'),
-        dict(user_id='2', gender="female", pairing="fixed", partner_user_id='1'),
-        dict(user_id='3', gender="male"),
-        dict(user_id='4', gender="female"),
-    ]
-    assert e.pair_players(p, "mixed", "s") == [["1", "2"], ["3", "4"]]
-    with pytest.raises(ValueError):
-        e.pair_players(p[:-1], "mixed", "s")
-    p[0]["partner_user_id"] = None
-    with pytest.raises(ValueError):
-        e.pair_players(p, "mixed", "s")
+def test_draw_requires_preformed_complete_teams():
+    from types import SimpleNamespace as Row
+    from app.services import tournament_entries as entries
+    event = Row(config=TournamentConfig(discipline="mixed", pairing="fixed").model_dump())
+    teams = [Row(id=1,group_no=1,position=1), Row(id=2,group_no=1,position=2)]
+    players = [Row(user_id=str(i),entry_team_id=(i+1)//2,entry_seat=1+(i+1)%2) for i in range(1,5)]
+    ready = entries.ready(event,teams,players,lambda r:True)
+    assert [p["user_ids"] for p in ready] == [["1","2"],["3","4"]]
+    with pytest.raises(ValueError): entries.ready(event,teams,players[:-1],lambda r:True)
+    players[0].entry_team_id = None
+    with pytest.raises(ValueError): entries.ready(event,teams,players,lambda r:True)
 
 
 def test_head_to_head_tie_and_manual_order():
@@ -119,5 +117,5 @@ def test_validation_and_timezone():
             start_time=t.start_time,
             end_time=t.end_time,
             max_participants=5,
-            config=TournamentConfig(discipline="doubles"),
+            config=TournamentConfig(pairing="random", discipline="doubles"),
         )

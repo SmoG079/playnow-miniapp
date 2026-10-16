@@ -354,7 +354,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
 
     # Get registrations
     reg_result = await db.execute(
-        select(MatchRegistration, User.nickname, User.avatar_url, User.phone)
+        select(MatchRegistration, User.nickname, User.avatar_url, User.phone, User.ntrp_level)
         .join(User, MatchRegistration.user_id == User.id)
         .where(MatchRegistration.post_id == post_id)
         .order_by(MatchRegistration.id)
@@ -362,11 +362,11 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     reg_rows = reg_result.all()
 
     registrations = []
-    for r, r_nick, r_av, r_phone in reg_rows:
+    for r, r_nick, r_av, r_phone, r_level in reg_rows:
         r_nick = r_nick or _fallback_nickname(r.user_id, r_phone)
         registrations.append(RegistrationBrief(
             id=r.id, user_id=r.user_id, message=r.message, status=_v(r.status),
-            user_nickname=r_nick, user_avatar=r_av,
+            user_nickname=r_nick, user_avatar=r_av, user_ntrp_level=r_level,
         ))
 
     effective_city, effective_lat, effective_lng = post.city, post.latitude, post.longitude

@@ -593,6 +593,7 @@ class RegistrationBrief(BaseModel):
     status: str
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None
+    user_ntrp_level: Optional[Decimal] = None
 
     class Config:
         from_attributes = True

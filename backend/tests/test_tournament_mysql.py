@@ -19,6 +19,7 @@ from app.models.models import (
     UserRole,
     Tournament,
     TournamentRegistration,
+    TournamentEntryTeam,
     TournamentDraw,
     TournamentTeam,
     TournamentTeamMember,
@@ -39,7 +40,7 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize("operation", ["register", "draw"])
+@pytest.mark.parametrize("operation", ["register", "draw", "entry-seat"])
 async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypatch):
     import redis.asyncio as redis
     from app.services import activity_ids
@@ -80,14 +81,17 @@ async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypat
                     title="并发测试",
                     start_time=datetime.utcnow() + timedelta(days=1),
                     end_time=datetime.utcnow() + timedelta(days=2),
-                    max_participants=2,
-                    config=TournamentConfig(),
+                    max_participants=4 if operation == "entry-seat" else 2,
+                    config=TournamentConfig(discipline="doubles", pairing="fixed") if operation == "entry-seat" else TournamentConfig(),
                 ),
                 users[0],
                 db,
             )
             event_id = event["id"]
-            await api.register_tournament(event_id, RegistrationCommand(), users[1], db)
+            seat_team = None
+            if operation == "entry-seat":
+                seat_team = (await api.get_tournament(event_id, None, db))["entry_teams"][0]["id"]
+            await api.register_tournament(event_id, RegistrationCommand(entry_team_id=seat_team, entry_seat=1 if seat_team else None), users[1], db)
             if operation == "draw":
                 await api.register_tournament(
                     event_id, RegistrationCommand(), users[2], db
@@ -100,13 +104,13 @@ async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypat
             async with factory() as db:
                 user = await db.get(
                     User,
-                    user_ids[index + 2] if operation == "register" else user_ids[0],
+                    user_ids[index + 2] if operation != "draw" else user_ids[0],
                 )
                 await barrier.wait()
                 try:
-                    if operation == "register":
+                    if operation != "draw":
                         await api.register_tournament(
-                            event_id, RegistrationCommand(), user, db
+                            event_id, RegistrationCommand(entry_team_id=seat_team, entry_seat=2 if seat_team else None), user, db
                         )
                     else:
                         await api.create_draw(
@@ -126,7 +130,7 @@ async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypat
         assert sorted(await asyncio.gather(*tasks)) == [200, 409]
         async with factory() as db:
             t = await db.get(Tournament, event_id)
-            if operation == "register":
+            if operation != "draw":
                 rows = (
                     (
                         await db.execute(
@@ -160,7 +164,7 @@ async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypat
                 )
                 for model in (TournamentMatch, TournamentTeamMember, TournamentTeam):
                     await db.execute(delete(model).where(model.draw_id.in_(draw_ids)))
-                for model in (TournamentAudit, TournamentRegistration, TournamentDraw):
+                for model in (TournamentAudit, TournamentRegistration, TournamentEntryTeam, TournamentDraw):
                     await db.execute(
                         delete(model).where(model.tournament_id == event_id)
                     )
