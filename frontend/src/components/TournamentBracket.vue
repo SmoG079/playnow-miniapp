@@ -198,20 +198,25 @@ function mine(id?: number | null) {
 }
 .my-position {
   padding: 12px;
-  background: #eff6e7;
+  background: #edf6ef;
+  border: 1px solid #dce8df;
+  color: #00633c;
   border-radius: 10px;
   font-size: 13px;
 }
 .group-section {
   padding: 20px 0;
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid #dce8df;
 }
 .group-badge {
   display: inline-block;
   padding: 6px 12px;
   margin-bottom: 20px;
-  background: #d3fa45;
-  border-radius: 6px;
+  background: #00633c;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 600;
 }
 .tree-scroll {
@@ -226,7 +231,9 @@ function mine(id?: number | null) {
   margin-right: 50px;
   flex-shrink: 0;
   text-align: center;
-  color: #888;
+  color: #527260;
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 600;
 }
 .tree {
@@ -237,51 +244,57 @@ function mine(id?: number | null) {
   box-sizing: border-box;
   width: 210px;
   height: 132px;
-  border: 1px solid var(--playnow-card-border);
-  border-radius: var(--playnow-card-radius);
-  background: white;
+  border: 1px solid var(--playnow-card-border, #dce8df);
+  border-radius: var(--playnow-card-radius, 14px);
+  background: #fff;
+  color: #203c2b;
+  box-shadow: 0 2px 6px rgba(18,62,41,.035);
   overflow: hidden;
   z-index: 1;
 }
 .match-card.mine {
-  border: 2px solid #78a72b;
-  background: #fbfff4;
+  border: 2px solid #147553;
+  background: #f0f8f3;
 }
 .match-label {
   display: block;
-  padding: 5px 12px;
-  color: #888;
+  padding: 4px 10px;
+  color: #718579;
+  background: #f2f7f4;
   font-size: 11px;
+  line-height: 16px;
 }
 .entrant {
-  height: 38px;
+  height: 34px;
   box-sizing: border-box;
-  padding: 8px 12px;
-  border-top: 1px solid #eee;
-  font-size: 14px;
+  padding: 7px 10px;
+  border-top: 1px solid #e5eee8;
+  font-size: 13px;
+  line-height: 19px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .winner {
-  color: #4b7b15;
+  color: #00633c;
   font-weight: 700;
 }
 .source {
   font-size: 10px;
-  color: #999;
+  color: #718579;
 }
 .match-footer {
   display: block;
-  font-size: 10px;
-  color: #4b7b15;
+  font-size: 11px;
+  line-height: 16px;
+  color: #147553;
   font-weight: 600;
-  padding: 2px 12px;
+  padding: 2px 10px;
 }
-.match-time { display: block; font-size: 9px; color: #888; padding: 0 12px; }
+.match-time { display: block; font-size: 10px; line-height: 14px; color: #718579; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line {
   position: absolute;
-  background: #c7cebf;
+  background: #c6dace;
 }
 .horizontal {
   height: 1px;
@@ -292,6 +305,6 @@ function mine(id?: number | null) {
 .muted {
   display: block;
   font-size: 12px;
-  color: #888;
+  color: #718579;
 }
 </style>

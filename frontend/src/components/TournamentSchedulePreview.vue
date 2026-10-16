@@ -7,7 +7,7 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
 <template>
   <view class="preview-content"
     ><text class="preview-title">赛程预览</text
-    ><text class="muted">{{ formatNames[config.format] }}</text>
+    ><text class="preview-format">{{ formatNames[config.format] }}</text>
     <text class="explanation">{{
       config.format === "knockout"
         ? "每轮捉对对局，胜者晋级，逐轮决出冠军。"
@@ -16,15 +16,15 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
           : "先进行小组循环赛，再由晋级队伍抽签进入淘汰阶段。"
     }}</text>
     <view class="statistics"
-      ><view
-        ><text>{{ preview.total_matches }}</text
-        ><text>总场数</text></view
-      ><view
-        ><text>{{ preview.rounds }}</text
-        ><text>轮次</text></view
-      ><view
-        ><text>≈{{ preview.estimated_minutes }}分钟</text
-        ><text>预计时长</text></view
+      ><view class="stat-card"
+        ><text class="stat-value">{{ preview.total_matches }}</text
+        ><text class="stat-label">总场数</text></view
+      ><view class="stat-card"
+        ><text class="stat-value">{{ preview.rounds }}</text
+        ><text class="stat-label">轮次</text></view
+      ><view class="stat-card"
+        ><text class="stat-value stat-duration">≈{{ preview.estimated_minutes }}分钟</text
+        ><text class="stat-label">预计时长</text></view
       ></view
     >
     <text class="muted">{{ preview.note }}</text
@@ -49,60 +49,96 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
 </template>
 <style scoped>
 .preview-content {
+  --playnow-card-border: #dce8df;
+  --playnow-card-radius: 14px;
   padding: 28px 16px 40px;
+  background: #f5f8f6;
+  color: #183326;
 }
 .preview-title {
   display: block;
-  font-size: 24px;
+  padding-right: 28px;
+  font-size: 22px;
+  line-height: 30px;
   font-weight: 700;
+}
+.preview-format {
+  display: inline-block;
+  padding: 4px 9px;
+  margin-top: 10px;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  background: #edf6ef;
+  color: #00633c;
+  font-size: 12px;
+  line-height: 18px;
 }
 .muted {
   display: block;
-  color: #999;
+  color: #718579;
   font-size: 12px;
+  line-height: 20px;
   margin: 12px 0;
 }
 .explanation {
   display: block;
   line-height: 1.7;
-  padding-left: 12px;
-  border-left: 4px solid #d3fa45;
-  margin: 20px 0;
+  padding: 12px 14px;
+  border: 1px solid #dce8df;
+  border-left: 3px solid #147553;
+  border-radius: 10px;
+  background: #fff;
+  color: #3c5b49;
+  font-size: 14px;
+  margin: 16px 0;
 }
 .statistics {
   display: flex;
   gap: 8px;
-  margin: 20px 0;
+  margin: 16px 0;
 }
-.statistics view {
+.stat-card {
   flex: 1;
-  background: #f5f5f3;
-  border-radius: var(--playnow-card-radius);
-  border: 1px solid var(--playnow-card-border);
+  min-width: 0;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #dce8df;
   text-align: center;
   padding: 16px 4px;
 }
-.statistics text {
+.stat-value {
   display: block;
   font-size: 20px;
   font-weight: 700;
+  color: #00633c;
+  line-height: 28px;
+  overflow-wrap: anywhere;
 }
-.statistics text + text {
+.stat-duration { font-size: 16px; }
+.stat-label {
+  display: block;
   margin-top: 8px;
   font-size: 12px;
-  color: #999;
+  color: #718579;
+  line-height: 18px;
 }
 .court-badge {
   display: inline-block;
-  background: #151515;
-  color: #d3fa45;
+  border: 1px solid #cfe3d5;
+  background: #e7f2eb;
+  color: #00633c;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 13px;
 }
 .warning {
   display: block;
   color: #bd6d1a;
+  background: #fff8ee;
+  border: 1px solid #efdbc0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 20px;
   margin: 12px 0;
   font-size: 12px;
 }
