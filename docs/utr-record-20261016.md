@@ -22,3 +22,11 @@
 - 后端鉴权与数据库真实值测试包含匿名 401、普通用户/俱乐部管理员 403、系统管理员 200、同 token 降权 403、NULL 与真实零的区分。
 - 独立本地 MySQL 8.4 验证空库升级、前一版本用户数据保留、新表 NULL、正式战绩数据及重复升级保留。
 - CI 增加 UTR 接口测试及 MySQL 迁移测试。
+
+## UTR 来源数据解析
+
+`app.services.utr_records.parse_utr_snapshot()` 接受完整来源快照：`label` → 年龄组、`lose` → 失利、`played` → 比赛场次、`rank` → 世界排名、`rating` → UTR、`won` → 获胜。数字字符串解析为整数/Decimal，显式 NULL 或空字符串保留为空；缺少字段、非法数字和越界值拒绝导入，不推导数值。
+
+`import_utr_snapshot(db, user_id, payload)` 使用用户表主键 `users.id`（微信 ID），锁定用户行，按主键创建或更新 `user_utr_records`。同一事务更新已有的 `users.utr_rating`；NTRP 和角色不受影响，提交由调用方负责。重复导入更新同一记录，后续 UTR 同步接口可调用此服务，本次没有新增公开写接口。
+
+数据库实际结构已核对：`user_utr_records.user_id` 是主键，同时外键指向 `users.id`；没有重复战绩记录，用户主键与微信 openid 一致。页面移除积分和 NTRP 数字下方的辅助说明文字，保留字段标题。

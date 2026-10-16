@@ -28,7 +28,10 @@ def test_utr_schema_upgrade_preserves_values(previous):
                 command.upgrade(cfg,'20261015_entry_teams'); c.commit()
                 c.execute(sa.text("INSERT INTO users(id,openid,public_id,nickname,role,ntrp_level,utr_rating) VALUES ('utr-migration','utr-migration','utr-public','Existing user','user',4.5,3.40)")); c.commit()
             command.upgrade(cfg,'head'); c.commit()
-            columns = {x['name']:x for x in sa.inspect(c).get_columns('user_utr_records')}
+            inspector = sa.inspect(c)
+            assert inspector.get_pk_constraint('user_utr_records')['constrained_columns'] == ['user_id']
+            assert any(f['constrained_columns'] == ['user_id'] and f['referred_table'] == 'users' and f['referred_columns'] == ['id'] for f in inspector.get_foreign_keys('user_utr_records'))
+            columns = {x['name']:x for x in inspector.get_columns('user_utr_records')}
             for key in ('matches_played','wins','losses','world_rank','age_group'): assert columns[key]['nullable']
             assert c.scalar(sa.text('SELECT COUNT(*) FROM user_utr_records')) == 0
             if previous:

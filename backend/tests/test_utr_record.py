@@ -66,3 +66,34 @@ async def test_stored_official_statistics_preserve_real_zero_and_null(db):
         data = (await client.get('/users/me/utr-record', headers=headers)).json()
         assert data['wins'] is None and data['world_rank'] is None
         assert data['matches_played'] == 1
+
+
+@pytest.mark.asyncio
+async def test_source_payload_import_reuses_wechat_primary_key_and_preserves_ntrp(db):
+    from sqlalchemy import select, func
+    from app.services.utr_records import import_utr_snapshot
+    user = await db.get(User, '1'); original_ntrp = user.ntrp_level
+    payload = {'label':'Ages 30 & Over','lose':'0','played':'1','rank':'121029','rating':'3.59','won':'1'}
+    row = await import_utr_snapshot(db, user.id, payload); await db.commit()
+    assert row.user_id == user.id
+    assert user.utr_rating == Decimal('3.59') and user.ntrp_level == original_ntrp
+    assert (row.matches_played,row.wins,row.losses,row.world_rank,row.age_group) == (1,1,0,121029,'Ages 30 & Over')
+    # Re-importing updates the same primary key, without adding a second record.
+    payload['rating'] = '3.60'; payload['rank'] = '120000'
+    row2 = await import_utr_snapshot(db, user.id, payload); await db.commit()
+    assert row2.user_id == row.user_id and user.utr_rating == Decimal('3.60') and row2.world_rank == 120000
+    assert await db.scalar(select(func.count()).select_from(UserUtrRecord).where(UserUtrRecord.user_id == user.id)) == 1
+    # An explicitly empty full snapshot stays empty, rather than inventing zero.
+    await import_utr_snapshot(db, user.id, dict.fromkeys(payload)); await db.commit()
+    assert user.utr_rating is None and row2.world_rank is None and row2.losses is None
+    assert user.ntrp_level == original_ntrp
+
+
+def test_invalid_source_payloads_cannot_silently_replace_values():
+    from app.services.utr_records import parse_utr_snapshot
+    payload = {'label':'Ages 30 & Over','lose':'0','played':'1','rank':'121029','rating':'3.59','won':'1'}
+    for field,value in [('played','1.5'),('won',True),('lose','-1'),('rank','0'),('rating','NaN'),('rating','3.591'),('label','x'*33)]:
+        with pytest.raises(ValueError): parse_utr_snapshot(dict(payload,**{field:value}))
+    with pytest.raises(ValueError): parse_utr_snapshot({'rating':'3.59'})
+    empty = parse_utr_snapshot(dict.fromkeys(payload,''))
+    assert empty.rating is None and empty.wins is None and empty.age_group is None
