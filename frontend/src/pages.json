@@ -26,7 +26,7 @@
     { "path": "pages/profile/index" },
     { "path": "pages/profile/edit" },
     { "path": "pages/profile/my-bookings" },
-    { "path": "pages/profile/utr-record", "style": { "enablePullDownRefresh": true } },
+    { "path": "pages/profile/utr-record", "style": { "enablePullDownRefresh": true, "navigationBarTextStyle": "white", "navigationBarBackgroundColor": "#080d11" } },
     { "path": "pages/profile/my-posts" },
     { "path": "pages/profile/my-activities", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/profile/applications", "style": { "enablePullDownRefresh": true } },
