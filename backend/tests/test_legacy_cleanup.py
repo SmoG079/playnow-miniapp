@@ -60,6 +60,9 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
                     max_participants=4, current_participants=0, entry_fee=0, status="draft", lock_venue=False,
                     auto_title=False, roster_frozen=False, registration_closed=False, draw_version=0,
                     created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+                audits_before = sa.Table("tournament_audits", sa.MetaData(), autoload_with=connection)
+                connection.execute(audits_before.insert().values(tournament_id=101, actor_id=user.id,
+                    action="created", detail={}, created_at=datetime.utcnow()))
                 draw = TournamentDraw(tournament_id=101, version=1, stage="initial", idempotency_key="fixture", seed="fixture", snapshot={}, created_by=user.id)
                 session.add(draw); session.flush()
                 teams = [TournamentTeam(draw_id=draw.id, group_no=1, name=str(ident)) for ident in range(3)]
@@ -72,7 +75,7 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
                     dict(user=user.id, venue=venue.id, club=club.id, slot=slot.id))
                 connection.execute(sa.text("UPDATE tournaments SET prize='旧奖项',prizes=NULL WHERE id=101"))
                 connection.execute(sa.text("UPDATE venues SET price_rules=JSON_ARRAY(JSON_OBJECT('type','time_range','start_time','09:00','end_time','11:00','price',120)) WHERE id=:id"), {'id':venue.id})
-                slot_id, draw_id = slot.id, draw.id
+                slot_id, draw_id, owner_id = slot.id, draw.id, user.id
                 session.commit()
             connection.commit()
             command.upgrade(config, "head"); command.upgrade(config, "head")
@@ -90,6 +93,7 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
             rules = connection.execute(sa.select(venues.c.price_rules)).scalar_one()
             assert rules == [{"type":"daily_time", "start_time":"09:00", "end_time":"11:00", "price":120}]
             assert connection.execute(sa.select(events.c.location_name).where(events.c.id == 101)).scalar_one() == "court"
+            assert connection.execute(sa.select(events.c.user_id).where(events.c.id == 101)).scalar_one() == owner_id
             assert "slot_id" not in orders.c and "prize" not in events.c
             assert "user_id_migrations" not in sa.inspect(connection).get_table_names()
     finally:
