@@ -35,12 +35,10 @@ async def managed_tournaments(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
-    from app.models.models import TournamentAudit
-    from app.api.v1.tournaments import brief
+    from app.api.v1.tournaments import brief, organizer_profiles
     role = _v(current_user.role)
     managed = select(ClubMember.club_id).where(ClubMember.user_id == current_user.id)
-    created = select(TournamentAudit.tournament_id).where(
-        TournamentAudit.actor_id == current_user.id, TournamentAudit.action == "created")
+    created = select(Tournament.id).where(Tournament.user_id == current_user.id)
     query = select(Tournament, Club.name).outerjoin(Club, Club.id == Tournament.club_id)
     if role != "platform_admin":
         scope = Tournament.id.in_(created)
@@ -52,7 +50,8 @@ async def managed_tournaments(
                             .offset((page - 1) * page_size).limit(page_size))).all()
     created_ids = set((await db.execute(created)).scalars().all())
     club_ids = set((await db.execute(managed)).scalars().all()) if role == "club_admin" else set()
-    return PaginatedResponse(items=[dict(**brief(t), club_name=name,
+    profiles = await organizer_profiles(db, [t.id for t, _ in rows])
+    return PaginatedResponse(items=[dict(**brief(t), **profiles.get(t.id, {}), club_name=name,
         can_manage=t.id in created_ids or role == "platform_admin" or (role == "club_admin" and t.club_id in club_ids))
         for t, name in rows], total=total, page=page, page_size=page_size)
 
@@ -68,13 +67,11 @@ async def my_activities(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     """Filter the current user's indexed records before paginating; bracket data is lazy-loaded."""
-    from app.models.models import TournamentAudit
     now = datetime.utcnow()
     from app.services.activity_visibility import registration_closed_condition, tournament_phase_condition
     if kind == "tournament":
         event, registration = Tournament, TournamentRegistration
-        owned = select(TournamentAudit.id).where(TournamentAudit.tournament_id == Tournament.id,
-            TournamentAudit.action == "created", TournamentAudit.actor_id == current_user.id).correlate(Tournament).exists()
+        owned = Tournament.user_id == current_user.id
         event_phase = tournament_phase_condition(now)
         query = select(Tournament, TournamentRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
             TournamentRegistration, and_(TournamentRegistration.tournament_id == Tournament.id,
@@ -257,6 +254,7 @@ async def mark_notification_read(
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
     notif.is_read = True
+    await db.commit()
     return {"msg": "ok"}
 
 

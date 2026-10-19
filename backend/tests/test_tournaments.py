@@ -859,3 +859,39 @@ async def test_linked_tournament_location_is_authoritative_and_cannot_be_removed
     with pytest.raises(HTTPException) as denied:
         await api.update_tournament(row['id'], req, creator, db)
     assert denied.value.status_code==409
+
+
+@pytest.mark.asyncio
+async def test_personal_organizer_profile_uses_creator_account_in_detail_and_cards(db):
+    creator = await db.get(User, '2')
+    creator.nickname = '个人主办真实昵称'; creator.avatar_url = 'https://example.test/avatar.png'
+    req = TournamentCreate(title='个人资料展示',address='地图地点',start_time=datetime.utcnow()+timedelta(days=2),
+        end_time=datetime.utcnow()+timedelta(days=3),max_participants=4,contact_name='不应替代用户昵称')
+    created = await api.create_tournament(req,creator,db)
+    detail = await api.get_tournament(created['id'],creator,db)
+    assert detail['organizer_nickname'] == creator.nickname and detail['organizer_avatar'] == creator.avatar_url
+    rows = (await db.execute(api.discovery_query().where(Tournament.id == created['id']))).all()
+    card = (await api.discovery_items(db,rows))[0]
+    assert card['club_id'] is None and card['organizer_nickname'] == creator.nickname and card['organizer_avatar'] == creator.avatar_url
+    profile = (await api.organizer_profiles(db,[created['id']]))[created['id']]
+    assert set(profile) == {'organizer_nickname','organizer_avatar','club_avatar'}
+
+
+@pytest.mark.asyncio
+async def test_organizer_assignment_controls_contact_reviews_and_published_records(db,monkeypatch):
+    from app.api.v1 import messages, users
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr(messages,'check_rate_limit',AsyncMock())
+    creator=await db.get(User,'2');host=await db.get(User,'3')
+    req=TournamentCreate(title='主办归属',address='真实地点',start_time=datetime.utcnow()+timedelta(days=2),end_time=datetime.utcnow()+timedelta(days=3),max_participants=4)
+    row=await api.create_tournament(req,creator,db)
+    t=await db.get(Tournament,row['id']);assert t.user_id==creator.id
+    t.user_id=host.id;await db.commit()
+    detail=await api.get_tournament(t.id,host,db)
+    assert detail['organizer_user_id']==host.id and detail['organizer_nickname']==host.nickname and detail['can_review']
+    with pytest.raises(HTTPException):await api.admin(db,t,creator)
+    await api.admin(db,t,host)
+    records=await users.my_activities(kind='tournament',relation='published',phase='all',keyword='',page=1,page_size=20,current_user=host,db=db)
+    assert any(item['id']==t.id for item in records.items)
+    contact=await messages.contact(messages.ContactActivity(activity_id=t.id),creator,db)
+    assert contact['peer']['nickname']==host.nickname

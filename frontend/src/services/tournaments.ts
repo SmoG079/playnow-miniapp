@@ -92,6 +92,9 @@ export interface Registration {
   refund_status?: string;
 }
 export interface Tournament {
+  organizer_nickname?: string | null;
+  organizer_avatar?: string | null;
+  club_avatar?: string | null;
   organizer_user_id?: string | null;
   entry_teams: EntryTeam[];
   phase?: string;

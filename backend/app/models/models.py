@@ -407,6 +407,7 @@ class Tournament(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=False)
     activity_kind = Column(String(16).with_variant(mysql.VARCHAR(16, charset="ascii", collation="ascii_bin"), "mysql"), default="tournament", server_default="tournament", nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
     club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=True, index=True)
     city = Column(String(64), nullable=True, index=True)
     latitude = Column(DECIMAL(10, 7))

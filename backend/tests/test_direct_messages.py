@@ -36,16 +36,17 @@ async def test_text_unread_and_retry_are_idempotent(db,monkeypatch):
     first=await messages.send(c['id'],req,s,db)
     assert (await messages.send(c['id'],req,s,db))['id']==first['id']
     assert await db.scalar(select(func.count()).select_from(DirectMessage))==1
-    assert (await messages.unread_count(r,db))['count']==1
+    assert (await messages.unread_count(r,db)) == {'count':1,'by_conversation':{c['id']:1}}
     assert (await messages.unread_count(s,db))['count']==0
     assert (await messages.conversations(1,20,r,db))['items'][0]['unread_count']==1
     assert not (await messages.history(c['id'],None,None,30,r,db))['items'][0]['is_mine']
     await messages.mark_read(c['id'],messages.ReadMessages(through_id=first['id']),r,db)
+    assert not db.in_transaction()
     await messages.mark_read(c['id'],messages.ReadMessages(through_id=0),r,db)
     assert (await messages.unread_count(r,db))['count']==0
     second=await messages.send(c['id'],messages.SendMessage(client_id='second-key',content='明天见'),s,db)
     await messages.mark_read(c['id'],messages.ReadMessages(through_id=first['id']),r,db)
-    assert (await messages.unread_count(r,db))['count']==1
+    assert (await messages.unread_count(r,db)) == {'count':1,'by_conversation':{c['id']:1}}
     assert [m['id'] for m in (await messages.history(c['id'],None,first['id'],30,r,db))['items']]==[second['id']]
     with pytest.raises(HTTPException) as e:await messages.send(c['id'],messages.SendMessage(client_id=req.client_id,content='修改内容'),s,db)
     assert e.value.status_code==409
@@ -86,3 +87,18 @@ async def test_history_pagination_and_http_auth(db,monkeypatch):
 @pytest.mark.parametrize('content',['','   ','x'*2001])
 def test_invalid_text(content):
     with pytest.raises(ValidationError):messages.SendMessage(client_id='valid-key',content=content)
+
+@pytest.mark.asyncio
+async def test_system_read_is_durable_before_response_and_does_not_read_other_users(db):
+    from app.models.models import Notification,NotificationType
+    from app.api.v1.users import mark_notification_read,unread_notification_count
+    first=Notification(user_id='1',type=NotificationType.system,title='fixture',content='fixture')
+    second=Notification(user_id='2',type=NotificationType.system,title='other',content='other')
+    db.add_all([first,second]);await db.commit()
+    user=await db.get(User,'1')
+    await mark_notification_read(first.id,user,db)
+    assert not db.in_transaction()
+    assert (await unread_notification_count(user,db))['count']==0
+    assert second.is_read is False
+    with pytest.raises(HTTPException) as denied:await mark_notification_read(second.id,user,db)
+    assert denied.value.status_code==404

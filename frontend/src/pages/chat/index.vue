@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {notificationTime} from '../../domain/notifications';
-import {ref,watch} from 'vue';
+import {ref,watch,computed} from 'vue';
 import {onShow,onHide,onUnload,onReachBottom} from '@dcloudio/uni-app';
 import MainHeader from '../../components/MainHeader.vue';
 import AppShell from '../../components/AppShell.vue';
@@ -9,23 +9,24 @@ import {request} from '../../services/api';
 import {getConversations,type Conversation} from '../../services/messages';
 import {openPage} from '../../utils/navigation';
 import {useSession} from '../../stores/session';
-const session=useSession(),unread=ref(0),latest=ref<any>(null),conversations=ref<Conversation[]>([]),error=ref('');
+import {useInbox} from '../../stores/inbox';
+const session=useSession(),inbox=useInbox(),unread=computed(()=>inbox.systemUnread),latest=ref<any>(null),conversations=ref<Conversation[]>([]),error=ref('');
 let visible=false,version=0,loading=false,page=1,more=false,timer:ReturnType<typeof setTimeout>|undefined;
 function stop(){visible=false;version++;clearTimeout(timer);}
 onHide(stop);onUnload(stop);
-watch(()=>session.user?.id,()=>{version++;conversations.value=[];latest.value=null;unread.value=0;if(visible)void load();});
+watch(()=>session.user?.id,()=>{version++;conversations.value=[];latest.value=null;if(visible)void load();});
 async function load(append=false){
  if(!visible||!session.loggedIn||loading)return;
  const turn=version;loading=true;
  try{
   const next=append?page+1:1;
-  const [count,notification,threads]=await Promise.all([request<any>('/users/me/notifications/unread-count'),request<any>('/users/me/notifications?page=1&page_size=1'),getConversations(next)]);
+  const [,notification,threads]=await Promise.all([inbox.refresh(),request<any>('/users/me/notifications?page=1&page_size=1'),getConversations(next)]);
   if(turn!==version||!visible)return;
-  unread.value=count.count||0;latest.value=notification.items?.[0]||null;conversations.value=append?[...conversations.value,...threads.items]:threads.items;page=next;more=conversations.value.length<(threads.total||0);error.value='';
+  latest.value=notification.items?.[0]||null;conversations.value=append?[...conversations.value,...threads.items]:threads.items;page=next;more=conversations.value.length<(threads.total||0);error.value='';
  }catch{if(turn===version)error.value='消息暂时无法加载，请稍后重试';}
- finally{loading=false;if(visible){clearTimeout(timer);timer=setTimeout(()=>void load(),10000);}}
+ finally{loading=false;if(visible){clearTimeout(timer);if(turn!==version)void load();else timer=setTimeout(()=>void load(),10000);}}
 }
-onShow(()=>{visible=true;if(!session.loggedIn){conversations.value=[];latest.value=null;unread.value=0;return;}void load();});
+onShow(()=>{visible=true;if(!session.loggedIn){conversations.value=[];latest.value=null;return;}void load();});
 onReachBottom(()=>{if(more)void load(true);});
 </script>
 <template>
@@ -37,7 +38,7 @@ onReachBottom(()=>{if(more)void load(true);});
     <view class="conv-body"><view class="row between"><text class="strong">系统通知</text><text class="muted small">{{ notificationTime(latest?.created_at) }}</text></view><text class="muted line-clamp">{{ latest?.title || '活动与审核结果将在此推送' }}</text></view>
    </view>
    <view v-for="c in conversations" :key="c.id" class="conv-item direct-conversation" @click="openPage('/pages/chat/conversation?id='+c.id)">
-    <wd-badge :value="c.unread_count" :max="99" :hidden="c.unread_count===0" :top="2" :right="2" border><Photo :src="c.peer.avatar_url" width="46px" height="46px" round /></wd-badge>
+    <wd-badge :value="inbox.unreadFor(c.id)" :max="99" :hidden="inbox.unreadFor(c.id)===0" :top="2" :right="2" border><Photo :src="c.peer.avatar_url" width="46px" height="46px" round /></wd-badge>
     <view class="conv-body"><view class="row between"><text class="strong peer-name">{{ c.peer.nickname }}</text><text class="muted small">{{ notificationTime(c.last_message_at) }}</text></view><text class="muted line-clamp">{{ c.last_message || '开始聊天' }}</text><text class="conversation-post">{{ c.activity.title }}</text></view>
    </view>
    <view v-if="error" class="list-error"><text>{{ error }}</text><text @click="load()">重试</text></view>

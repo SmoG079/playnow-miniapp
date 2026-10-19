@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, get_platform_admin, _v
 from app.core.database import get_db
 from app.core.logger import get_logger
 from app.models.models import (Club, ClubMember, ClubMemberRole, ClubStatus, User,
-    MatchPost, MatchRegistration, Tournament, TournamentRegistration, TournamentAudit,
+    MatchPost, MatchRegistration, Tournament, TournamentRegistration,
     Notification, NotificationType)
 from app.schemas.schemas import PaginatedResponse
 
@@ -56,7 +56,7 @@ async def list_applications(
         else: q = q.where(MatchRegistration.status.in_(["approved", "rejected"]), MatchPost.approval_required.is_(True))
         queries.append(q)
     if scope != "mine" and kind in ("all", "tournament"):
-        created = select(TournamentAudit.tournament_id).where(TournamentAudit.actor_id == user.id, TournamentAudit.action == "created")
+        created = select(Tournament.id).where(Tournament.user_id == user.id)
         q = select(literal("tournament"), Tournament.id, TournamentRegistration.id, Tournament.title,
             User.nickname, User.avatar_url, TournamentRegistration.approval,
             TournamentRegistration.created_at, TournamentRegistration.review_reason, literal(None, type_=String),

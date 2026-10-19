@@ -23,9 +23,12 @@ export function syncCustomTabBarUnread(count: number) {
   app.globalData ||= {};
   app.globalData.playnowUnread = count;
   const pages = getCurrentPages();
-  const page = pages[pages.length - 1] as any;
-  const nativePage = page?.$vm?.$scope || page;
-  nativePage?.getTabBar?.()?.setData({ unread: count > 99 ? "99+" : count ? String(count) : "" });
+  const bars=new Set<any>();
+  for(const page of pages as any[]){
+    const nativePage=page?.$vm?.$scope||page;
+    const bar=nativePage?.getTabBar?.();
+    if(bar&&!bars.has(bar)){bars.add(bar);bar.setData({unread:count>99?"99+":count?String(count):""});}
+  }
   // #endif
 }
 
@@ -39,6 +42,7 @@ export function syncCustomTabBarSelection(active: string | undefined, owner: any
   const app = getApp();
   app.globalData ||= {};
   app.globalData.playnowTabPath = paths[selected];
-  owner?.getTabBar?.()?.setData({ selected });
+  const count=Number(app.globalData.playnowUnread||0);
+  owner?.getTabBar?.()?.setData({ selected,unread:count>99?"99+":count?String(count):"" });
   // #endif
 }

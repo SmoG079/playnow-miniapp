@@ -9,7 +9,7 @@ export function getMessages(id:string,cursor?:{before?:number;after?:number}){
   return request<History>(`/messages/conversations/${encodeURIComponent(id)}/messages?page_size=30${extra}`);
 }
 export function sendMessage(id:string,content:string,clientId:string){return request<DirectMessage>(`/messages/conversations/${encodeURIComponent(id)}/messages`,{method:'POST',data:{content,client_id:clientId}});}
-export function markMessagesRead(id:string,through:number){return request(`/messages/conversations/${encodeURIComponent(id)}/read`,{method:'POST',data:{through_id:through}});}
+export function markMessagesRead(id:string,through:number){return request<{unread_count:number}>(`/messages/conversations/${encodeURIComponent(id)}/read`,{method:'POST',data:{through_id:through},preservePage:true});}
 export function mergeMessages(current:DirectMessage[],incoming:DirectMessage[]){
   return [...new Map([...current,...incoming].map(m=>[m.id,m])).values()].sort((a,b)=>a.id-b.id);
 }

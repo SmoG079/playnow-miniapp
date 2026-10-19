@@ -599,7 +599,7 @@ function tie() {
                 </view>
               </view>
               <view v-if="t.images?.length" class="intro-section"><text class="intro-heading">赛事图片</text><view class="gallery"><Photo v-for="img in t.images" :key="img" :src="img" width="100%" height="180px" /></view></view>
-              <view class="intro-section"><text class="intro-heading">主办与联系</text><text class="intro-copy">{{ t.club_name || '个人主办' }}{{ t.contact_name ? ' · '+t.contact_name : '' }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
+              <view class="intro-section"><text class="intro-heading">主办与联系</text><view class="organizer-profile"><Photo :src="t.club_id ? t.club_avatar : t.organizer_avatar" width="44px" height="44px" round /><view class="organizer-copy"><text class="organizer-name">{{ t.club_id ? t.club_name : t.organizer_nickname || '球友' }}</text><text class="organizer-type">{{ t.club_id ? '俱乐部主办' : '个人主办' }}</text></view></view><text v-if="t.club_id && t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
               <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="muted small">截止前全额原路退款，之后由管理员处理；主办方取消全退。</text></view>
             </view>
           </wd-tab>
@@ -1037,6 +1037,8 @@ function tie() {
   </AppShell>
 </template>
 <style scoped>
+.organizer-profile{display:flex;align-items:center;gap:10px;min-width:0}.organizer-copy{display:flex;flex-direction:column;gap:5px;min-width:0}.organizer-name{font-size:16px;line-height:24px;font-weight:600;overflow-wrap:anywhere}.organizer-type{font-size:11px;line-height:18px;color:#718579}
+
 .fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
 
 .intro-pane{padding:16px!important;border:1px solid #dce8ee;border-radius:14px;background:#fff}.intro-section{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid #e6edf1}.intro-section:first-child{padding-top:0;border-top:0}.intro-section:last-child{padding-bottom:0}.intro-heading{display:block;font-size:16px;font-weight:700;color:#244356;line-height:24px}.intro-copy{display:block;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px;color:#526772}.prize-row{padding:14px;background:#f0f8fd;border-left:3px solid #0787c8;border-radius:8px;display:flex;flex-direction:column;gap:8px}.prize-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;line-height:22px;color:#146790}.prize-description{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;color:#536975}
@@ -1107,4 +1109,5 @@ function tie() {
 }
 </style>
 
-<style scoped>.registration-profile{display:flex;align-items:center;gap:12px}.registration-profile>.registration-identity{flex:1;min-width:0}.registration-profile>.muted{flex-shrink:0}</style>
+<style scoped>
+.registration-profile{display:flex;align-items:center;gap:12px}.registration-profile>.registration-identity{flex:1;min-width:0}.registration-profile>.muted{flex-shrink:0}</style>

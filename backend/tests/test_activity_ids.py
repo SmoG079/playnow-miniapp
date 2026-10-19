@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261016_utr_records (head)"
+    assert result.stdout.strip() == "20261019_tournament_owner (head)"
 
 
 @pytest_asyncio.fixture
@@ -100,7 +100,7 @@ async def test_database_refuses_invalid_global_identity(database, case):
         elif case == "duplicate_child":
             db.add(MatchPost(id=ident, user_id='1', title="重复"))
         else:
-            db.add(Tournament(id=ident, activity_kind="post" if case == "forged_kind" else "tournament",
+            db.add(Tournament(user_id='1', id=ident, activity_kind="post" if case == "forged_kind" else "tournament",
                               club_id=1, title="错误类型", start_time=datetime.utcnow(), end_time=datetime.utcnow()))
         with pytest.raises(IntegrityError):
             await db.flush()

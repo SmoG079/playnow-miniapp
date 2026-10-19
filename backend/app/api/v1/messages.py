@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.rate_limit import check_rate_limit
 from app.core.logger import get_logger
-from app.models.models import User,MatchPost,Tournament,TournamentAudit,Activity,DirectConversation,DirectMessage
+from app.models.models import User,MatchPost,Tournament,Activity,DirectConversation,DirectMessage
 router=APIRouter(prefix='/messages',tags=['messages'])
 logger=get_logger(__name__)
 
@@ -62,7 +62,7 @@ async def contact(req:ContactActivity,user:User=Depends(get_current_user),db:Asy
     else:
         tournament=await db.get(Tournament,activity.id)
         if tournament.club_id:raise HTTPException(422,'俱乐部主办请使用赛事联系电话')
-        owner_id=await db.scalar(select(TournamentAudit.actor_id).where(TournamentAudit.tournament_id==activity.id,TournamentAudit.action=='created').order_by(TournamentAudit.id).limit(1))
+        owner_id=tournament.user_id
         if not owner_id:raise HTTPException(409,'主办方联系信息尚未设置')
     if owner_id==user.id:raise HTTPException(409,'不能给自己发私信')
     pair=sorted([user.id,owner_id])
@@ -96,8 +96,8 @@ async def conversations(page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=50
 @router.get('/unread-count')
 async def unread_count(user:User=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
     marker=case((DirectConversation.participant_a==user.id,DirectConversation.read_a),else_=DirectConversation.read_b)
-    count=await db.scalar(select(func.count(DirectMessage.id)).join(DirectConversation,DirectMessage.conversation_id==DirectConversation.id).where(or_(DirectConversation.participant_a==user.id,DirectConversation.participant_b==user.id),DirectMessage.sender_id!=user.id,DirectMessage.id>marker)) or 0
-    return dict(count=count)
+    rows=(await db.execute(select(DirectMessage.conversation_id,func.count(DirectMessage.id)).join(DirectConversation,DirectMessage.conversation_id==DirectConversation.id).where(or_(DirectConversation.participant_a==user.id,DirectConversation.participant_b==user.id),DirectMessage.sender_id!=user.id,DirectMessage.id>marker).group_by(DirectMessage.conversation_id))).all()
+    return dict(count=sum(count for _,count in rows),by_conversation=dict(rows))
 
 @router.get('/conversations/{ident}')
 async def detail(ident:str,user:User=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
@@ -135,4 +135,6 @@ async def mark_read(ident:str,req:ReadMessages,user:User=Depends(get_current_use
     through=min(req.through_id,c.last_message_id or 0)
     if user.id==c.participant_a:c.read_a=max(c.read_a,through)
     else:c.read_b=max(c.read_b,through)
-    return dict(unread_count=await db.scalar(unread_query(c,user)) or 0)
+    remaining=await db.scalar(unread_query(c,user)) or 0
+    await db.commit()
+    return dict(unread_count=remaining)

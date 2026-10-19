@@ -17,6 +17,6 @@ describe('private messages',()=>{
   vi.mocked(request).mockResolvedValue({items:[],has_more:false});
   await getMessages('abc',{after:0});expect(request).toHaveBeenLastCalledWith('/messages/conversations/abc/messages?page_size=30&after_id=0');
   await getMessages('abc',{before:30});expect(request).toHaveBeenLastCalledWith('/messages/conversations/abc/messages?page_size=30&before_id=30');
-  await markMessagesRead('abc',20);expect(request).toHaveBeenLastCalledWith('/messages/conversations/abc/read',{method:'POST',data:{through_id:20}});
+  await markMessagesRead('abc',20);expect(request).toHaveBeenLastCalledWith('/messages/conversations/abc/read',{method:'POST',data:{through_id:20},preservePage:true});
  });
 });

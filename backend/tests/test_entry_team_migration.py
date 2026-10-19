@@ -30,8 +30,13 @@ def test_previous_schema_migrates_entry_teams_and_conversation_contexts():
                 session.add_all([User(id=str(i),openid="entry-migration-"+str(i)) for i in range(1,4)])
                 session.add_all([Activity(id=501,kind="tournament"),Activity(id=502,kind="post")]); session.flush()
                 session.add(MatchPost(id=502,user_id="1",title="chat context"))
-                session.add(Tournament(id=501,title="existing mixed teams",start_time=datetime(2030,1,1),end_time=datetime(2030,1,2),max_participants=8,
-                    config={"discipline":"mixed","format":"knockout","group_count":2},draw_version=1,published_version=1))
+                legacy_events = sa.Table("tournaments",sa.MetaData(),autoload_with=c)
+                session.execute(legacy_events.insert().values(id=501,title="existing mixed teams",start_time=datetime(2030,1,1),end_time=datetime(2030,1,2),max_participants=8,
+                    config={"discipline":"mixed","format":"knockout","group_count":2},draw_version=1,published_version=1,
+                    lock_venue=False,current_participants=0,entry_fee=0,prizes=[],auto_title=False,
+                    registration_closed=False,roster_frozen=False,status="open",created_at=datetime(2026,1,1),updated_at=datetime(2026,1,1)))
+                audits=sa.Table("tournament_audits",sa.MetaData(),autoload_with=c)
+                session.execute(audits.insert().values(tournament_id=501,actor_id="1",action="created",detail={},created_at=datetime(2026,1,1)))
                 session.flush()
                 draw = TournamentDraw(tournament_id=501,version=1,stage="initial",idempotency_key="migration-draw",seed="fixed",snapshot={"positions":[]},created_by="1")
                 session.add(draw); session.flush()

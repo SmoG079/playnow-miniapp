@@ -1,21 +1,28 @@
 <script setup lang="ts">
 import { notificationTime } from "../../domain/notifications";
-import { ref } from "vue";
-import { onShow, onReachBottom } from "@dcloudio/uni-app";
+import { ref, watch } from "vue";
+import { onShow, onHide, onUnload, onReachBottom } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import {useInbox} from "../../stores/inbox";
+import {useSession} from "../../stores/session";
 import { request, type PageResult } from "../../services/api";
 const items = ref<any[]>([]);
+const locallyRead=new Set<number>(),session=useSession();
+let version=0,visible=false;
+watch(()=>session.user?.id,owner=>{version++;items.value=[];locallyRead.clear();if(owner&&visible)void load();});
 const page = ref(1);
 const more = ref(true);
 const loading = ref(false);
 async function load(reset = true) {
+  const turn=version;
   loading.value = true;
   try {
     const p = reset ? 1 : page.value;
     const r = await request<PageResult<any>>(
       `/users/me/notifications?page=${p}&page_size=20`,
     );
+    if(turn!==version)return;
+    for(const m of r.items||[]){if(m.is_read)locallyRead.delete(m.id);else if(locallyRead.has(m.id))m.is_read=true;}
     items.value = reset ? r.items || [] : [...items.value, ...r.items];
     page.value = p + 1;
     more.value = (r.items?.length || 0) === 20;
@@ -24,15 +31,19 @@ async function load(reset = true) {
     loading.value = false;
   }
 }
-onShow(() => load());
+onShow(() => {visible=true;if(session.requireLogin("/pages/chat/system"))void load();});
+onHide(()=>{visible=false;});onUnload(()=>{visible=false;version++;});
 onReachBottom(() => more.value && load(false));
 async function read(m: any) {
   if (m.is_read) return;
+  const turn=version;
+  locallyRead.add(m.id);m.is_read=true;
   try {
-    await request(`/users/me/notifications/${m.id}/read`, { method: "PUT" });
-    m.is_read = true;
-    void useInbox().refresh();
+    await useInbox().readSystem(m.id);
   } catch (error: any) {
+    if(turn!==version)return;
+    locallyRead.delete(m.id);
+    const current=items.value.find(item=>item.id===m.id);if(current)current.is_read=false;
     uni.showToast({ title: error.message || "标记已读失败", icon: "none" });
   }
 }

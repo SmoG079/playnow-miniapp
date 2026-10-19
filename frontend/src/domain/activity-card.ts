@@ -8,6 +8,7 @@ export interface ActivityCardData {
   id?: number; title?: string; status?: string; phase?: string;
   registration_deadline?: string; registration_closed?: boolean;
   result_summary?: {score?: string; winner?: string; is_draw?: boolean; walkover?: boolean};
+  club_id?: number | null; organizer_nickname?: string | null; organizer_avatar?: string | null; club_avatar?: string | null;
   city?: string; address?: string; location_name?: string; club_name?: string; contact_name?: string;
   start_time?: string; end_time?: string;
   preferred_date?: string; preferred_start?: string; preferred_end?: string;
@@ -35,7 +36,7 @@ export function cardDetails(item: ActivityCardData, kind: ActivityKind) {
   const raw = tournament ? item.entry_fee : item.price;
   const fee = raw === null || raw === undefined || raw === "" ? NaN : Number(raw);
   return { typeLabel, tags,
-    host: tournament ? item.club_name || item.contact_name || "个人主办" : item.user_nickname || "球友",
+    host: tournament ? (item.club_id ? item.club_name || "俱乐部" : item.organizer_nickname || "球友") : item.user_nickname || "球友",
     place: item.location_name || "地点待补充", address: item.address || item.city || "",
     feeLabel: Number.isFinite(fee) && fee >= 0 ? fee === 0 ? "免费" : `¥${Number(fee.toFixed(2))}` : "",
     feeSuffix: fee > 0 && Number.isFinite(fee) ? "/ 人" : "" };

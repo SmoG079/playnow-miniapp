@@ -64,13 +64,7 @@ def brief(t):
 
 
 async def admin(db, t, user):
-    # Creation audit is server-authored and remains the source of creator ownership.
-    creator = await db.scalar(select(TournamentAudit.id).where(
-        TournamentAudit.tournament_id == t.id,
-        TournamentAudit.action == "created",
-        TournamentAudit.actor_id == user.id,
-    ).limit(1))
-    if creator is not None:
+    if t.user_id == user.id:
         return user
     return await get_club_admin(t.club_id, user, db)
 
@@ -259,7 +253,18 @@ def discovery_query():
     return select(Tournament, Club.name, venue_lat, venue_lng, case((Tournament.venue_id.is_not(None),Venue.city),else_=Tournament.city)).outerjoin(Club, Tournament.club_id == Club.id).outerjoin(Venue, Tournament.venue_id == Venue.id)
 
 
+async def organizer_profiles(db, ids):
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Tournament.id, User.nickname, User.avatar_url, Club.cover_image)
+        .join(User, User.id == Tournament.user_id)
+        .outerjoin(Club, Club.id == Tournament.club_id).where(Tournament.id.in_(ids)))).all()
+    return {ident: dict(organizer_nickname=nickname, organizer_avatar=avatar, club_avatar=cover)
+            for ident, nickname, avatar, cover in rows}
+
+
 async def discovery_items(db,rows,lat=None,lng=None):
+    profiles = await organizer_profiles(db, [t.id for t, *_ in rows])
     # Only published results enter public discovery, including while a new draft exists.
     summaries = {}
     published_ids = [t.id for t, *_ in rows if t.published_version]
@@ -273,7 +278,7 @@ async def discovery_items(db,rows,lat=None,lng=None):
         for tid, match, winner in result_rows:
             if tid not in summaries:
                 summaries[tid] = dict(score=match.score, winner=winner, is_draw=match.is_draw, walkover=match.walkover)
-    return [dict(**{**brief(t), "city": actual_city, "latitude": clat, "longitude": clng,
+    return [dict(**{**brief(t), **profiles.get(t.id, {}), "city": actual_city, "latitude": clat, "longitude": clng,
          "address": t.address, "contact_name": t.contact_name,
          "config": {key: t.config[key] for key in ('format', 'discipline', 'pairing') if key in t.config} if t.config else None,
          "result_summary": summaries.get(t.id)},club_name=name,distance=haversine(lat,lng,
@@ -366,7 +371,7 @@ async def create_tournament(
     db: AsyncSession = Depends(get_db),
 ):
     await require_host_club(db, req.club_id)
-    t = Tournament(id=await activity_ids.allocate_activity(db, "tournament"))
+    t = Tournament(id=await activity_ids.allocate_activity(db, "tournament"), user_id=user.id)
     await apply_request(db, t, req)
     db.add(t)
     await db.flush()
@@ -419,9 +424,7 @@ async def get_tournament(
     if not t:
         raise HTTPException(404, "赛事不存在")
     manage = await is_admin(db, t, user)
-    can_review = bool(user and await db.scalar(select(TournamentAudit.id).where(
-        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created",
-        TournamentAudit.actor_id == user.id).limit(1)))
+    can_review = bool(user and t.user_id == user.id)
     d = await draw_for(db, t, t.draw_version if manage else t.published_version)
     rows = (
         await db.execute(
@@ -497,9 +500,9 @@ async def get_tournament(
         venue = await db.get(Venue, t.venue_id)
         if venue:
             data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
+    data.update((await organizer_profiles(db, [t.id])).get(t.id, {}))
     data["auto_title"] = t.auto_title
-    data["organizer_user_id"] = await db.scalar(select(TournamentAudit.actor_id).where(
-        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created").order_by(TournamentAudit.id).limit(1))
+    data["organizer_user_id"] = t.user_id
     if not t.club_id:
         data["contact_phone"] = None
     data["description_template"] = t.description
@@ -733,10 +736,7 @@ async def review(
     db: AsyncSession = Depends(get_db),
 ):
     t = await life.locked_event(db, ident)
-    creator = await db.scalar(select(TournamentAudit.id).where(
-        TournamentAudit.tournament_id == t.id, TournamentAudit.action == "created",
-        TournamentAudit.actor_id == user.id).limit(1))
-    if creator is None:
+    if t.user_id != user.id:
         raise HTTPException(403, "只有比赛发起者可以审核报名")
     await life.refresh_admissions(db, t)
     if t.roster_frozen:

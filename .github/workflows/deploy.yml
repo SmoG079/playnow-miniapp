@@ -78,7 +78,7 @@ jobs:
           python -m alembic upgrade head
           CLEANUP_MYSQL_TEST_DATABASE_URL="$DATABASE_URL" python -m pytest tests/test_legacy_cleanup.py
           UTR_MYSQL_TEST_DATABASE_URL="$DATABASE_URL" python -m pytest tests/test_utr_record_migration.py
-          TOURNAMENT_MYSQL_TEST_DATABASE_URL="$DATABASE_URL" python -m pytest tests/test_tournament_mysql.py tests/test_entry_team_migration.py
+          TOURNAMENT_MYSQL_TEST_DATABASE_URL="$DATABASE_URL" python -m pytest tests/test_tournament_mysql.py tests/test_entry_team_migration.py tests/test_tournament_owner_migration.py
           ACTIVITY_MYSQL_TEST_DATABASE_URL="$DATABASE_URL" ACTIVITY_REDIS_TEST_URL=redis://127.0.0.1:6379/15 python -m pytest tests/test_activity_mysql.py tests/test_activity_cleanup_mysql.py tests/test_discovery_mysql.py tests/test_review_booking_mysql.py tests/test_payment_safety_mysql.py tests/test_direct_messages_mysql.py
       - name: HTTP business flow on disposable CI database
         env:

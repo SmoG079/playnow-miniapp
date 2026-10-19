@@ -44,3 +44,7 @@ describe("activity card data", () => {
     expect(cardStatus({ ...item, phase: "registration_closed" }, "post").label).toBe("报名截止，等待开始");
   });
 });
+it('uses the account identity for personal organizers and keeps club identity distinct',()=>{
+ expect(cardDetails({club_id:null,organizer_nickname:'真实昵称',contact_name:'手填联系人'},'tournament').host).toBe('真实昵称');
+ expect(cardDetails({club_id:1,club_name:'网球俱乐部',organizer_nickname:'管理员昵称'},'tournament').host).toBe('网球俱乐部');
+});

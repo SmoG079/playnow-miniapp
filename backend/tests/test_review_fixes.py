@@ -636,7 +636,7 @@ async def test_failed_first_recovery_batch_does_not_starve_later_orders(
     await db.flush()
     db.add(
         Tournament(
-            id=10,
+            user_id='1', id=10,
             club_id=1,
             title="隔离恢复",
             status="draft",

@@ -7,7 +7,7 @@ import {useInbox} from '../../stores/inbox';
 import {useSession} from '../../stores/session';
 import {openPage} from '../../utils/navigation';
 import {notificationTime} from '../../domain/notifications';
-import {getConversation,getMessages,sendMessage,markMessagesRead,mergeMessages,newMessageKey,type Conversation,type DirectMessage} from '../../services/messages';
+import {getConversation,getMessages,sendMessage,mergeMessages,newMessageKey,type Conversation,type DirectMessage} from '../../services/messages';
 const session=useSession();
 const id=ref(''),conversation=ref<Conversation|null>(null),messages=ref<DirectMessage[]>([]),input=ref(''),error=ref(''),sending=ref(false),older=ref(false),loadingOlder=ref(false),scrollTo=ref('');
 const headerHeight=ref(106),keyboardHeight=ref(0);
@@ -27,9 +27,21 @@ watch(()=>session.user?.id,()=>{
  if(wasVisible){visible=true;void refresh(true);}
 });
 async function bottom(){scrollTo.value='';await nextTick();scrollTo.value='message-'+messages.value[messages.value.length-1]?.id;}
+let acknowledging:Promise<void>|undefined;
 async function acknowledge(){
- const through=fetchedThrough,turn=version;
- if(through&&through>acknowledgedThrough&&visible){await nextTick();await markMessagesRead(id.value,through);if(turn!==version||!visible)return;acknowledgedThrough=Math.max(acknowledgedThrough,through);void useInbox().refresh();}
+ if(acknowledging){await acknowledging;if(visible&&fetchedThrough&&fetchedThrough>acknowledgedThrough)return acknowledge();return;}
+ const turn=version;
+ const task=(async()=>{
+  await nextTick();
+  while(visible&&turn===version&&fetchedThrough&&fetchedThrough>acknowledgedThrough){
+   const through=fetchedThrough;
+   await useInbox().readConversation(id.value,through);
+   if(turn!==version||!visible)return;
+   acknowledgedThrough=Math.max(acknowledgedThrough,through);
+  }
+ })();
+ acknowledging=task;
+ try{await task;}finally{if(acknowledging===task)acknowledging=undefined;}
 }
 async function refresh(initial=false){
   if(!visible||!id.value||!session.user?.id||polling)return;
@@ -49,7 +61,7 @@ async function refresh(initial=false){
     error.value='';await acknowledge();
     if(initial||batch.items.length)await bottom();
   }catch{if(visible&&turn===version)error.value='消息暂时无法加载，可稍后重试';}
-  finally{polling=false;if(visible){clearTimeout(timer);timer=setTimeout(()=>void refresh(!conversation.value),5000);}}
+  finally{polling=false;if(visible){clearTimeout(timer);if(turn!==version)void refresh(!conversation.value);else timer=setTimeout(()=>void refresh(!conversation.value),5000);}}
 }
 onShow(()=>{visible=true;if(!session.requireLogin('/pages/chat/conversation?id='+id.value))return;void refresh(!conversation.value);});
 async function loadOlder(){

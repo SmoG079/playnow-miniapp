@@ -16,14 +16,14 @@ const resultCaption = computed(() => {
 const cover = computed(() => props.item.cover_image || props.item.images?.[0]);
 const participants = computed(() => (props.item.card_participants || []).slice(0, 3));
 const extraPeople = computed(() => participants.value.length && capacity.value ? Math.max(0, capacity.value.count - participants.value.length) : 0);
-const hostAvatar = computed(() => tournament.value ? undefined : props.item.user_avatar);
+const hostAvatar = computed(() => tournament.value ? (props.item.club_id ? props.item.club_avatar : props.item.organizer_avatar) : props.item.user_avatar);
 </script>
 <template>
   <view class="play-card" :class="{ 'play-card-tournament': tournament, 'play-card-post': !tournament }">
     <view class="play-card-main" hover-class="play-card-pressed" role="button" :aria-label="'查看' + (item.title || '网球活动')" @click="emit('open')">
       <view class="card-host">
         <view class="host-avatar"><Photo v-if="hostAvatar" :src="hostAvatar" width="30px" height="30px" round /><text v-else>{{ details.host.slice(0, 1) }}</text></view>
-        <text class="host-name">{{ details.host }}</text><text class="host-caption">{{ tournament ? '主办' : '发起的球局' }}</text>
+        <text class="host-name">{{ details.host }}</text><text class="host-caption">{{ tournament ? (item.club_id ? '俱乐部主办' : '个人主办') : '发起的球局' }}</text>
       </view>
       <view class="card-title-row">
         <text class="card-event-title">{{ item.title || '网球活动' }}</text>
@@ -61,5 +61,5 @@ const hostAvatar = computed(() => tournament.value ? undefined : props.item.user
 .card-specs{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;min-width:0;}.card-middle{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}.event-state{display:flex;align-items:center;gap:5px;color:#718579;font-size:11px;line-height:17px;}.event-state-active{color:#006b42;}.state-dot{flex:none;width:5px;height:5px;border-radius:50%;background:#006b42;}.card-result{font-size:11px;line-height:17px;color:#718579;overflow-wrap:anywhere;}.card-tags{display:flex;flex-wrap:wrap;gap:5px;min-width:0;}.card-fee{display:flex;align-items:baseline;gap:3px;flex:none;white-space:nowrap;}.fee-amount{color:#006b42;font-size:19px;font-weight:750;line-height:26px;}.fee-unit{font-size:10px;color:#718579;line-height:16px;}
 .card-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #dce8df;padding:12px 0;min-width:0;}.card-people{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-width:0;}.card-avatars{display:flex;align-items:center;flex:none;}.participant-avatar{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:28px;height:28px;border:2px solid #fff;border-radius:50%;overflow:hidden;background:#daeee0;color:#006b42;font-size:11px;font-weight:600;}.participant-avatar+.participant-avatar{margin-left:-9px;}.extra-people{background:#edf6ef;font-size:10px;}.capacity-copy{display:flex;flex-direction:column;}.capacity-count{font-size:11px;font-weight:600;line-height:17px;}.capacity-caption,.card-number{font-size:10px;color:#718579;line-height:15px;}.card-open{display:flex;align-items:center;justify-content:center;gap:3px;flex:none;padding:9px 11px;border-radius:10px;background:#edf6ef;color:#006b42;font-size:12px;font-weight:600;line-height:20px;}
 .card-open-arrow{display:flex;transform:rotate(-45deg);}
-@media(max-width:350px){.play-card-main{padding:13px 11px 0;}.card-schedule{gap:10px;}.card-thumbnail{width:72px;height:102px;}.card-time{font-size:16px;}.host-caption{display:none;}.card-open{padding:9px 8px;}.card-people{gap:5px;}.fee-amount{font-size:17px;}}
+@media(max-width:350px){.play-card-main{padding:13px 11px 0;}.card-schedule{gap:10px;}.card-thumbnail{width:72px;height:102px;}.card-time{font-size:16px;}.card-open{padding:9px 8px;}.card-people{gap:5px;}.fee-amount{font-size:17px;}}
 </style>

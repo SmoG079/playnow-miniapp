@@ -67,7 +67,7 @@ async def test_shared_sequence_under_real_mysql_and_redis(monkeypatch):
         assert len(set(results)) == 20
         async with factory() as db:
             post_id = await db.scalar(select(MatchPost.id).where(MatchPost.id.in_(created)).limit(1))
-            db.add(Tournament(id=post_id, club_id=club_id, title="重复归属", start_time=datetime.utcnow(), end_time=datetime.utcnow()))
+            db.add(Tournament(user_id=user_id, id=post_id, club_id=club_id, title="重复归属", start_time=datetime.utcnow(), end_time=datetime.utcnow()))
             with pytest.raises(IntegrityError):
                 await db.flush()
             await db.rollback()

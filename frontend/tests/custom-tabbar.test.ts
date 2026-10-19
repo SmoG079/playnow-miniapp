@@ -1,7 +1,7 @@
 import {afterEach,expect,it,vi} from "vitest";
 import fs from "node:fs";
 import vm from "node:vm";
-import {syncCustomTabBarSelection} from "../src/utils/tabbar";
+import {syncCustomTabBarSelection,syncCustomTabBarUnread} from "../src/utils/tabbar";
 afterEach(()=>vi.unstubAllGlobals());
 function setup(){
  let route="pages/home/index",definition:any;
@@ -29,5 +29,13 @@ it("ignores an older failure and rolls back only the current failed navigation",
 it("a page synchronizes its own tab bar without waiting for requests",()=>{
  const app={globalData:{}},setData=vi.fn();vi.stubGlobal("getApp",()=>app);
  syncCustomTabBarSelection("clubs",{getTabBar:()=>({setData})});
- expect(setData).toHaveBeenCalledWith({selected:1});expect((app.globalData as any).playnowTabPath).toBe("pages/booking/club-list");
+ expect(setData).toHaveBeenCalledWith({selected:1,unread:""});expect((app.globalData as any).playnowTabPath).toBe("pages/booking/club-list");
+});
+
+it('clears cached tab badges while a detail page is visible and restores the latest count on return',()=>{
+ const setData=vi.fn(),bar={setData},app={globalData:{playnowUnread:3}};
+ vi.stubGlobal('getApp',()=>app);vi.stubGlobal('getCurrentPages',()=>[{$vm:{$scope:{getTabBar:()=>bar}}},{route:'pages/chat/system'}]);
+ syncCustomTabBarUnread(0);expect(setData).toHaveBeenCalledWith({unread:''});
+ syncCustomTabBarSelection('chat',{getTabBar:()=>bar});
+ expect(setData).toHaveBeenLastCalledWith({selected:3,unread:''});
 });
