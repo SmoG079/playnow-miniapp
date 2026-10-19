@@ -26,8 +26,8 @@ async def lifespan(app: FastAPI):
     # Run: docker-compose exec api alembic upgrade head
     logger.info("media storage backend: %s", storage.active_backend())
     logger.info(
-        "booking payment: %s",
-        "wechat pay enabled" if settings.WX_PAY_ENABLED else "PLACEHOLDER (WX_PAY_ENABLED=false: no real transactions)",
+        "mini-program payment: %s",
+        "wechat pay enabled" if settings.WX_PAY_ENABLED else "DISABLED (WX_PAY_ENABLED=false: no new real payments)",
     )
     logger.info("profit sharing: %s", "enabled" if settings.PROFIT_SHARING_ENABLED else "disabled")
     if settings.WX_PAY_ENABLED:
@@ -39,11 +39,11 @@ async def lifespan(app: FastAPI):
             get_wxpay()
         except Exception:
             logger.exception(
-                "booking payment: WECHAT PAY CLIENT INIT FAILED — paid endpoints will return 5xx"
+                "mini-program payment: WECHAT PAY CLIENT INIT FAILED — paid endpoints will return 5xx"
             )
         else:
             logger.info(
-                "booking payment: wechat pay client ready (verify mode=%s)",
+                "mini-program payment: wechat pay client ready (verify mode=%s)",
                 "public_key" if settings.WX_PAY_PUBLIC_KEY_ID else "platform_certificates",
             )
     yield

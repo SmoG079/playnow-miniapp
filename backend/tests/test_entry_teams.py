@@ -83,7 +83,7 @@ async def test_mixed_gender_and_cross_event_seats_are_enforced(db):
 @pytest.mark.asyncio
 async def test_paid_seat_expires_and_single_teams_are_one_person(db, monkeypatch):
     from datetime import timedelta
-    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(life.get_settings(), "WX_PAY_ENABLED", True)
     tid, _ = await event(db, 4, TournamentConfig(discipline="doubles", pairing="fixed"), fee=20)
     team = (await api.get_tournament(tid, None, db))["entry_teams"][0]
     await register(db, tid, 2, entry_team_id=team["id"], entry_seat=1)

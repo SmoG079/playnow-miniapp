@@ -325,7 +325,7 @@ async def wx_call(method, **kwargs):
 
 
 async def pay(db, t, r, user):
-    if not get_settings().TOURNAMENT_PREPAY_ENABLED:
+    if not get_settings().WX_PAY_ENABLED:
         raise HTTPException(503, "赛事线上支付尚未开放")
     await refresh_admissions(db, t)
     if (

@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     # 回调验签改用该公钥。见 https://pay.weixin.qq.com/doc/v3/merchant/4012153196
     WX_PAY_PUBLIC_KEY_PATH: str = ""
     WX_PAY_PUBLIC_KEY_ID: str = ""
-    # 真实订场支付总开关。false 时 POST /bookings/{id}/pay 走占位确认
+    # 小程序真实付款统一开关：订场、赛事均使用此值，不能另设业务开关。
+    # false 时拒绝赛事付费报名及新付款；订场仅保留本地/CI 的占位确认
     # （直接标 paid 且无任何真实交易，等于免费订场），仅供本地/CI 使用。
     # 生产必须为 true；启动日志会打印实际状态。
     WX_PAY_ENABLED: bool = False
@@ -56,7 +57,6 @@ class Settings(BaseSettings):
     # 仅当使用 STS 临时凭证时需要（永久密钥留空）
     OSS_SESSION_TOKEN: str = ""
 
-    TOURNAMENT_PREPAY_ENABLED: bool = False
     TOURNAMENT_SEAT_TTL_SECONDS: int = 600
 
     # Booking

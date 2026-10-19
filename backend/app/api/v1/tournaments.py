@@ -529,7 +529,7 @@ async def get_tournament(
         teams=await teams_for(db, d),
         matches=[match_dict(m) for m in matches],
         rankings=await rankings(db, d, matches),
-        prepay_enabled=get_settings().TOURNAMENT_PREPAY_ENABLED,
+        prepay_enabled=get_settings().WX_PAY_ENABLED,
     )
     entry_teams = await entries.teams(db, t)
     data["entry_teams"] = []
@@ -675,7 +675,7 @@ async def register_tournament(
     await life.refresh_admissions(db, t)
     if t.registration_closed or _v(t.status) != "open":
         raise HTTPException(409, "报名已关闭")
-    if t.entry_fee > 0 and not get_settings().TOURNAMENT_PREPAY_ENABLED:
+    if t.entry_fee > 0 and not get_settings().WX_PAY_ENABLED:
         raise HTTPException(503, "赛事线上支付尚未开放")
     cfg = life.config(t) if t.config else None
     if cfg and cfg.discipline == "mixed" and not req.gender:

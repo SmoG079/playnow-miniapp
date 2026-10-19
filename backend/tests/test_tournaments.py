@@ -163,7 +163,7 @@ async def test_pair_invitation_and_partner_cancel(db):
 @pytest.mark.asyncio
 async def test_payment_gate_duplicates_late_callback_and_refund(db, monkeypatch):
     settings = life.get_settings()
-    monkeypatch.setattr(settings, "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", True)
     monkeypatch.setattr(settings, "WX_MCH_ID", "mch")
     monkeypatch.setattr(settings, "WX_APP_ID", "app")
     tid, admin = await event(db, 2, fee=Decimal("20"))
@@ -178,6 +178,8 @@ async def test_payment_gate_duplicates_late_callback_and_refund(db, monkeypatch)
         amount={"total": 2000},
         transaction_id="real-wx-tx",
     )
+    # Disabling new payments must not strand a transaction already paid at WeChat.
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", False)
     await life.payment_success(db, payload)
     await life.payment_success(db, payload)
     assert t.current_participants == 1 and r.payment == "paid"
@@ -210,6 +212,7 @@ async def test_payment_gate_duplicates_late_callback_and_refund(db, monkeypatch)
         ),
     )
     assert o.status == OrderStatus.refunded
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", True)
     await register(db, tid, 3)
     r2 = await api.own(db, t, await db.get(User, 3))
     o2 = await db.get(BookingOrder, r2.order_id)
@@ -374,7 +377,7 @@ async def test_schedule_conflict_and_downstream_reset(db):
 async def test_paid_capacity_identity_and_placeholder_rejection(db, monkeypatch):
     from unittest.mock import AsyncMock
     monkeypatch.setattr("app.api.v1.bookings.check_rate_limit", AsyncMock())
-    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(life.get_settings(), "WX_PAY_ENABLED", True)
     tid, admin = await event(db, 2, fee=20)
     for uid in (2, 3):
         await register(db, tid, uid)
@@ -402,7 +405,7 @@ async def test_paid_capacity_identity_and_placeholder_rejection(db, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_default_payment_gate_and_mixed_gender_capacity(db, monkeypatch):
-    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", False)
+    monkeypatch.setattr(life.get_settings(), "WX_PAY_ENABLED", False)
     paid, admin = await event(db, 2, fee=20)
     with pytest.raises(HTTPException) as err:
         await register(db, paid, 2)
@@ -423,11 +426,52 @@ async def test_default_payment_gate_and_mixed_gender_capacity(db, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_shared_payment_switch_controls_detail_registration_and_prepay(db, monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+    from app.api.v1 import bookings
+
+    settings = life.get_settings()
+    assert bookings.settings is settings
+    wx = AsyncMock(return_value={"prepay_id":"fixture-prepay"})
+    client = Mock()
+    client.sign.return_value = "fixture-signature"
+    monkeypatch.setattr(life, "wx_call", wx)
+    monkeypatch.setattr(life, "get_wxpay", lambda: client)
+    monkeypatch.setattr(settings, "WX_APP_ID", "fixture-app")
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", False)
+    tid, admin = await event(db, 2, fee=1)
+    assert (await api.get_tournament(tid, admin, db))["prepay_enabled"] is False
+    with pytest.raises(HTTPException) as denied:
+        await register(db, tid, 2)
+    assert denied.value.status_code == 503
+    free, _ = await event(db, 2)
+    await register(db, free, 3)
+    wx.assert_not_awaited()
+
+    # The single switch enables both API capability and actual WeChat prepay.
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", True)
+    assert (await api.get_tournament(tid, admin, db))["prepay_enabled"] is True
+    await register(db, tid, 2)
+    tournament = await life.locked_event(db, tid)
+    user = await db.get(User, '2')
+    registration = await api.own(db, tournament, user)
+    result = await life.pay(db, tournament, registration, user)
+    assert result["package"] == "prepay_id=fixture-prepay" and result["paySign"] == "fixture-signature"
+    assert wx.await_args.kwargs["amount"] == {"total":100,"currency":"CNY"}
+    assert wx.await_args.kwargs["payer"] == {"openid":user.openid}
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", False)
+    with pytest.raises(HTTPException) as denied:
+        await life.pay(db, tournament, registration, user)
+    assert denied.value.status_code == 503
+    assert wx.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_refund_worker_verifies_response_and_dev_payment(db, monkeypatch):
     from app.services.tournament_maintenance import maintain_db
 
     settings = life.get_settings()
-    monkeypatch.setattr(settings, "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", True)
     monkeypatch.setattr(settings, "WX_MCH_ID", "mch")
     monkeypatch.setattr(settings, "WX_APP_ID", "app")
     tid, admin = await event(db, 2, fee=20)
@@ -487,7 +531,7 @@ async def test_tournament_callback_commits_before_ack_and_is_idempotent(
 
     settings = life.get_settings()
     for field, value in [
-        ("TOURNAMENT_PREPAY_ENABLED", True),
+        ("WX_PAY_ENABLED", True),
         ("WX_MCH_ID", "mch"),
         ("WX_APP_ID", "app"),
     ]:
@@ -566,7 +610,7 @@ async def test_tournament_orders_do_not_pollute_booking_pagination(db, monkeypat
     from app.api.v1.users import my_bookings
     from app.api.v1.bookings import club_orders
 
-    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(life.get_settings(), "WX_PAY_ENABLED", True)
     tid, admin = await event(db, 2, fee=20)
     await register(db, tid, 2)
     result = await my_bookings(
@@ -776,7 +820,7 @@ async def test_provisional_real_opponents_are_not_formal_draws(db):
 
 @pytest.mark.asyncio
 async def test_personal_tournament_without_club_supports_listing_management_and_payment_order(db, monkeypatch):
-    monkeypatch.setattr(life.get_settings(), "TOURNAMENT_PREPAY_ENABLED", True)
+    monkeypatch.setattr(life.get_settings(), "WX_PAY_ENABLED", True)
     creator = await db.get(User, '2')
     req = TournamentCreate(title='个人地图比赛', address='地图选点球场', city='南京市', latitude=32.06, longitude=118.76,
         start_time=datetime.utcnow()+timedelta(days=2), end_time=datetime.utcnow()+timedelta(days=3),
