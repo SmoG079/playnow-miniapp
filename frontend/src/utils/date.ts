@@ -11,16 +11,18 @@ export function futureActivityStart(day: string, time: string, now = Date.now())
 
 export type ActivitySchedule = { start_date: string; end_date: string; start: string; end: string };
 
-/** Start at the next selectable minute; keep the default end after the start. */
+/** Start at the next whole Shanghai hour, with a two-hour default duration. */
 export function activitySchedule(now = Date.now(), sameDay = false): ActivitySchedule {
-  let start = Math.floor(now / 60000) * 60000 + 60000;
+  let start = Math.floor(now / 3600000) * 3600000 + 3600000;
   const local = (stamp: number) => new Date(stamp + 8 * 3600000).toISOString().slice(0, 16);
-  if (sameDay && local(start).slice(11) === '23:59') start += 60000;
+  // Posts have a single date: use the next midnight if two hours cannot fit today.
+  if (sameDay && businessDate(start) !== businessDate(start + 2 * 3600000)) {
+    start = Date.parse(`${businessDate(start)}T00:00:00+08:00`) + 86400000;
+  }
   const from = local(start), to = local(start + 2 * 3600000);
   return {
     start_date: from.slice(0, 10), start: from.slice(11),
-    end_date: sameDay ? from.slice(0, 10) : to.slice(0, 10),
-    end: sameDay && from.slice(0, 10) !== to.slice(0, 10) ? '23:59' : to.slice(11),
+    end_date: to.slice(0, 10), end: to.slice(11),
   };
 }
 
