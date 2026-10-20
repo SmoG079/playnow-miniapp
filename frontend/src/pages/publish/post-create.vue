@@ -10,7 +10,7 @@ import { useDiscovery } from "../../stores/discovery";
 import ActivityCoverUpload from "../../components/ActivityCoverUpload.vue";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
-import { businessDate, futureActivityStart } from "../../utils/date";
+import { businessDate, futureActivityStart, activitySchedule, freshActivitySchedule } from "../../utils/date";
 import { saveActivityDraft, readActivityDraft, clearActivityDraft } from "../../services/activity-draft";
 const discovery = useDiscovery();
 const s = useSession(),
@@ -25,15 +25,17 @@ const s = useSession(),
   images = ref<string[]>([]);
 const draftReady = ref(false);
 const today = () => businessDate();
+function postSchedule() {
+  const time = activitySchedule(Date.now(), true);
+  return { preferred_date: time.start_date, preferred_start: time.start, preferred_end: time.end };
+}
 const defaultForm = () => ({
   city: discovery.city,
   address: "",
   location_name: "",
   latitude: null, longitude: null,
   title: "",
-  preferred_date: today(),
-  preferred_start: "19:00",
-  preferred_end: "21:00",
+  ...postSchedule(),
   min_players: 2, max_players: 2,
   price: "0",
   level_required: "",
@@ -104,6 +106,11 @@ onShow(async () => {
     uni.removeStorageSync("booking_return");
   }
   initialized = true;
+  if (!form.booking_id) {
+    const time = freshActivitySchedule({start_date:form.preferred_date, end_date:form.preferred_date,
+      start:form.preferred_start, end:form.preferred_end}, Date.now(), true);
+    Object.assign(form, {preferred_date:time.start_date, preferred_start:time.start, preferred_end:time.end});
+  }
   draftReady.value = true;
   cacheDraft();
 });

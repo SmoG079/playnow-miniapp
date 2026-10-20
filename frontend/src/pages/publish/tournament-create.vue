@@ -22,6 +22,7 @@ import {
 import { tournamentFieldIssues, type TournamentFieldIssue } from "../../domain/tournament-form";
 import { buildSchedulePreview } from "../../services/tournament-preview";
 import { saveTournamentDraft, readTournamentDraft, clearTournamentDraft } from "../../services/tournament-draft";
+import { activitySchedule, freshActivitySchedule } from "../../utils/date";
 const discovery = useDiscovery();
 const session = useSession(),
   clubs = ref<any[]>([]),
@@ -77,10 +78,7 @@ const form = reactive({
   latitude: null as number | null, longitude: null as number | null,
   title: "",
   auto_title: false,
-  start_date: "",
-  end_date: "",
-  start: "09:00",
-  end: "17:00",
+  ...activitySchedule(),
   entry_fee: "0",
   max_participants: 16,
   description:
@@ -122,6 +120,7 @@ onLoad(async (q) => {
   const draft = readTournamentDraft(draftOwner, editId.value);
   if (draft) {
     Object.assign(form, draft.form); Object.assign(cfg, draft.config);
+    if (!editId.value) Object.assign(form, freshActivitySchedule(form));
     images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
     if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
     initialized = true;
@@ -137,11 +136,7 @@ onLoad(async (q) => {
       clubs.value = [club]; clubIndex.value = 0;
     } catch { uni.showToast({title:"默认俱乐部加载失败，可点击重新选择",icon:"none"}); }
   }
-  form.start_date = form.end_date = new Date(
-    Date.now() + 86400000 + 8 * 3600000,
-  )
-    .toISOString()
-    .slice(0, 10);
+  Object.assign(form, activitySchedule());
   editId.value = Number(q?.id || 0);
   if (editId.value) {
     const t = await getTournament(editId.value);
@@ -205,7 +200,10 @@ function applyReturnedBooking() {
     cacheDraft();
   }
 }
-onShow(() => { pendingBooking = uni.getStorageSync("booking_return") || pendingBooking; applyReturnedBooking(); });
+onShow(() => {
+  if (initialized && !editId.value) Object.assign(form, freshActivitySchedule(form));
+  pendingBooking = uni.getStorageSync("booking_return") || pendingBooking; applyReturnedBooking();
+});
 watch(() => discovery.city, value => {
   if (!editId.value && !linked.value?.venue_id && form.city !== value) {
     form.city = value; form.address = ""; form.location_name = ""; form.latitude = null; form.longitude = null;

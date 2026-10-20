@@ -4,6 +4,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { openPage, returnToActivityForm } from "../src/utils/navigation";
 import { TAB_PAGES } from "../src/config";
+import { activitySchedule, freshActivitySchedule, businessDate } from "../src/utils/date";
 
 const pages = JSON.parse(fs.readFileSync(new URL("../src/pages.json", import.meta.url), "utf8"));
 const tabModule = { exports: [] as any[] };
@@ -89,7 +90,8 @@ async function restorePostForm(booking: any = null) {
     onShow: (fn: any) => { show = fn; }, onHide: () => {}, onUnload: () => {},
     useSession: () => ({ user: { id: "alice" }, requireLogin: () => true, fetchUser: async () => {} }),
     useDiscovery: () => ({ city: "扬州市", ensureCity: async () => {} }), businessDate: () => "2026-10-15",
-    readActivityDraft: () => ({ form: { title: "已保存的约球" }, images: [] }),
+    activitySchedule, freshActivitySchedule,
+    readActivityDraft: () => ({ form: { title: "已保存的约球", preferred_date: "2020-10-14", preferred_start: "19:00", preferred_end: "21:00" }, images: [] }),
     saveActivityDraft: vi.fn(), request: async () => ({ id: 1 }), uni,
   };
   vm.createContext(context);
@@ -101,6 +103,7 @@ async function restorePostForm(booking: any = null) {
 it("keeps the saved draft when entering the separate post form", async () => {
   const { context } = await restorePostForm();
   expect(context.reviewForm.title).toBe("已保存的约球");
+  expect(context.reviewForm.preferred_date).toBe(businessDate());
   expect(context.reviewReady.value).toBe(true);
 });
 it("applies the booking return to that form and consumes it once", async () => {
