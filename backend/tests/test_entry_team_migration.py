@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.engine import make_url
 from alembic import command
 from alembic.config import Config
-from app.models.models import User, Activity, MatchPost, Tournament, TournamentDraw, TournamentTeam, TournamentTeamMember
+from app.models.models import User, Activity, TournamentDraw, TournamentTeam, TournamentTeamMember
 
 
 @pytest.mark.skipif(not os.environ.get("TOURNAMENT_MYSQL_TEST_DATABASE_URL"), reason="Explicit disposable MySQL required")
@@ -29,7 +29,11 @@ def test_previous_schema_migrates_entry_teams_and_conversation_contexts():
             with Session(c) as session:
                 session.add_all([User(id=str(i),openid="entry-migration-"+str(i)) for i in range(1,4)])
                 session.add_all([Activity(id=501,kind="tournament"),Activity(id=502,kind="post")]); session.flush()
-                session.add(MatchPost(id=502,user_id="1",title="chat context"))
+                # Seed the historical schema without columns added by later migrations.
+                legacy_posts = sa.Table("match_posts", sa.MetaData(), autoload_with=c)
+                session.execute(legacy_posts.insert().values(
+                    id=502, user_id="1", title="chat context", approval_required=False,
+                    status="open", created_at=datetime(2026,1,1), updated_at=datetime(2026,1,1)))
                 legacy_events = sa.Table("tournaments",sa.MetaData(),autoload_with=c)
                 session.execute(legacy_events.insert().values(id=501,title="existing mixed teams",start_time=datetime(2030,1,1),end_time=datetime(2030,1,2),max_participants=8,
                     config={"discipline":"mixed","format":"knockout","group_count":2},draw_version=1,published_version=1,
