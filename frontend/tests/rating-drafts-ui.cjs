@@ -79,9 +79,8 @@ fs.mkdirSync(output, { recursive: true });
     await page.getByText("NTRP 3.5", { exact: true }).waitFor();
     await page.screenshot({ path: path.join(output, "profile-tag.png") });
     // Actual form drafts survive page reconstruction and keep separate activity types.
-    await visit("publish/post-create");
-    await page.locator(".post-entry .wd-button:not(.is-disabled)").waitFor();
-    await page.getByText("创建约球", { exact: true }).click();
+    await visit("publish/index");
+    await page.getByText("发布约球", { exact: true }).click();
     await page.locator(".post-form input").first().fill("退出后继续填写的约球");
     await page.getByText("保存草稿", { exact: true }).click();
     await page.getByText("草稿已保存，可退出后继续填写", { exact: true }).waitFor();

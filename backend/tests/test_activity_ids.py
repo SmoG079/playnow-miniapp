@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261019_tournament_owner (head)"
+    assert result.stdout.strip() == "20261020_activity_payment (head)"
 
 
 @pytest_asyncio.fixture

@@ -33,7 +33,9 @@ async def maintain(session_factory=None):
 
 
 async def maintain_db(db, settings):
-    processed = errors = 0
+    from app.services import post_payments
+    post_outcome = await post_payments.maintain(db)
+    processed, errors = post_outcome["processed"], post_outcome["errors"]
     ids = list(
         (
             await db.execute(

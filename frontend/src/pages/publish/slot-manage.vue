@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { reactive, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -74,15 +75,14 @@ async function toggle(x: any) {
   <AppShell back title="时段管理"
     ><view class="content publish-content slot-manage-content"
       ><text class="field-label">场地</text
-      ><picker
+      ><ChoicePicker title="选择场地"
         :range="venues.map((v) => v.name)"
         :value="index"
         @change="
           index = Number($event.detail.value);
           load();
         "
-        ><view class="picker-field">{{ venues[index]?.name }}</view></picker
-      ><text class="section-title section-head">批量生成</text
+        ><view class="picker-field">{{ venues[index]?.name }}</view></ChoicePicker><text class="section-title section-head">批量生成</text
       ><view class="form-two"
         ><picker
           mode="date"
@@ -107,15 +107,14 @@ async function toggle(x: any) {
           @change="form.end_time = $event.detail.value"
           ><view class="picker-field">{{ form.end_time }}</view></picker
         ></view
-      ><picker
+      ><ChoicePicker title="时段长度"
         class="slot-interval"
         :range="intervals.map((x) => x + ' 分钟')"
         :value="intervalIndex"
         @change="intervalIndex = Number($event.detail.value)"
         ><view class="picker-field"
           >{{ intervals[intervalIndex] }} 分钟</view
-        ></picker
-      ><wd-button block :loading="loading" @click="generate">生成时段</wd-button
+        ></ChoicePicker><wd-button block :loading="loading" @click="generate">生成时段</wd-button
       ><text class="section-title section-head">已有时段</text
       ><view v-for="x in slots" :key="x.id" class="record-card"
         ><view

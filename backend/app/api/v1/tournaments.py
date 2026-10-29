@@ -52,7 +52,7 @@ def row_dict(row, names):
 def brief(t):
     data = row_dict(
         t,
-        "id club_id city location_name latitude longitude title sport_type level_required start_time end_time venue_id entry_fee max_participants current_participants cover_image created_at",
+        "id club_id city location_name latitude longitude title sport_type level_required start_time end_time venue_id entry_fee payment_method max_participants current_participants cover_image created_at",
     )
     data["registration_deadline"] = t.registration_deadline or t.start_time
     data["registration_closed"] = t.registration_closed
@@ -397,6 +397,7 @@ async def update_tournament(
         raise HTTPException(409, "名单冻结后不能修改赛事配置")
     if regs and (
         t.entry_fee != req.entry_fee
+        or t.payment_method != req.payment_method
         or (
             t.config is not None
             and t.config != (req.config.model_dump() if req.config else None)
@@ -678,7 +679,7 @@ async def register_tournament(
     await life.refresh_admissions(db, t)
     if t.registration_closed or _v(t.status) != "open":
         raise HTTPException(409, "报名已关闭")
-    if t.entry_fee > 0 and not get_settings().WX_PAY_ENABLED:
+    if life.online_fee(t) and not get_settings().WX_PAY_ENABLED:
         raise HTTPException(503, "赛事线上支付尚未开放")
     cfg = life.config(t) if t.config else None
     if cfg and cfg.discipline == "mixed" and not req.gender:

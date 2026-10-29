@@ -81,6 +81,7 @@ class TournamentCreate(BaseModel):
     venue_id: int | None = None
     lock_venue: bool = False
     max_participants: int = Field(..., ge=2, le=128)
+    payment_method: Literal["offline", "online"] = "online"
     entry_fee: Decimal = Field(Decimal("0"), ge=0, max_digits=10, decimal_places=2)
     images: list[str] = Field(default_factory=list, max_length=6)
     cover_image: str | None = None

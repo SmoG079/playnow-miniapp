@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { ref } from "vue";
 import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -56,7 +57,7 @@ function callClub() {
 <template>
   <AppShell back title="俱乐部工作台"
     ><view class="content list-content"
-      ><picker
+      ><ChoicePicker title="选择俱乐部"
         v-if="clubs.length > 1"
         :range="clubs.map((c) => c.name)"
         :value="index"
@@ -64,8 +65,7 @@ function callClub() {
           index = Number($event.detail.value);
           load();
         "
-        ><view class="picker-field">{{ clubs[index]?.name }}</view></picker
-      ><view v-if="loading && !club" class="loading-state"
+        ><view class="picker-field">{{ clubs[index]?.name }}</view></ChoicePicker><view v-if="loading && !club" class="loading-state"
         ><wd-loading /><text class="muted">正在加载俱乐部...</text></view
       ><template v-else-if="club"
         ><view class="profile-header"

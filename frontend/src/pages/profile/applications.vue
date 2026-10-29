@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { ref } from "vue";
 import { onLoad, onShow, onReachBottom, onPullDownRefresh } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -64,7 +65,7 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
   <AppShell back title="申请处理"><view class="content list-content">
     <view class="text-tabs"><button v-for="tab in scopes" :key="tab.value" :class="{selected:scope === tab.value}" @click="changeScope(tab.value)">{{ tab.label }}</button></view>
     <text class="muted small inbox-hint">{{ scope === 'mine' ? '查看自己的俱乐部申请进度与审核结果' : (session.isPlatformAdmin ? '俱乐部创建由系统管理员审核；报名由发起者审核' : '处理自己发起的约球和比赛报名申请') }}</text>
-    <picker v-if="scope !== 'mine'" :range="['全部申请','俱乐部创建','约球报名','比赛报名']" @change="filter"><view class="picker-field">{{ kind === 'all' ? '全部申请' : kindNames[kind] }}<wd-icon name="arrow-down" size="14px" /></view></picker>
+    <ChoicePicker title="申请类型" :value="['all','club','post','tournament'].indexOf(kind)" v-if="scope !== 'mine'" :range="['全部申请','俱乐部创建','约球报名','比赛报名']" @change="filter"><view class="picker-field">{{ kind === 'all' ? '全部申请' : kindNames[kind] }}<wd-icon name="arrow-down" size="14px" /></view></ChoicePicker>
     <view v-for="row in rows" :key="key(row)" class="record-card application-card">
       <view class="row gap8"><Photo round width="40px" height="40px" :src="row.avatar_url" fallback="/static/tennis.jpg" /><view class="applicant"><text class="strong">{{ row.applicant || '球友' }}</text><text class="muted small">{{ kindNames[row.kind] }} · {{ row.city || '' }}</text></view><text class="tag" :class="{yellow:row.status === 'pending'}">{{ statusNames[row.status] || row.status }}</text></view>
       <text class="application-title">{{ row.title }}</text><text v-if="row.description" class="muted small">{{ row.description }}</text><text v-if="row.reason" class="review-reason">审核说明：{{ row.reason }}</text>

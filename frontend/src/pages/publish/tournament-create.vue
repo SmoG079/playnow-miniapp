@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ChoiceSelect from "../../components/ChoiceSelect.vue";
+import ChoiceSheet from "../../components/ChoiceSheet.vue";
+import ActivityPaymentSelect from "../../components/ActivityPaymentSelect.vue";
+import type { PaymentMethod } from "../../domain/activity-payment";
 import FieldHelp from "../../components/FieldHelp.vue";
 import { normalizedPrizes, type Prize } from "../../domain/prizes";
 import { reactive, ref, watch, computed, nextTick } from "vue";
@@ -80,6 +84,7 @@ const form = reactive({
   auto_title: false,
   ...activitySchedule(),
   entry_fee: "0",
+  payment_method: "offline" as PaymentMethod,
   max_participants: 16,
   description:
     "欢迎参加我们的网球比赛！\n时间：{{日期}} {{时间}}\n地点：{{地点}}",
@@ -156,6 +161,7 @@ onLoad(async (q) => {
       start: start.slice(11),
       end: end.slice(11),
       entry_fee: String(t.entry_fee),
+      payment_method: t.payment_method || "online",
       max_participants: t.max_participants,
       description: t.description_template || t.description,
 
@@ -245,6 +251,7 @@ function payload(previewOnly = false) {
     start_time: start.toISOString(),
     end_time: end.toISOString(),
     entry_fee: Number(form.entry_fee),
+    payment_method: form.payment_method,
     max_participants: Number(form.max_participants),
     description: form.description,
 
@@ -360,7 +367,7 @@ async function save() {
         <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
         </view
       >
-      <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
+      <ChoiceSheet v-model="clubSheet" :options="clubActions.map((action,index)=>({label:action.name,value:index}))" :value="clubPurpose === 'host' ? clubIndex + 1 : clubIndex" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" @select="selectClub({index:Number($event)})" />
       <view class="creation-section creation-collapse"><wd-collapse v-model="panels">
         <wd-collapse-item name="prizes" :title="`奖项设置（选填） · ${normalizedPrizes(form.prizes).length} 条`">
           <view v-for="(prize,i) in form.prizes" :key="i" class="prize-editor">
@@ -405,47 +412,34 @@ async function save() {
         >
       </wd-collapse></view>
       <view class="creation-section"><view class="creation-heading">比赛设置</view
-      ><view class="field-label">赛制 *</view><view class="choices"
-        ><wd-button
-          v-for="(label, key) in formatNames"
-          :key="key"
-          size="small"
-          :variant="cfg.format === key ? 'base' : 'plain'"
-          @click="
-            cfg.format = key;
-            cfg.allow_draw = false;
-          "
-          >{{ label }}</wd-button
-        ></view
       >
-      <view class="field-label">比赛项目 *</view><view class="choices"
-        ><wd-button
-          v-for="(label, key) in disciplineNames"
-          :key="key"
-          size="small"
-          :variant="cfg.discipline === key ? 'base' : 'plain'"
-          @click="cfg.discipline = key; cfg.pairing = null"
-          >{{ label }}</wd-button
-        ></view
-      >
-      <template v-if="cfg.discipline !== 'singles'">
-        <view class="field-label" id="required-pairing">搭档方式 *<FieldHelp title="搭档方式" content="固定搭档：参与者点击队伍空位组队。随机搭档：报名后由系统安排队伍。抽签只排列已组好的队伍；单打每队一人，双打及混双每队两人。" /></view>
-        <view class="choices">
-          <wd-button size="small" :variant="cfg.pairing === 'random' ? 'base' : 'plain'" @click="cfg.pairing = 'random'">随机搭档</wd-button>
-          <wd-button size="small" :variant="cfg.pairing === 'fixed' ? 'base' : 'plain'" @click="cfg.pairing = 'fixed'">固定搭档</wd-button>
-        </view>
-      </template>
+      <ChoiceSelect :model-value="cfg.format" title="赛制" label="赛制 *" :options="[
+        {value:'knockout',label:formatNames.knockout,description:'胜者晋级，负者淘汰；适合紧凑赛程。'},
+        {value:'round_robin',label:formatNames.round_robin,description:'组内队伍循环交手，按成绩排名。'},
+        {value:'groups_knockout',label:formatNames.groups_knockout,description:'先进行小组循环赛，再由晋级队伍参加淘汰赛。'}
+      ]" @update:model-value="cfg.format = $event as typeof cfg.format; cfg.allow_draw = false" />
+      <ChoiceSelect :model-value="cfg.discipline" title="比赛项目" label="比赛项目 *" :options="[
+        {value:'singles',label:disciplineNames.singles,description:'每队一人参加比赛。'},
+        {value:'doubles',label:disciplineNames.doubles,description:'每队两人，选择固定或随机搭档。'},
+        {value:'mixed',label:disciplineNames.mixed,description:'每队一男一女，选择固定或随机搭档。'}
+      ]" @update:model-value="cfg.discipline = $event as typeof cfg.discipline; cfg.pairing = null" />
+      <view v-if="cfg.discipline !== 'singles'" id="required-pairing">
+        <ChoiceSelect :model-value="cfg.pairing || ''" title="搭档方式" label="搭档方式 *" :options="[
+          {value:'fixed',label:'固定搭档',description:'参与者选择队伍空位，自行与球友组队。'},
+          {value:'random',label:'随机搭档',description:'报名后由系统安排队伍。'}
+        ]" @update:model-value="cfg.pairing = $event as typeof cfg.pairing" />
+      </view>
         <view class="field-label" id="required-level_required">NTRP 等级（选填）</view>
         <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
-      <view class="field-label" id="required-max_participants">人数上限（个人） *</view><wd-input v-model="form.max_participants" type="number" /><view
-        class="field-label"
-         id="required-entry_fee">报名费（每人） *<FieldHelp title="报名费用" content="线上预付需开放赛事支付后才可使用。免费比赛无需付款；付费比赛按每位参赛者收取。" /></view><wd-input v-model="form.entry_fee" type="digit" />
+      <view class="field-label" id="required-max_participants">人数上限（个人） *</view><wd-input v-model="form.max_participants" type="number" />
+      <ActivityPaymentSelect v-model="form.payment_method" :fee="Number(form.entry_fee)" />
+      <view class="field-label"
+         id="required-entry_fee">报名费（每人） *<FieldHelp title="报名费用" content="免费比赛无需付款；付费比赛按每位参赛者收取，可选择组织者线下收款或微信线上支付。" /></view><wd-input v-model="form.entry_fee" type="digit" />
       <view class="field-label" id="required-group_count">分组数量 *</view><wd-input v-model="cfg.group_count" type="number" /><view
         class="field-label"
          id="required-courts">场地名称（每行一个） *</view><wd-textarea v-model="form.courts" /><view class="field-label"
          id="required-match_minutes">每场预计分钟 *</view><wd-input v-model="cfg.match_minutes" type="number" />
       </view>
-      <wd-action-sheet v-model="clubSheet" :actions="clubActions" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" cancel-text="取消" @select="selectClub" />
       <view class="creation-section creation-collapse"><wd-collapse v-model="panels">
         <wd-collapse-item
           name="advanced"

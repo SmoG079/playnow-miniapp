@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { computed, ref, watch } from "vue";
 import { onLoad, onShow, onHide, onUnload, onReachBottom, onPullDownRefresh } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -112,7 +113,7 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
   <AppShell back title="我的活动"><view class="content list-content my-activities">
     <view class="activity-search"><wd-search v-model="keyword" placeholder="搜索活动名称或编号" hide-cancel placeholder-left @search="reset" /></view>
     <view class="relation-tabs"><button :class="{selected:relation === 'joined'}" @click="selectRelation('joined')">我参加的</button><button :class="{selected:relation === 'published'}" @click="selectRelation('published')">我发布的</button></view>
-    <view class="activity-filters"><view class="phase-wrap"><scroll-view scroll-x class="phase-scroll"><view class="phase-options"><button v-for="option in phaseOptions" :key="option.value" class="filter-pill" :class="{selected:phase === option.value}" @click="selectPhase(option.value)">{{ option.label }}</button></view></scroll-view><view class="phase-fade" /></view><picker :range="['比赛','约球']" :value="kind === 'tournament' ? 0 : 1" @change="selectKind"><view class="type-filter">筛选 · {{ kind === 'tournament' ? '比赛' : '约球' }}<wd-icon name="arrow-down" size="12px" /></view></picker></view>
+    <view class="activity-filters"><view class="phase-wrap"><scroll-view scroll-x class="phase-scroll"><view class="phase-options"><button v-for="option in phaseOptions" :key="option.value" class="filter-pill" :class="{selected:phase === option.value}" @click="selectPhase(option.value)">{{ option.label }}</button></view></scroll-view><view class="phase-fade" /></view><ChoicePicker title="活动类型" :range="['比赛','约球']" :value="kind === 'tournament' ? 0 : 1" @change="selectKind"><view class="type-filter">筛选 · {{ kind === 'tournament' ? '比赛' : '约球' }}<wd-icon name="arrow-down" size="12px" /></view></ChoicePicker></view>
     <ActivityCard v-for="item in items" :key="item.id" :item="item" :kind="item.kind" @open="openPage(`/pages/common/${item.kind === 'tournament' ? 'tournament' : 'post'}-detail?id=${item.id}`)">
       <view v-if="(relation === 'joined' && (item.registration || item.kind === 'tournament')) || (relation === 'published' && item.can_manage)" class="activity-card-extras">
       <view v-if="relation === 'joined' && item.registration" class="registration-line"><text class="registration-state" :class="{pending:registrationLabel(item) === '待审核'}">{{ registrationLabel(item) }}</text><text v-if="item.registration.review_reason" class="muted small">{{ item.registration.review_reason }}</text></view>

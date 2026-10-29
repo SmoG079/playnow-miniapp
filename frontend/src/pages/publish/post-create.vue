@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ActivityPaymentSelect from "../../components/ActivityPaymentSelect.vue";
+import type { PaymentMethod } from "../../domain/activity-payment";
 import FieldHelp from "../../components/FieldHelp.vue";
 import { reactive, ref, watch } from "vue";
 import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
@@ -38,6 +40,7 @@ const defaultForm = () => ({
   ...postSchedule(),
   min_players: 2, max_players: 2,
   price: "0",
+  payment_method: "offline" as PaymentMethod,
   level_required: "",
   description: "",
   notes: "",
@@ -232,6 +235,7 @@ function returnToPublish() {
           <view class="field-label">NTRP 要求<FieldHelp title="NTRP 要求" content="留空表示不限等级，也可以填写等级或范围，例如 2.5–3.5。" /></view><wd-input v-model="form.level_required" placeholder="不限，例如 2.5-3.5" />
           <view class="creation-row"><view class="field-label">最低人数<FieldHelp title="成团人数" content="达到最低人数成团，满最大人数停止报名；未成团不自动取消或退款。" /></view><wd-input-number v-model="form.min_players" :min="2" :max="31" /></view>
           <view class="creation-row"><text class="field-label">最大人数</text><wd-input-number v-model="form.max_players" :min="2" :max="31" /></view>
+          <ActivityPaymentSelect v-model="form.payment_method" :fee="Number(form.price)" />
           <text class="field-label">人均费用（元）</text><wd-input v-model="form.price" type="digit" />
           <view class="creation-row"><view class="field-label">报名需要审核<FieldHelp title="报名审核" content="开启后，报名须经发起人通过；关闭后报名直接生效。" /></view><wd-switch v-model="form.approval_required" /></view>
         </view>

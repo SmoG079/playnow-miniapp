@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ChoiceSelect from "../../components/ChoiceSelect.vue";
+import { paymentLabel, registrationNotice } from "../../domain/activity-payment";
 import ParticipantIdentity from "../../components/ParticipantIdentity.vue";
 import { cardState } from "../../domain/activity-card";
 import { drawBlockReason } from "../../domain/draw-readiness";
@@ -128,6 +130,7 @@ const stateNames: Record<string, string> = {
   verified: "已核验",
   unverified: "历史付款待核验",
   confirmed: "已确认",
+  offline: "线下付款",
   registered: "报名中",
   processing: "退款处理中",
   success: "退款成功",
@@ -307,10 +310,7 @@ async function join() {
     uni.showToast({ title: "请选择报名性别", icon: "none" });
     return;
   }
-  const text =
-    Number(t.value.entry_fee) > 0
-      ? "取消截止前全额退款，之后由管理员处理。是否报名？"
-      : "确认报名本次比赛？";
+  const text = registrationNotice(t.value.entry_fee, t.value.payment_method || "online");
   if (!(await confirm(text))) return;
   const r = await run("register", {
     requested_group: registration.requested_group,
@@ -353,7 +353,7 @@ async function pay() {
   }
 }
 async function cancelReg(r: Registration) {
-  const why = await reason("取消报名（截止前全额退）");
+  const why = await reason(t.value?.payment_method === "offline" ? "取消报名（线下费用请与组织者协商）" : "取消报名（截止前全额退）");
   if (why) await run(`registrations/${r.id}/cancel`, { reason: why });
 }
 async function review(r: Registration, approved: boolean) {
@@ -600,7 +600,7 @@ function tie() {
               </view>
               <view v-if="t.images?.length" class="intro-section"><text class="intro-heading">赛事图片</text><view class="gallery"><Photo v-for="img in t.images" :key="img" :src="img" width="100%" height="180px" /></view></view>
               <view class="intro-section"><text class="intro-heading">主办与联系</text><view class="organizer-profile"><Photo :src="t.club_id ? t.club_avatar : t.organizer_avatar" width="44px" height="44px" round /><view class="organizer-copy"><text class="organizer-name">{{ t.club_id ? t.club_name : t.organizer_nickname || '球友' }}</text><text class="organizer-type">{{ t.club_id ? '俱乐部主办' : '个人主办' }}</text></view></view><text v-if="t.club_id && t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
-              <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="muted small">截止前全额原路退款，之后由管理员处理；主办方取消全退。</text></view>
+              <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="intro-copy">付款方式：{{ paymentLabel(t.entry_fee, t.payment_method || 'online') }}</text><text class="muted small">{{ Number(t.entry_fee) <= 0 ? '本次比赛免费参加。' : t.payment_method === 'offline' ? '报名无需线上支付，费用由组织者线下收取；退费请与组织者协商。' : '截止前全额原路退款，之后由管理员处理；主办方取消全退。' }}</text></view>
             </view>
           </wd-tab>
           <wd-tab title="参与者" name="players"><view class="pane">
@@ -668,20 +668,12 @@ function tie() {
                 ? "第 " + mine.requested_group + " 组"
                 : "自动分组"
             }}</text
-          ><view
+          ><ChoiceSelect
             v-if="cfg && cfg.pairing !== 'fixed' && cfg.group_count > 1 && !t.roster_frozen && !canJoin && !mine.partner_user_id"
-            class="choices"
-            ><wd-button size="small" variant="plain" @click="changeGroup(0)"
-              >改为自动分组</wd-button
-            ><wd-button
-              v-for="g in t.registration_groups || []"
-              :key="g.group_no"
-              size="small"
-              variant="plain"
-              @click="changeGroup(g.group_no)"
-              >选第 {{ g.group_no }} 组</wd-button
-            ></view
-          ><text>我的报名：{{ stateNames[mine.admission || ""] }}</text
+            :model-value="mine.requested_group || 0" title="更换参赛组" :disabled="busy"
+            :options="[{value:0,label:'自动分组'},...(t.registration_groups || []).map(g=>({value:g.group_no,label:'第 '+g.group_no+' 组',description:g.reserved+'/'+g.capacity+' 人已占位'}))]"
+            @change="changeGroup(Number($event))" />
+          <text>我的报名：{{ stateNames[mine.admission || ""] }}</text
           ><text class="muted"
             >{{ stateNames[mine.approval || ""] }} ·
             {{ stateNames[mine.payment || ""] }}</text
@@ -740,49 +732,18 @@ function tie() {
           >
         </view>
         <view v-if="invite" class="list-card"
-          ><text>你收到一个搭档邀请。双方须各自完成报名和支付。</text
+          ><text>你收到一个搭档邀请。双方须各自完成报名；费用按本次比赛的付款方式处理。</text
           ><wd-button block :loading="busy" @click="accept"
             >确认搭档邀请</wd-button
           ></view
         >
         <view v-if="canJoin && t.can_register && cfg?.pairing !== 'fixed'" class="list-card"
-          ><template v-if="cfg && cfg.group_count > 1"
-            ><text>选择参赛组（抽签保持所选组别）</text
-            ><view class="choices"
-              ><wd-button
-                size="small"
-                :variant="registration.requested_group === 0 ? 'base' : 'plain'"
-                @click="registration.requested_group = 0"
-                >自动分组</wd-button
-              ><wd-button
-                v-for="g in t.registration_groups || []"
-                :key="g.group_no"
-                size="small"
-                :variant="
-                  registration.requested_group === g.group_no ? 'base' : 'plain'
-                "
-                @click="registration.requested_group = g.group_no"
-                >第 {{ g.group_no }} 组 · {{ g.reserved }}/{{
-                  g.capacity
-                }}</wd-button
-              ></view
-            ></template
-          ><template v-if="cfg?.discipline === 'mixed'"
-            ><text>报名性别</text
-            ><view class="choices"
-              ><wd-button
-                size="small"
-                :variant="registration.gender === 'male' ? 'base' : 'plain'"
-                @click="registration.gender = 'male'"
-                >男</wd-button
-              ><wd-button
-                size="small"
-                :variant="registration.gender === 'female' ? 'base' : 'plain'"
-                @click="registration.gender = 'female'"
-                >女</wd-button
-              ></view
-            ></template
-          ></view
+          ><ChoiceSelect v-if="cfg && cfg.group_count > 1" v-model="registration.requested_group" title="参赛组" :options="[
+            {value:0,label:'自动分组',description:'由系统安排组别，抽签保持已确定的组别。'},
+            ...(t.registration_groups || []).map(g=>({value:g.group_no,label:'第 '+g.group_no+' 组',description:g.reserved+'/'+g.capacity+' 人已占位'}))
+          ]" />
+          <ChoiceSelect v-if="cfg?.discipline === 'mixed'" v-model="registration.gender" title="报名性别" :options="[{value:'male',label:'男'},{value:'female',label:'女'}]" />
+          </view
         >
         <view v-if="t.can_manage" class="manager"
           ><text class="section-title">赛事管理</text>
@@ -930,12 +891,12 @@ function tie() {
           :disabled="
             !canJoin ||
             (!t.can_register && s.loggedIn) ||
-            (Number(t.entry_fee) > 0 && !t.prepay_enabled)
+            (Number(t.entry_fee) > 0 && t.payment_method !== 'offline' && !t.prepay_enabled)
           "
           :loading="busy"
           @click="join"
           >{{
-            Number(t.entry_fee) > 0 && !t.prepay_enabled
+            Number(t.entry_fee) > 0 && t.payment_method !== 'offline' && !t.prepay_enabled
               ? "预付尚未开放"
               : title
           }}</wd-button
@@ -952,25 +913,8 @@ function tie() {
               : "确认同分顺序"
         }}</text>
         <template v-if="edit === 'result'"
-          ><text class="field-label">胜者</text
-          ><view class="choices"
-            ><wd-button
-              v-for="teamId in [
-                selected?.team_a_id,
-                selected?.team_b_id,
-              ].filter(Boolean)"
-              :key="teamId!"
-              size="small"
-              :variant="form.winner === teamId ? 'base' : 'plain'"
-              @click="
-                form.winner = teamId!;
-                form.is_draw = false;
-              "
-              >{{
-                teamName(t?.teams || [], teamId, t?.registrations || [])
-              }}</wd-button
-            ></view
-          ><text class="field-label">比分（自由文本）</text
+          ><ChoiceSelect :model-value="form.winner || ''" title="胜者" :options="[selected?.team_a_id,selected?.team_b_id].filter(Boolean).map(teamId=>({value:teamId!,label:teamName(t?.teams || [],teamId,t?.registrations || [])}))" @update:model-value="form.winner=Number($event); form.is_draw=false" />
+          <text class="field-label">比分（自由文本）</text
           ><wd-input v-model="form.score" placeholder="例如 6:4 6:3" /><view
             v-if="selected?.kind === 'round_robin' && cfg?.allow_draw"
             class="switch-row"
@@ -979,17 +923,8 @@ function tie() {
             ><text>弃权</text><wd-switch v-model="form.walkover" /></view
         ></template>
         <template v-else-if="edit === 'schedule'"
-          ><text class="field-label">场地</text
-          ><view class="choices"
-            ><wd-button
-              v-for="c in cfg?.courts || []"
-              :key="c"
-              size="small"
-              :variant="form.court === c ? 'base' : 'plain'"
-              @click="form.court = c"
-              >{{ c }}</wd-button
-            ></view
-          ><picker
+          ><ChoiceSelect v-model="form.court" title="场地" :options="(cfg?.courts || []).map(c=>({value:c,label:c}))" />
+          <picker
             mode="date"
             :value="form.date"
             @change="form.date = $event.detail.value"

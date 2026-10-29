@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PlayNow · 网球俱乐部与约球平台</title>
+<meta name="description" content="PlayNow —— 网球场地预约、约球组局与赛事组织的微信小程序平台。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23cdf05a'/><path d='M50 4a46 46 0 0 1 0 92' fill='none' stroke='%230b3d2c' stroke-width='7'/></svg>">
+<style>
+:root{
+  --green-900:#0b3d2c; --green-700:#0f6b4a; --green-500:#17a06b;
+  --lime:#cdf05a; --bg:#f5f8f6; --card:#ffffff;
+  --text:#16221c; --muted:#5b6b63; --line:#e3eae6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  color:var(--text);background:var(--bg);line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+a{color:inherit;text-decoration:none}
+
+/* ---------- 顶栏 ---------- */
+.topbar{background:var(--green-900);color:#eaf3ee;font-size:13px;padding:9px 0}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--lime);margin-right:7px;vertical-align:middle}
+
+/* ---------- 头部 ---------- */
+header{background:var(--green-900);color:#fff;padding:26px 0 0}
+.brand{display:flex;align-items:center;gap:12px}
+.brand .ball{width:38px;height:38px;flex:0 0 38px}
+.brand h1{font-size:21px;font-weight:700;letter-spacing:.3px;line-height:1.2}
+.brand p{font-size:12.5px;color:#9dbaa9;letter-spacing:1.6px;text-transform:uppercase}
+
+.hero{padding:44px 0 58px;position:relative;overflow:hidden}
+.hero h2{font-size:34px;line-height:1.35;font-weight:700;letter-spacing:-.2px;margin-bottom:16px}
+.hero h2 em{font-style:normal;color:var(--lime)}
+.hero p.lead{font-size:15.5px;color:#b9cfc2;max-width:620px;margin-bottom:26px}
+.hero .pills{display:flex;flex-wrap:wrap;gap:9px}
+.pill{
+  font-size:13px;padding:6px 14px;border-radius:100px;
+  border:1px solid rgba(205,240,90,.42);color:var(--lime);background:rgba(205,240,90,.08);
+}
+.hero .deco{
+  position:absolute;right:-70px;top:-10px;width:300px;height:300px;
+  border:1.5px solid rgba(205,240,90,.16);border-radius:50%;
+}
+
+/* ---------- 功能 ---------- */
+section.block{padding:54px 0}
+.sec-title{font-size:22px;font-weight:700;margin-bottom:8px}
+.sec-sub{color:var(--muted);font-size:14px;margin-bottom:28px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:16px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:24px 22px;transition:.18s ease;
+}
+.card:hover{border-color:#bfe0cd;box-shadow:0 6px 22px rgba(11,61,44,.07);transform:translateY(-2px)}
+.card .ic{
+  width:38px;height:38px;border-radius:10px;background:#e8f6ee;
+  display:flex;align-items:center;justify-content:center;margin-bottom:14px;
+}
+.card h3{font-size:16px;font-weight:700;margin-bottom:7px}
+.card p{font-size:13.5px;color:var(--muted);line-height:1.75}
+
+/* ---------- 说明 ---------- */
+.notice{
+  background:var(--card);border:1px solid var(--line);border-left:4px solid var(--green-500);
+  border-radius:12px;padding:24px 24px;
+}
+.notice h3{font-size:16px;margin-bottom:12px}
+.notice p{font-size:14px;color:var(--muted);margin-bottom:10px}
+.notice p:last-child{margin-bottom:0}
+.notice code{
+  background:#eef4f0;padding:2px 7px;border-radius:5px;
+  font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green-700);
+}
+
+/* ---------- 底部 ---------- */
+footer{background:var(--green-900);color:#9dbaa9;padding:34px 0 40px;font-size:13px;margin-top:8px}
+footer .links{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:18px}
+footer .links a{color:#cfe3d8;border-bottom:1px solid transparent;transition:.15s}
+footer .links a:hover{color:var(--lime);border-color:var(--lime)}
+footer .copy{color:#7f9a8b;font-size:12.5px;line-height:2}
+footer .copy .sep{margin:0 8px;color:#3f5c4d}
+
+@media (max-width:640px){
+  .hero h2{font-size:26px}
+  .hero{padding:34px 0 44px}
+  section.block{padding:40px 0}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <span><span class="dot"></span>PlayNow 服务站点</span>
+    <span>微信小程序 · 网球场地预约</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <svg class="ball" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="#cdf05a"/>
+        <path d="M50 4a46 46 0 0 1 0 92" fill="none" stroke="#0b3d2c" stroke-width="7"/>
+        <path d="M14 21a60 60 0 0 0 0 58" fill="none" stroke="#0b3d2c" stroke-width="6"/>
+      </svg>
+      <div>
+        <h1>PlayNow</h1>
+        <p>Play Now · 上场见</p>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h2>网球俱乐部与约球平台<br><em>让每一片球场都有人上场</em></h2>
+      <p class="lead">
+        PlayNow 是一款面向网球爱好者的微信小程序：查看附近网球场馆的实时空闲时段并在线预约，
+        发布约球信息与同城球友组局，也可以在平台内创建比赛、自动编排赛程并记录比分。
+      </p>
+      <div class="pills">
+        <span class="pill">找场地</span>
+        <span class="pill">约球友</span>
+        <span class="pill">办赛事</span>
+        <span class="pill">俱乐部</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="block">
+  <div class="wrap">
+    <h3 class="sec-title">核心功能</h3>
+    <p class="sec-sub">从找场到组局，从训练到比赛</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17a06b" stroke-width="2" stroke-linecap="round">
+            <path d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>
+          </svg>
+        </div>
+        <h3>找场地</h3>
+        <p>按位置查看附近网球场馆与场地信息，了解时段空闲情况，在线完成预约。</p>
+      </div>
+
+      <div class="card">
+        <div class="ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17a06b" stroke-width="2" stroke-linecap="round">
+            <circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 6.5a3 3 0 0 1 0 6M17.5 20a5.2 5.2 0 0 0-2-4.1"/>
+          </svg>
+        </div>
+        <h3>约球友</h3>
+        <p>发布约球信息，同城球友在线报名组局，按水平与时间快速匹配对手。</p>
+      </div>
+
+      <div class="card">
+        <div class="ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17a06b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 3v4M17 3v4"/><rect x="3.5" y="7" width="17" height="13" rx="2.5"/><path d="M3.5 12h17"/>
+          </svg>
+        </div>
+        <h3>办赛事</h3>
+        <p>创建比赛并设置赛制，自动分组、生成对阵与赛程，实时记录比分与晋级情况。</p>
+      </div>
+
+      <div class="card">
+        <div class="ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17a06b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5 14.6 9l6 .8-4.4 4.2 1.1 6-5.3-2.9L6.7 20l1.1-6L3.4 9.8 9.4 9z"/>
+          </svg>
+        </div>
+        <h3>俱乐部</h3>
+        <p>加入本地网球俱乐部，参与日常活动、训练安排与内部排名。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <div class="notice">
+      <h3>关于本站</h3>
+      <p>
+        本站（<code>www.tennisplaynow.site</code>）由
+        <strong>扬州市广陵区腾达体育活动中心（个体工商户）</strong> 运营，
+        为 PlayNow 微信小程序的配套服务域名，用于提供小程序后端接口服务及静态资源，
+        不面向公众提供独立的网页浏览服务，不涉及在线交易与经营性内容。
+      </p>
+      <p>
+        如需使用完整功能，请在微信中搜索小程序「<strong>PlayNow</strong>」进入体验。
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="/health">服务状态</a>
+      <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener">工信部备案系统</a>
+    </div>
+    <div class="copy">
+      <!-- 备案通过后：把下方备案号占位替换为真实备案号，保留链接，例如「苏ICP备2026XXXXXX号-1」 -->
+      <p>© 2026 扬州市广陵区腾达体育活动中心（个体工商户）<span class="sep">·</span>版权所有</p>
+      <p><a href="https://beian.miit.gov.cn" target="_blank" rel="noopener">备案信息以工信部备案系统公示为准</a></p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

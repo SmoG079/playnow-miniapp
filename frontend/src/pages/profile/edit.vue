@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { reactive, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { uploadedImage } from "../../services/media";
@@ -122,14 +123,13 @@ async function save() {
       ><wd-input v-model="form.phone" type="tel" :maxlength="11" placeholder="请输入手机号" />
       <view class="rating-label-row"><text class="field-label">NTRP 等级</text>
         <wd-button variant="text" size="small" :disabled="!profileReady || loading || imageUploading" custom-style="color:#147553;padding:0;" @click="ratingOpen = true">测测我的等级</wd-button>
-      </view><picker
+      </view><ChoicePicker title="NTRP 等级"
         :range="levels"
-        :value="Math.max(0, levels.indexOf(form.ntrp_level))"
+        :value="levels.indexOf(Number(form.ntrp_level).toFixed(1))"
         @change="form.ntrp_level = levels[$event.detail.value]"
         ><view class="picker-field"
           >{{ form.ntrp_level || "请选择"
-          }}<wd-icon name="arrow-down" /></view></picker
-      ><view class="publish-action"
+          }}<wd-icon name="arrow-down" /></view></ChoicePicker><view class="publish-action"
         ><wd-button block :loading="loading || imageUploading" @click="save"
           >保存</wd-button
         ></view

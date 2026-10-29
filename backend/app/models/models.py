@@ -214,6 +214,7 @@ class BookingOrder(Base):
     __tablename__ = "booking_orders"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
+    post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=True, index=True)
     tournament_id = Column(BigInteger, ForeignKey("tournaments.id"), nullable=True, index=True)
     business_type = Column(String(16), default="booking", server_default="booking", nullable=False)
     order_no = Column(String(32), nullable=False, unique=True, index=True)
@@ -324,6 +325,7 @@ class MatchPost(Base):
     preferred_end = Column(Time)
     max_players = Column(Integer, nullable=False, default=2, server_default="2")
     min_players = Column(Integer, nullable=False, default=2, server_default="2")
+    payment_method = Column(String(16), nullable=False, default='offline', server_default='offline')
     price = Column(DECIMAL(10, 2), nullable=True, comment='人均费用')
     level_required = Column(String(32))
     notes = Column(Text)
@@ -363,6 +365,9 @@ class MatchRegistration(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     post_id = Column(BigInteger, ForeignKey("match_posts.id"), nullable=False)
     user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
+    payment = Column(String(16), nullable=False, default="none", server_default="none")
+    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=True)
+    seat_expires_at = Column(DateTime, nullable=True)
     message = Column(String(256))
     review_reason = Column(String(256), nullable=True)
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False)
@@ -421,6 +426,7 @@ class Tournament(Base):
     lock_venue = Column(Boolean, default=False, nullable=False)
     max_participants = Column(Integer)
     current_participants = Column(Integer, default=0, nullable=False)
+    payment_method = Column(String(16), nullable=False, default="online", server_default="online")
     entry_fee = Column(DECIMAL(10, 2), default=0, nullable=False)
     prizes = Column(JSON, nullable=False, default=list)
     level_required = Column(String(32), nullable=True)

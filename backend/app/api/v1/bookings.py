@@ -343,7 +343,7 @@ async def pay_booking(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if order.business_type == "tournament":
+    if order.business_type != "booking":
         raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     if order.user_id != current_user.id:
@@ -448,7 +448,7 @@ async def sync_booking_payment(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if order.business_type == "tournament":
+    if order.business_type != "booking":
         raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     if order.user_id != current_user.id:
@@ -545,7 +545,7 @@ async def sync_booking_refund(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if order.business_type == "tournament":
+    if order.business_type != "booking":
         raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     # 权限：订单本人 / 平台管理员 / 本俱乐部管理员（与 refund-records 接口一致）
@@ -695,8 +695,11 @@ async def wx_pay_notify(request: Request, db: AsyncSession = Depends(get_db)):
     order = (await db.execute(select(BookingOrder).where(
         BookingOrder.order_no == data.get("out_trade_no")
     ))).scalar_one_or_none()
-    if order and order.business_type == "tournament":
-        from app.services import tournament_lifecycle as life
+    if order and order.business_type in ("tournament", "post"):
+        if order.business_type == "post":
+            from app.services import post_payments as life
+        else:
+            from app.services import tournament_lifecycle as life
         handlers = {"TRANSACTION.SUCCESS": life.payment_success,
                     "TRANSACTION.CLOSED": life.payment_closed,
                     "REFUND.SUCCESS": life.refund_callback,
@@ -765,7 +768,7 @@ async def cancel_booking(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if order.business_type == "tournament":
+    if order.business_type != "booking":
         raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     if order.user_id != current_user.id:
@@ -815,7 +818,7 @@ async def refund_booking(
     if not order:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if order.business_type == "tournament":
+    if order.business_type != "booking":
         raise HTTPException(status_code=409, detail="Use tournament payment/refund endpoints")
 
     # Authorization: club admin for this club or platform admin only

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ChoicePicker from "./ChoicePicker.vue";
+import ChoiceMultiSelect from "./ChoiceMultiSelect.vue";
 import { ref, watch } from "vue";
 import { request } from "../services/api";
 import { businessDate } from "../utils/date";
@@ -14,7 +16,6 @@ function update() { invalidatePreview(); emit('update:modelValue',rules.value.ma
 function add() { rules.value.unshift({type:'weekly',weekdays:[6,7],price:'',start_time:'',end_time:''}); update(); }
 function move(i:number, delta:number) { const other=i+delta; if(other<0||other>=rules.value.length)return; [rules.value[i],rules.value[other]]=[rules.value[other],rules.value[i]]; update(); }
 function changeKind(r:any,index:number) { r.type=kinds[index].value; delete r.start_date;delete r.end_date;delete r.weekdays;delete r.start_day;delete r.end_day; if(r.type==='weekly')r.weekdays=[6,7];if(r.type==='monthly'){r.start_day=1;r.end_day=7;}if(r.type==='date_range')r.start_date=r.end_date=businessDate();if(r.type==='daily_time'){r.start_time='08:00';r.end_time='10:00';} update(); }
-function weekday(r:any,n:number) { const values=new Set<number>(r.weekdays||[]);values.has(n)?values.delete(n):values.add(n);r.weekdays=[...values].sort();update(); }
 async function showPreview() {
   const version=++previewVersion;
   loading.value=true;
@@ -29,9 +30,9 @@ watch(() => props.basePrice, invalidatePreview);
     <text class="section-title">特殊价格规则</text><text class="muted">按顺序匹配，靠前优先。新增规则置顶；无匹配时使用基础价。</text>
     <view v-for="(r,i) in rules" :key="i" class="rule-card">
       <view class="row between"><text class="strong">规则 {{ i+1 }}</text><view class="row"><wd-button size="small" variant="text" :disabled="i===0" @click="move(i,-1)">上移</wd-button><wd-button size="small" variant="text" :disabled="i===rules.length-1" @click="move(i,1)">下移</wd-button><wd-button size="small" variant="text" type="danger" @click="rules.splice(i,1);update()">删除</wd-button></view></view>
-      <picker :value="Math.max(0,kinds.findIndex(k=>k.value===r.type))" :range="kinds.map(k=>k.label)" @change="changeKind(r,Number($event.detail.value))"><view class="picker-field">{{ kinds.find(k=>k.value===r.type)?.label || '每天分时' }}</view></picker>
+      <ChoicePicker title="价格规则类型" :value="Math.max(0,kinds.findIndex(k=>k.value===r.type))" :range="kinds.map(k=>k.label)" @change="changeKind(r,Number($event.detail.value))"><view class="picker-field">{{ kinds.find(k=>k.value===r.type)?.label || '每天分时' }}</view></ChoicePicker>
       <view class="row between"><text>星期条件</text><wd-button v-if="r.type!=='weekly'" size="small" variant="text" @click="r.weekdays ? delete r.weekdays : r.weekdays=[6,7];update()">{{r.weekdays?'取消限定':'添加限定'}}</wd-button></view>
-      <view v-if="r.weekdays" class="weekdays"><wd-button v-for="(label,n) in ['一','二','三','四','五','六','日']" :key="n" size="small" :type="r.weekdays?.includes(n+1)?'primary':'info'" @click="weekday(r,n+1)">{{label}}</wd-button></view>
+      <ChoiceMultiSelect v-if="r.weekdays" v-model="r.weekdays" title="生效星期" :options="['一','二','三','四','五','六','日'].map((label,n)=>({label:'星期'+label,value:n+1}))" @change="update" />
       <view class="row between"><text>每月日期条件</text><wd-button v-if="r.type!=='monthly'" size="small" variant="text" @click="r.start_day!=null ? (delete r.start_day,delete r.end_day) : (r.start_day=1,r.end_day=7);update()">{{r.start_day!=null?'取消限定':'添加限定'}}</wd-button></view>
       <view v-if="r.start_day!=null" class="row"><text>每月</text><wd-input-number v-model="r.start_day" :min="1" :max="31" @change="update"/><text>至</text><wd-input-number v-model="r.end_day" :min="1" :max="31" @change="update"/><text>号</text></view>
       <view class="row between"><text>限定有效日期</text><wd-button v-if="r.type!=='date_range'" size="small" variant="text" @click="r.start_date ? (delete r.start_date,delete r.end_date) : (r.start_date=date,r.end_date=date);update()">{{ r.start_date ? '取消限定' : '添加限定' }}</wd-button></view>
@@ -46,5 +47,5 @@ watch(() => props.basePrice, invalidatePreview);
   </view>
 </template>
 <style scoped>
-.pricing-editor {display:flex;flex-direction:column;gap:12px;margin:20px 0;} .rule-card {border:1px solid #e5e8e5;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;} .weekdays {display:flex;flex-wrap:wrap;gap:6px;} .rule-card .row {flex-wrap:wrap;gap:6px;} .preview-section {display:flex;flex-direction:column;gap:12px;margin-top:16px;}
+.pricing-editor {display:flex;flex-direction:column;gap:12px;margin:20px 0;} .rule-card {border:1px solid #e5e8e5;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;} .rule-card .row {flex-wrap:wrap;gap:6px;} .preview-section {display:flex;flex-direction:column;gap:12px;margin-top:16px;}
 </style>

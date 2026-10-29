@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { paymentLabel, registrationNotice } from "../../domain/activity-payment";
+import { requestPayment } from "../../services/payment";
 import { registrationClosed } from "../../domain/activity-visibility";
 import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
@@ -86,20 +88,42 @@ onShareTimeline(() => {
   const { title, query, imageUrl } = activityShare("post", id.value, post.value?.title, post.value?.images?.[0]);
   return { title, query, imageUrl };
 });
+function cancelPending() {
+  uni.showModal({title:"取消报名",content:"确定取消这次待支付的报名吗？",success:async (r) => {
+    if (!r.confirm || busy.value) return;
+    busy.value = true;
+    try { await request(`/posts/${id.value}/register`, {method:"DELETE"}); await load(); }
+    catch(e:any) { uni.showToast({title:e.message || "取消失败",icon:"none"}); }
+    finally { busy.value = false; }
+  }});
+}
+async function pay() {
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    await requestPayment(await request(`/posts/${id.value}/pay`, {method:"POST"}));
+    const result = await request<{payment:string;status:string}>(`/posts/${id.value}/payment-status`, {method:"POST"}).catch(() => null);
+    uni.showToast({title:result?.payment === "paid" ? result.status === "pending" ? "支付成功，等待审核" : "报名成功" : "支付确认中，请稍后刷新",icon:"none"});
+  } catch(e:any) {
+    uni.showToast({title:e.cancelled ? "已取消支付，可稍后继续" : e.message || "支付失败",icon:"none"});
+  } finally { busy.value = false; await load(); }
+}
 function action() {
   if (!s.requireLogin(`/pages/common/post-detail?id=${id.value}`)) return;
+  if (busy.value) return;
   if (owner.value)
     return openPage(
       `/pages/publish/post-registration-approve?postId=${id.value}`,
     );
+  if (registration.value?.payment === "pending") return pay();
   if (registration.value) {
     uni.showModal({
       title: "确认取消",
-      content: "确定取消报名吗？",
+      content: Number(post.value.price) > 0 ? post.value.payment_method === "online" ? "确定取消报名吗？已在线支付的报名费将原路退回。" : "确定取消报名吗？线下已付费用请与组织者协商退还。" : "确定取消报名吗？",
       success: async (r) => {
         if (r.confirm) {
-          await request(`/posts/${id.value}/register`, { method: "DELETE" });
-          load();
+          try { await request(`/posts/${id.value}/register`, { method: "DELETE" }); await load(); }
+          catch(e:any) { uni.showToast({title:e.message || "取消失败",icon:"none"}); }
         }
       },
     });
@@ -116,18 +140,24 @@ function action() {
     );
   uni.showModal({
     title: "确认报名",
-    content: `确定报名参加「${post.value.title}」吗？`,
+    content: registrationNotice(post.value.price, post.value.payment_method),
     success: async (r) => {
       if (r.confirm) {
-        await request(`/posts/${id.value}/register`, {
-          method: "POST",
-          data: { message: "" },
-        });
-        uni.showToast({
-          title: post.value.approval_required ? "等待审核" : "报名成功",
-          icon: "success",
-        });
-        load();
+        if (busy.value) return;
+        busy.value = true;
+        try {
+          const result = await request<{payment:string}>(`/posts/${id.value}/register`, {
+            method: "POST",
+            data: { message: "" },
+          });
+          if (result.payment === "pending") { busy.value = false; await pay(); return; }
+          uni.showToast({
+            title: post.value.approval_required ? "等待审核" : "报名成功",
+            icon: "success",
+          });
+          await load();
+        } catch(e:any) { uni.showToast({title:e.message || "报名失败",icon:"none"}); }
+        finally { busy.value = false; }
       }
     },
   });
@@ -187,7 +217,8 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
+        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="payment-notice"><text>付款方式：{{ paymentLabel(post.price, post.payment_method) }}</text><text v-if="Number(post.price) > 0 && post.payment_method !== 'online'">报名费 ¥{{ Number(post.price).toFixed(2) }}/人，由组织者线下收取</text></view>
+        <ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
           ><view class="participant-entry" role="button" aria-label="查看已报名列表" @click="showRegs = true"
             ><text>报名表 {{ participants.length }}/{{ post.max_players }}</text><wd-icon name="arrow-right" size="16px" /></view
@@ -248,14 +279,14 @@ function remove(c: any) {
         ><view
           ><text class="price large">¥{{ post.price || 0 }}</text
           ><text class="small muted">/ 人</text></view
-        ><view class="registration-actions"><ActivityShare kind="post" :id="id" :title="post.title" :schedule="`${post.preferred_date} ${post.preferred_start}–${post.preferred_end}`" :place="post.address || post.city" :people="`${post.min_players}–${post.max_players} 人`" :fee="Number(post.price)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
+        ><view class="registration-actions"><wd-button v-if="registration?.payment === 'pending'" variant="plain" :disabled="busy" @click="cancelPending">取消报名</wd-button><ActivityShare kind="post" :id="id" :title="post.title" :schedule="`${post.preferred_date} ${post.preferred_start}–${post.preferred_end}`" :place="post.address || post.city" :people="`${post.min_players}–${post.max_players} 人`" :fee="Number(post.price)" /><wd-button v-if="isTimelinePreview()" @click="guideToMiniProgram">进入小程序报名</wd-button><wd-button v-else
           :disabled="!owner && !registration && (full || post.status !== 'open' || registrationClosed(post,'post'))"
           @click="action"
           >{{
             !s.loggedIn ? "登录后报名" : owner
               ? "管理报名"
               : registration
-                ? registration.status === "pending"
+                ? registration.payment === "pending" ? "支付报名费" : registration.status === "pending"
                   ? "待审核 · 取消"
                   : "已报名 · 取消"
                 : registrationClosed(post,'post') ? "报名已截止"
@@ -286,6 +317,8 @@ function remove(c: any) {
 </template>
 
 <style scoped>
+.payment-notice{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:13px;color:#69756c;line-height:22px}
+
 .fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
 
 .detail-facts .fact > .fact-icon { flex:0 0 22px; width:22px; align-items:center; }

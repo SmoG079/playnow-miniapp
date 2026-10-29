@@ -20,6 +20,10 @@ from app.schemas.schemas import (
     CommentCreate, CommentBrief,
 )
 
+from app.services import post_payments as payments
+from app.core.config import get_settings
+from app.core.rate_limit import check_rate_limit
+
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
@@ -148,7 +152,7 @@ def discovery_items(rows,lat=None,lng=None):
             club_name=club_name, registration_count=approved_cnt or 0,
             pending_count=pending_cnt or 0,
             distance=distance,
-            price=post.price,
+            price=post.price, payment_method=post.payment_method,
             venue_id=post.venue_id,
             booking_id=post.booking_id,
             images=post.images,
@@ -215,7 +219,7 @@ async def create_post(
         booking_id=req.booking_id,
         images=req.images,
         approval_required=req.approval_required,
-        price=req.price,
+        price=req.price, payment_method=req.payment_method,
     )
     db.add(post)
     await db.flush()
@@ -245,7 +249,7 @@ async def create_post(
         club_name=club.name if club else None,
         registration_count=0,
         pending_count=0,
-        price=post.price,
+        price=post.price, payment_method=post.payment_method,
         venue_id=post.venue_id, booking_id=post.booking_id,
     )
 
@@ -265,6 +269,14 @@ async def update_post(
         raise HTTPException(status_code=403, detail="Only post owner can update")
 
     update_data = req.model_dump(exclude_unset=True)
+    if any(key in update_data and update_data[key] != getattr(post, key) for key in ("price", "payment_method", "approval_required")):
+        if await db.scalar(select(func.count(MatchRegistration.id)).where(MatchRegistration.post_id == post_id)):
+            raise HTTPException(409, "已有报名时不能修改费用、付款方式或审核设置")
+    if update_data.get("status") == "closed":
+        for registration in await payments.refresh(db, post):
+            if registration.order_id and _v(registration.status) in ("pending", "approved"):
+                await payments.cancel(db, post, registration, "组织者关闭活动")
+
     start = update_data.get("preferred_start", post.preferred_start)
     end = update_data.get("preferred_end", post.preferred_end)
     if start is not None and end is not None and end <= start:
@@ -291,12 +303,13 @@ async def update_post(
     capacity = update_data.get("max_players", post.max_players)
     if update_data.get("min_players", post.min_players) > capacity:
         raise HTTPException(422, "最低人数不能大于最大人数")
-    if capacity < approved + 1:
+    reserved = await db.scalar(select(func.count(MatchRegistration.id)).where(MatchRegistration.post_id == post.id, MatchRegistration.status == RegistrationStatus.pending, MatchRegistration.payment == "pending")) or 0
+    if capacity < approved + reserved + 1:
         raise HTTPException(422, "人数不能少于已通过报名人数")
     requested_status = update_data.get("status", _v(post.status))
     if _v(post.status) == "closed" and requested_status != "closed":
         raise HTTPException(409, "已关闭活动不能重新开放")
-    update_data["status"] = MatchPostStatus.closed if requested_status == "closed" else (MatchPostStatus.full if approved + 1 >= capacity else MatchPostStatus.open)
+    update_data["status"] = MatchPostStatus.closed if requested_status == "closed" else (MatchPostStatus.full if approved + reserved + 1 >= capacity else MatchPostStatus.open)
     for key, value in update_data.items():
         setattr(post, key, value)
 
@@ -324,7 +337,7 @@ async def update_post(
         user_avatar=user.avatar_url,
         club_name=club.name if club else None,
         registration_count=approved,
-        price=post.price,
+        price=post.price, payment_method=post.payment_method,
         images=post.images,
         venue_id=post.venue_id, booking_id=post.booking_id,
     )
@@ -365,7 +378,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     for r, r_nick, r_av, r_phone, r_level in reg_rows:
         r_nick = r_nick or _fallback_nickname(r.user_id, r_phone)
         registrations.append(RegistrationBrief(
-            id=r.id, user_id=r.user_id, message=r.message, status=_v(r.status),
+            id=r.id, user_id=r.user_id, message=r.message, status=_v(r.status), payment=r.payment,
             user_nickname=r_nick, user_avatar=r_av, user_ntrp_level=r_level,
         ))
 
@@ -418,7 +431,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
-        price=post.price, user_phone=None, venue_name=venue_name, venue_address=venue_address,
+        price=post.price, payment_method=post.payment_method, user_phone=None, venue_name=venue_name, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
         cover_image=(post.images[0] if post.images else cover_image), club_documents=club_documents,
         images=post.images,
@@ -436,6 +449,7 @@ async def register_post(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+    await payments.refresh(db, post)
     if _v(post.status) != "open":
         raise HTTPException(status_code=400, detail="Post is not open")
     from app.services.activity_visibility import post_registration_closed
@@ -455,11 +469,24 @@ async def register_post(
     if reg and _v(reg.status) != "cancelled":
         raise HTTPException(status_code=409, detail="Already registered")
 
+    occupied = await db.scalar(select(func.count(MatchRegistration.id)).where(
+        MatchRegistration.post_id == post_id,
+        or_(MatchRegistration.status == RegistrationStatus.approved,
+            (MatchRegistration.status == RegistrationStatus.pending) & (MatchRegistration.payment == "pending")),
+    )) or 0
+    if occupied + 1 >= post.max_players:
+        raise HTTPException(409, "活动已满")
     if reg is None:
         reg = MatchRegistration(post_id=post_id, user_id=current_user.id)
         db.add(reg)
     reg.message = req.message
+    reg.order_id = None
+    reg.seat_expires_at = None
+    reg.payment = "offline" if post.price and post.price > 0 else "none"
     reg.status = RegistrationStatus.pending if post.approval_required else RegistrationStatus.approved
+    if payments.online(post):
+        await payments.start(db, post, reg)
+
 
     # Notify post owner
     action_text = "报名了你的约球帖" if not post.approval_required else "报名了你的约球帖，等待审核"
@@ -485,7 +512,9 @@ async def register_post(
         if approved_count + 1 >= post.max_players:
             post.status = MatchPostStatus.full
 
-    return {"msg": "ok"}
+    await db.flush()
+    await payments.refresh(db, post)
+    return {"msg": "ok", "payment": reg.payment}
 
 
 @router.delete("/{post_id}/register")
@@ -505,15 +534,8 @@ async def cancel_register(
     reg = result.scalar_one_or_none()
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
-    reg.status = RegistrationStatus.cancelled
+    await payments.cancel(db, post, reg, "用户取消报名")
     await db.flush()
-    if post and _v(post.status) == "full":
-        count = await db.scalar(select(func.count(MatchRegistration.id)).where(
-            MatchRegistration.post_id == post_id,
-            MatchRegistration.status == RegistrationStatus.approved,
-        )) or 0
-        if count + 1 < post.max_players:
-            post.status = MatchPostStatus.open
     return {"msg": "ok"}
 
 
@@ -544,18 +566,23 @@ async def review_registration(
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
 
+    if reg.payment == "pending":
+        raise HTTPException(409, "请等待报名者完成线上支付")
     if _v(reg.status) != "pending":
         raise HTTPException(status_code=409, detail="报名已处理或取消，不能重复审核")
     if req.status not in ("approved", "rejected"):
         raise HTTPException(status_code=422, detail="审核状态无效")
     new_status = RegistrationStatus(req.status)
     if new_status == RegistrationStatus.approved and _v(reg.status) != "approved":
+        await payments.refresh(db, post)
         count = await db.scalar(select(func.count(MatchRegistration.id)).where(
             MatchRegistration.post_id == post_id,
-            MatchRegistration.status == RegistrationStatus.approved,
+            or_(MatchRegistration.status == RegistrationStatus.approved, (MatchRegistration.status == RegistrationStatus.pending) & (MatchRegistration.payment == "pending")),
         )) or 0
         if _v(post.status) not in ("open", "full") or count + 1 >= post.max_players:
             raise HTTPException(status_code=409, detail="活动已关闭或报名已满")
+    if new_status == RegistrationStatus.rejected:
+        await payments.cancel(db, post, reg, "组织者拒绝报名")
     reg.status = new_status
     reg.review_reason = req.reason
 
@@ -598,7 +625,31 @@ async def review_registration(
         if count + 1 < post.max_players:
             post.status = MatchPostStatus.open
 
+    await db.flush()
+    await payments.refresh(db, post)
     return {"msg": "ok"}
+
+
+@router.post("/{post_id}/pay")
+async def pay_post(post_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await check_rate_limit(f"rate:pay:{current_user.id}", max_requests=get_settings().RATE_LIMIT_PAY_PER_MINUTE, window_seconds=60)
+    post = await payments.locked_post(db, post_id)
+    return await payments.pay(db, post, await payments.own(db, post, current_user), current_user)
+
+
+@router.post("/{post_id}/payment-status")
+async def post_payment_status(post_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await check_rate_limit(f"rate:syncpay:{current_user.id}", max_requests=get_settings().RATE_LIMIT_SYNC_PAY_PER_MINUTE, window_seconds=60)
+    post = await payments.locked_post(db, post_id)
+    reg = await payments.own(db, post, current_user)
+    await payments.refresh(db, post)
+    if reg.order_id:
+        order = await db.get(BookingOrder, reg.order_id)
+        if order and _v(order.status) in ("pending", "cancelled"):
+            response = await payments.money.wx_call("query", out_trade_no=order.order_no)
+            if response.get("trade_state") == "SUCCESS":
+                await payments.payment_success(db, response)
+    return {"payment": reg.payment, "status": _v(reg.status)}
 
 
 @router.get("/{post_id}/comments")
@@ -733,6 +784,9 @@ async def close_post(
     if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
         raise HTTPException(403, "只有发起人可以关闭活动")
     post.status = MatchPostStatus.closed
+    for registration in await payments.refresh(db, post):
+        if registration.order_id and _v(registration.status) in ("pending", "approved"):
+            await payments.cancel(db, post, registration, "组织者关闭活动")
     await db.flush()
     return {"msg": "ok"}
 

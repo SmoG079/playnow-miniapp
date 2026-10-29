@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChoicePicker from "../../components/ChoicePicker.vue";
 import { ref } from "vue";
 import { onLoad, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -43,7 +44,7 @@ onShow(refreshClubs);
 <template>
   <AppShell back title="经营统计"
     ><view class="content list-content"
-      ><picker
+      ><ChoicePicker title="选择俱乐部"
         v-if="clubs.length > 1"
         :range="clubs.map((club) => club.name)"
         :value="index"
@@ -51,8 +52,7 @@ onShow(refreshClubs);
           index = Number($event.detail.value);
           load();
         "
-        ><view class="picker-field">{{ clubs[index]?.name }}</view></picker
-      ><view v-if="loading && !stats" class="loading-state"
+        ><view class="picker-field">{{ clubs[index]?.name }}</view></ChoicePicker><view v-if="loading && !stats" class="loading-state"
         ><wd-loading /><text class="muted">正在加载经营数据...</text></view
       ><view v-if="stats" class="stats-grid"
         ><view

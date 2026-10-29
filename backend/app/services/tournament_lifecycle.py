@@ -92,11 +92,15 @@ def config(t):
     return TournamentConfig.model_validate(t.config)
 
 
+def online_fee(t):
+    return t.entry_fee > 0 and t.payment_method == "online"
+
+
 def eligible(r):
     return (
         r.admission == "active"
         and r.approval == "approved"
-        and r.payment in ("none", "paid", "verified")
+        and r.payment in ("none", "offline", "paid", "verified")
         and _v(r.status) == "confirmed"
     )
 
@@ -129,7 +133,7 @@ async def reserve(db, t, r):
     if t.config and not r.entry_team_id:
         await entries.claim(db, t, r)
     r.admission = "active"
-    if t.entry_fee > 0:
+    if online_fee(t):
         r.payment = "pending"
         r.status = TournamentRegStatus.registered
         r.seat_expires_at = min(
@@ -150,7 +154,7 @@ async def reserve(db, t, r):
         await db.flush()
         r.order_id = o.id
     else:
-        r.payment = "none"
+        r.payment = "offline" if t.entry_fee > 0 else "none"
         r.status = TournamentRegStatus.confirmed
         r.seat_expires_at = None
 
@@ -199,7 +203,7 @@ async def refresh_admissions(db, t):
                     user_id=r.user_id,
                     type=NotificationType.tournament,
                     title="赛事候补递补",
-                    content="您已获得参赛名额，请及时查看并完成支付",
+                    content="您已获得参赛名额，" + ("请及时完成线上支付" if online_fee(t) else "请查看活动安排，费用由组织者线下收取" if t.entry_fee > 0 else "请查看活动安排"),
                     ref_id=t.id,
                     ref_type="tournament",
                 )

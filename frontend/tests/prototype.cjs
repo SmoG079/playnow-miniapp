@@ -10,7 +10,7 @@ const routes = {
   clubs: "booking/club-list",
   venue: "booking/venue-detail?id=1",
   activity: "common/post-detail?id=1",
-  publish: "publish/post-create",
+  publish: "publish/index",
   profile: "profile/index",
   chat: "chat/index",
 };

@@ -35,9 +35,9 @@ async function review(r: any, status: string) {
         class="record-card"
         ><view class="registration-person"
           ><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
-          <text class="registration-status" :class="'status-' + r.status">{{ statusLabels[r.status] }}</text
+          <text class="registration-status" :class="'status-' + r.status">{{ r.payment === 'pending' ? '待线上付款' : statusLabels[r.status] }}</text
           ></view
-        ><view v-if="r.status === 'pending'" class="registration-actions"
+        ><view v-if="r.status === 'pending' && r.payment !== 'pending'" class="registration-actions"
           ><wd-button size="small" @click="review(r, 'approved')"
             >通过</wd-button
           ><wd-button

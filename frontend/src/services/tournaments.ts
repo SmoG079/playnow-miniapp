@@ -113,6 +113,7 @@ export interface Tournament {
   start_time: string;
   end_time: string;
   entry_fee: number;
+  payment_method?: import("../domain/activity-payment").PaymentMethod;
   status: string;
   address: string;
   location_name: string;

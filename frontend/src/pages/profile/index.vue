@@ -38,8 +38,6 @@ const menus = computed(() => {
       0,
       ["home", "俱乐部管理", "/pages/profile/club-dashboard"],
     );
-  if (s.isPlatformAdmin)
-    common.push(["history", "分账记录", "/pages/profile/settlement-list"]);
   return common;
 });
 function logout() {

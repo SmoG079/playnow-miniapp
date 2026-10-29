@@ -433,6 +433,7 @@ class PaginatedResponse(BaseModel):
 # ── Match Post ──
 
 class PostCreate(BaseModel):
+    payment_method: Literal["offline", "online"] = "offline"
     address: Optional[str] = Field(None, max_length=256)
     location_name: str = Field("", max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
@@ -446,7 +447,7 @@ class PostCreate(BaseModel):
     preferred_end: time
     min_players: int = Field(default=2, ge=2)
     max_players: int = Field(..., ge=2)
-    price: Decimal = Field(..., ge=Decimal("0.00"))
+    price: Decimal = Field(..., ge=Decimal("0.00"), max_digits=10, decimal_places=2)
     level_required: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
@@ -479,6 +480,7 @@ class PostCreate(BaseModel):
 
 
 class PostUpdate(BaseModel):
+    payment_method: Optional[Literal["offline", "online"]] = None
     address: Optional[str] = Field(None, max_length=256)
     location_name: Optional[str] = Field(None, max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
@@ -491,7 +493,7 @@ class PostUpdate(BaseModel):
     preferred_end: Optional[time] = None
     min_players: Optional[int] = Field(default=None, ge=2)
     max_players: Optional[int] = Field(default=None, ge=2)
-    price: Optional[Decimal] = Field(None, ge=0)
+    price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2)
     status: Optional[Literal["open", "closed", "full"]] = None
     level_required: Optional[str] = None
     notes: Optional[str] = None
@@ -503,7 +505,7 @@ class PostUpdate(BaseModel):
 
     @model_validator(mode="after")
     def preserve_required_information(self):
-        for field in ("location_name", "title", "preferred_date", "preferred_start", "preferred_end", "min_players", "max_players", "status", "approval_required"):
+        for field in ("location_name", "title", "preferred_date", "preferred_start", "preferred_end", "min_players", "max_players", "status", "approval_required", "payment_method"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError("活动名称、时间和人数不可清空")
         if self.min_players is not None and self.max_players is not None and self.min_players > self.max_players:
@@ -524,6 +526,7 @@ class PostUpdate(BaseModel):
 
 
 class PostBrief(BaseModel):
+    payment_method: Literal["offline", "online"] = "offline"
     address: Optional[str] = Field(None, max_length=256)
     location_name: str = Field("", max_length=256)
     city: Optional[str] = Field(None, min_length=1, max_length=64)
@@ -599,6 +602,7 @@ class PostDetail(PostBrief):
         from_attributes = True
 
 class RegistrationBrief(BaseModel):
+    payment: str = "none"
     id: int
     user_id: PublicUserID
     message: Optional[str]
