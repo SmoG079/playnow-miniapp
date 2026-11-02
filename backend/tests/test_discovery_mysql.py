@@ -38,7 +38,7 @@ async def test_real_city_distance_date_and_type_pagination(monkeypatch):
                     preferred_start='09:00',preferred_end='11:00',max_players=3,price=0),owner,db)
                 ids.append(p.id)
             start=datetime(2030,11,1,16,30)
-            t=await tournaments.create_tournament(TournamentCreate(city=city,club_id=cid,title='跨日比赛',address='网球场',start_time=start,
+            t=await tournaments.create_tournament(TournamentCreate(city=city,club_id=None,title='跨日比赛',address='网球场',start_time=start,
                 end_time=start+timedelta(hours=2),max_participants=2),owner,db);ids.append(t['id'])
             await db.commit()
             args=dict(city=city,ntrp_levels=None,lat=32.4,lng=119.4,
