@@ -696,7 +696,7 @@ async def registration_conflicts(ident: int, user: User = Depends(get_current_us
     rows = (await db.execute(select(Tournament).join(TournamentRegistration,
         TournamentRegistration.tournament_id == Tournament.id).where(
         TournamentRegistration.user_id == user.id,
-        TournamentRegistration.admission.in_(("active", "review", "waitlist")),
+        TournamentRegistration.admission.in_(("active", "review", "waitlisted")),
         TournamentRegistration.status != TournamentRegStatus.cancelled,
         Tournament.id != ident, Tournament.status.notin_(("finished", "cancelled")),
         Tournament.start_time < t.end_time, Tournament.end_time > t.start_time))).scalars().all()
