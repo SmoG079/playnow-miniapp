@@ -16,8 +16,8 @@ const location = useDiscovery(), session = useSession();
 const mode = ref(0), date = ref(""), ntrp = ref(0), sort = ref(0);
 const items = ref<any[]>([]), loading = ref(false), queryError = ref("");
 let retryMore = false;
-const types = ["全部活动", "全部约球", "自由约球", "定场约球", "比赛"];
-const typeValues = ["all", "post", "free", "venue", "tournament"];
+const types = ["全部活动", "全部约球", "自由约球", "比赛"];
+const typeValues = ["all", "post", "free", "tournament"];
 let loadVersion = 0;
 let page = 1, hasMore = false;
 const visibilityNow=ref(Date.now());
@@ -68,7 +68,7 @@ async function loadMore() {
   finally{if(version===loadVersion){loading.value=false;scheduleExpiry();}}
 }
 function retryQuery(){if(retryMore)void loadMore();else void load();}
-function viewTournaments(){mode.value=4;date.value="";ntrp.value=0;void load();}
+function viewTournaments(){mode.value=typeValues.indexOf("tournament");date.value="";ntrp.value=0;void load();}
 function clearDate(){date.value="";void load();}
 async function locateCity() {
   try { await location.locate(); }

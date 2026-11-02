@@ -19,7 +19,6 @@ const s = useSession(),
   loading = ref(false),
   coverUploading = ref(false),
   locationSelecting = ref(false),
-  showPostComparison = ref(false),
   choosingVenue = ref(false),
   venueName = ref(""),
   clubs = ref<any[]>([]),
@@ -108,6 +107,12 @@ onShow(async () => {
     });
     uni.removeStorageSync("booking_return");
   }
+  // Club-only publishing remains independent of the paused booking flow.
+  const selectedClub = clubs.value[clubIndex.value]?.id;
+  const managedIds = s.user.managed_club_ids || [];
+  const managed = await Promise.allSettled(managedIds.map(id => request<any>(`/clubs/${id}`)));
+  clubs.value = managed.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+  clubIndex.value = clubs.value.findIndex(club => club.id === selectedClub);
   initialized = true;
   if (!form.booking_id) {
     const time = freshActivitySchedule({start_date:form.preferred_date, end_date:form.preferred_date,
@@ -161,7 +166,7 @@ async function submit() {
   if (Number(form.price) < 0 || !Number.isFinite(Number(form.price)))
     return uni.showToast({ title: "请填写有效费用", icon: "none" });
   if (form.booking_id && clubIndex.value < 0)
-    return uni.showToast({ title: "请选择俱乐部并完成订场", icon: "none" });
+    return uni.showToast({ title: "历史关联不可用，请移除关联后发布", icon: "none" });
   if (!form.city || (!form.booking_id && (!form.address || form.latitude === null || form.longitude === null))) return uni.showToast({ title: "请在地图中选择活动地点", icon: "none" });
   loading.value = true;
   try {
@@ -175,7 +180,7 @@ async function submit() {
       data: {
         ...form,
         city: form.city,
-        club_id: form.booking_id ? clubs.value[clubIndex.value]?.id : null,
+        club_id: clubs.value[clubIndex.value]?.id || null,
         venue_id: form.booking_id ? form.venue_id : null,
         booking_id: form.booking_id || null,
         price: Number(form.price),
@@ -195,9 +200,6 @@ async function submit() {
     loading.value = false;
   }
 }
-function goBook() {
-  uni.navigateTo({ url: "/pages/booking/select?return_mode=post" });
-}
 function returnToPublish() {
   cacheDraft();
   uni.switchTab({ url: "/pages/publish/index" });
@@ -212,6 +214,10 @@ function returnToPublish() {
         <view class="creation-section">
           <text class="creation-heading">基本信息</text>
           <text class="field-label">标题 *</text><wd-input v-model="form.title" placeholder="例如：周五下班，一起打双打" :maxlength="40" clearable />
+          <template v-if="clubs.length && !form.booking_id">
+            <text class="field-label">关联俱乐部（可选）</text>
+            <picker :range="['不关联俱乐部', ...clubs.map(club => club.name)]" :value="clubIndex + 1" @change="clubIndex = Number($event.detail.value) - 1"><view class="picker-field">{{ clubs[clubIndex]?.name || '不关联俱乐部' }}</view></picker>
+          </template>
           <text class="field-label">活动说明</text><wd-textarea v-model="form.description" show-word-limit :maxlength="1000" placeholder="介绍这场球局" />
         </view>
         <view class="creation-section">
@@ -244,39 +250,6 @@ function returnToPublish() {
         </view>
       </view>
     </view>
-    <wd-popup
-      v-model="showPostComparison"
-      position="bottom"
-      round
-      closable
-      root-portal
-      safe-area-inset-bottom
-    >
-      <view class="post-comparison">
-        <text class="comparison-title">两种约球，怎么选？</text>
-        <text class="comparison-subtitle">是否关联场地，决定约球类型。</text>
-        <view class="comparison-table">
-          <view class="comparison-row comparison-header"
-            ><text>区别</text><text>自由约球</text><text>定场约球</text></view
-          >
-          <view class="comparison-row"
-            ><text>谁能发布</text><text>所有登录用户</text
-            ><text>所有登录用户</text></view
-          >
-          <view class="comparison-row"
-            ><text>场地安排</text><text>不关联场地，球友自行商定</text
-            ><text>关联俱乐部场地及预约</text></view
-          >
-          <view class="comparison-row"
-            ><text>订场要求</text><text>发布前无需订场</text
-            ><text>发布前先完成订场</text></view
-          >
-        </view>
-        <wd-button block variant="plain" @click="showPostComparison = false"
-          >知道了</wd-button
-        >
-      </view>
-    </wd-popup>
   </AppShell>
 </template>
 
@@ -294,55 +267,6 @@ function returnToPublish() {
 }
 .linked-venue {
   font-size: 14px;
-}
-.comparison-help {
-  margin: 8px 0;
-}
-.post-comparison {
-  --wot-button-primary-color: #147553;
-  --wot-button-primary-plain-border: #147553;
-  padding: 28px 20px 24px;
-}
-.comparison-title {
-  display: block;
-  font-size: 21px;
-  font-weight: 600;
-  padding-right: 28px;
-}
-.comparison-subtitle {
-  display: block;
-  margin: 8px 0 20px;
-  font-size: 13px;
-  color: #728178;
-}
-.comparison-table {
-  border: 1px solid #e2e9e4;
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-.comparison-row {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) minmax(0, 1fr);
-  font-size: 12px;
-  line-height: 1.7;
-}
-.comparison-row + .comparison-row {
-  border-top: 1px solid #e2e9e4;
-}
-.comparison-row text {
-  padding: 12px 10px;
-  color: #566b5e;
-}
-.comparison-row text + text {
-  border-left: 1px solid #e2e9e4;
-}
-.comparison-header {
-  background: #edf5ef;
-  font-weight: 600;
-}
-.comparison-header text {
-  color: #284d39;
 }
 </style>
 
