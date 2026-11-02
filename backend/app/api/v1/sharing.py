@@ -5,6 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.core.redis import get_redis_client
 from app.core.rate_limit import check_rate_limit
 from app.core.logger import get_logger
@@ -18,11 +19,12 @@ Asset = Literal["code", "link"]
 
 
 async def wechat_asset(kind: str, ident: int, asset: str) -> dict:
+    version = get_settings().WX_SHARE_ENV_VERSION
     token = await get_wx_access_token()
     page = f"pages/common/{kind}-detail"
     endpoint = "getwxacodeunlimit" if asset == "code" else "generate_urllink"
-    payload = ({"scene": str(ident), "page": page, "env_version": "release", "check_path": True, "width": 430}
-               if asset == "code" else {"path": page, "query": f"id={ident}", "env_version": "release",
+    payload = ({"scene": str(ident), "page": page, "env_version": version, "check_path": version == "release", "width": 430}
+               if asset == "code" else {"path": page, "query": f"id={ident}", "env_version": version,
                                         "is_expire": True, "expire_type": 1, "expire_interval": 30})
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -35,6 +37,10 @@ async def wechat_asset(kind: str, ident: int, asset: str) -> dict:
         data = response.json()
         if asset == "link" and not data.get("errcode") and str(data.get("url_link", "")).startswith("https://wxaurl.cn/"):
             return {"url": data["url_link"]}
+        if data.get("errcode") == 85079:
+            raise HTTPException(503, "小程序尚无正式发布版本，微信暂不支持生成分享链接，请使用小程序内转发")
+        if data.get("errcode") == 41030:
+            raise HTTPException(503, "分享页面尚未发布，请配置匹配的体验版或发布小程序")
         logger.warning("WeChat share asset failed: kind=%s id=%s asset=%s code=%s", kind, ident, asset, data.get("errcode"))
     except (httpx.HTTPError, ValueError):
         # HTTP exception strings contain the access-token query: never log them.
@@ -53,7 +59,7 @@ async def share_asset(kind: Kind, ident: int, asset: Asset, request: Request, db
         raise HTTPException(400, "活动发布后才能分享")
     await check_rate_limit("sharing:ip:" + (request.client.host if request.client else "unknown"), 30, 60)
     cache = get_redis_client()
-    key = f"sharing:v1:{kind}:{ident}:{asset}"
+    key = f"sharing:v2:{get_settings().WX_SHARE_ENV_VERSION}:{kind}:{ident}:{asset}"
     cached = await cache.get(key)
     if cached:
         return json.loads(cached)

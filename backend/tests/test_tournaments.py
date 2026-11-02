@@ -630,15 +630,15 @@ async def test_tournament_orders_do_not_pollute_booking_pagination(db, monkeypat
 @pytest.mark.parametrize(
     "role,membership,target,allowed",
     [
-        ("user", None, 1, True),
-        ("user", 1, 1, True),
-        ("club_admin", None, 1, True),
+        ("user", None, 1, False),
+        ("user", 1, 1, False),
+        ("club_admin", None, 1, False),
         ("club_admin", 1, 1, True),
-        ("club_admin", 1, 2, True),
+        ("club_admin", 1, 2, False),
         ("platform_admin", None, 2, True),
     ],
 )
-async def test_all_roles_can_publish_and_preview_existing_club(
+async def test_only_host_admin_can_publish_and_preview_existing_club(
     db, role, membership, target, allowed
 ):
     from app.models.models import ClubMember, ClubMemberRole
@@ -895,3 +895,31 @@ async def test_organizer_assignment_controls_contact_reviews_and_published_recor
     assert any(item['id']==t.id for item in records.items)
     contact=await messages.contact(messages.ContactActivity(activity_id=t.id),creator,db)
     assert contact['peer']['nickname']==host.nickname
+
+@pytest.mark.asyncio
+async def test_acceptance_creation_requires_host_permission(db):
+    tid, owner = await event(db)
+    t = await db.get(Tournament, tid)
+    req = TournamentCreate(address="测试场地", club_id=1, title="无权比赛", start_time=t.start_time, end_time=t.end_time, max_participants=8, config=TournamentConfig())
+    for uid in ('2', '3'):
+        with pytest.raises(HTTPException) as exc:
+            await api.create_tournament(req, await db.get(User, uid), db)
+        assert exc.value.status_code == 403
+    req.club_id = None
+    assert (await api.create_tournament(req, await db.get(User, '2'), db))['club_id'] is None
+
+@pytest.mark.asyncio
+async def test_acceptance_finished_cancel_is_rejected_and_full_flag(db):
+    tid, owner = await event(db, 2)
+    for uid in (2, 3):
+        await register(db, tid, uid)
+    assert (await api.get_tournament(tid, owner, db))['can_register'] is False
+    with pytest.raises(HTTPException) as exc:
+        await register(db, tid, 4)
+    assert exc.value.status_code == 409
+    t = await db.get(Tournament, tid)
+    t.status = 'finished'
+    with pytest.raises(HTTPException) as exc:
+        await api.cancel_event(tid, ReasonCommand(reason='验收取消'), owner, db)
+    assert exc.value.status_code == 409
+    assert t.status == 'finished'

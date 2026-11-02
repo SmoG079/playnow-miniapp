@@ -147,7 +147,7 @@ async def list_clubs(
             "venue_longitude": float(v.longitude) if v and v.longitude is not None else None,
         }))
 
-    if community and clubs:
+    if clubs:
         counts = dict((await db.execute(select(CommunityMember.club_id,func.count(CommunityMember.id)).where(CommunityMember.club_id.in_([c.id for c in clubs])).group_by(CommunityMember.club_id))).all())
         items = [item.model_copy(update={"member_count": counts.get(item.id,0)}) for item in items]
 
@@ -312,6 +312,7 @@ def _club_to_detail(club: Club) -> ClubDetail:
 async def _club_to_detail_async(club: Club, db: AsyncSession) -> ClubDetail:
     """Build ClubDetail with venues loaded from query."""
     detail = _club_to_detail(club)
+    detail.member_count = await db.scalar(select(func.count(CommunityMember.id)).where(CommunityMember.club_id == club.id)) or 0
     v_result = await db.execute(
         select(Venue).where(Venue.club_id == club.id)
     )

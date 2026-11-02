@@ -29,7 +29,7 @@ async def test_wechat_asset_targets_activity_and_preserves_binary(asset, body):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("body", [b'{"errcode":41030,"errmsg":"invalid page"}', b'not-an-image'])
+@pytest.mark.parametrize("body", [b'{"errcode":40001,"errmsg":"invalid token"}', b'not-an-image'])
 async def test_upstream_failure_never_becomes_fake_code_or_link(body):
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,content=body)))
     with patch.object(sharing,"get_wx_access_token",AsyncMock(return_value="token")), patch.object(sharing.httpx,"AsyncClient",return_value=client):
@@ -64,3 +64,24 @@ async def test_generation_failure_releases_lock_without_caching():
     with patch.object(sharing,"get_redis_client",return_value=cache),patch.object(sharing,"check_rate_limit",AsyncMock()),patch.object(sharing,"wechat_asset",AsyncMock(side_effect=HTTPException(502,"failed"))):
         with pytest.raises(HTTPException):await sharing.share_asset("post",42,"code",req,db)
         cache.delete.assert_awaited_once();cache.setex.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [85079, 41030])
+async def test_release_prerequisite_returns_actionable_unavailable(code):
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200,json={"errcode":code})))
+    with patch.object(sharing,"get_wx_access_token",AsyncMock(return_value="token")), patch.object(sharing.httpx,"AsyncClient",return_value=client):
+        with pytest.raises(HTTPException) as exc:
+            await sharing.wechat_asset("tournament",42,"link")
+        assert exc.value.status_code == 503
+
+@pytest.mark.asyncio
+async def test_trial_code_uses_trial_page_without_release_validation():
+    async def handler(request):
+        import json
+        data = json.loads(request.content)
+        assert data["env_version"] == "trial" and data["check_path"] is False
+        return httpx.Response(200,content=b"\x89PNG\r\n\x1a\nimage")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with patch.object(sharing,"get_settings",return_value=SimpleNamespace(WX_SHARE_ENV_VERSION="trial")), patch.object(sharing,"get_wx_access_token",AsyncMock(return_value="token")), patch.object(sharing.httpx,"AsyncClient",return_value=client):
+        assert "image_base64" in await sharing.wechat_asset("tournament",42,"code")

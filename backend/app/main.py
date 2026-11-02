@@ -88,7 +88,26 @@ app.include_router(messages.router, prefix=api_prefix)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    import asyncio
+    from sqlalchemy import text
+    from app.core.redis import get_redis_client
+    from fastapi.responses import JSONResponse
+
+    async def mysql():
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+    async def probe(call):
+        try:
+            await asyncio.wait_for(call(), timeout=3)
+            return "ok"
+        except Exception:
+            return "unavailable"
+
+    mysql_status, redis_status = await asyncio.gather(probe(mysql), probe(get_redis_client().ping))
+    ok = mysql_status == redis_status == "ok"
+    return JSONResponse(status_code=200 if ok else 503, content={
+        "status": "ok" if ok else "degraded", "mysql": mysql_status, "redis": redis_status})
 
 
 @app.post("/api/v1/upload")

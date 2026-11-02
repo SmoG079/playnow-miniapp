@@ -43,3 +43,11 @@ async def test_city_discovery_includes_clubs_without_courts(db):
     await db.flush()
     result = await clubs.list_clubs(community=True, city="上海市", lat=None, lng=None, sport=None, keyword=None, page=1, page_size=20, db=db)
     assert result.total == 1 and result.items[0].id == club.id
+
+@pytest.mark.asyncio
+async def test_member_count_matches_state_in_detail_and_listing(db):
+    await clubs.join_community(1, await db.get(User, '2'), db)
+    assert (await clubs.get_club(1, db, None)).member_count == 1
+    for community in (False, True):
+        result = await clubs.list_clubs(community=community, city=None, lat=None, lng=None, sport=None, keyword=None, page=1, page_size=20, db=db)
+        assert next(c for c in result.items if c.id == 1).member_count == 1

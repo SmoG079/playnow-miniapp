@@ -292,6 +292,8 @@ async def preview(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if req.club_id is not None:
+        await get_club_admin(req.club_id, user, db)
     await require_host_club(db, req.club_id)
     if not req.config:
         raise HTTPException(422, "请选择赛制")
@@ -372,6 +374,8 @@ async def create_tournament(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if req.club_id is not None:
+        await get_club_admin(req.club_id, user, db)
     await require_host_club(db, req.club_id)
     t = Tournament(id=await activity_ids.allocate_activity(db, "tournament"), user_id=user.id)
     await apply_request(db, t, req)
@@ -527,7 +531,10 @@ async def get_tournament(
         my_registration=mine,
         can_manage=manage,
         can_review=can_review,
-        can_register=not closed and _v(t.status) == "open",
+        can_register=not closed and not t.roster_frozen and _v(t.status) == "open"
+        and sum(r.admission == "active" and r.approval == "approved"
+                and (r.seat_expires_at is None or r.seat_expires_at > life.now())
+                for r, *_ in rows) < (t.max_participants or 128),
         draw_version=t.draw_version if manage else t.published_version,
         published_version=t.published_version,
         draw_stage=d.stage if d else None,
@@ -1484,6 +1491,10 @@ async def cancel_event(
 ):
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
+    if _v(t.status) == "finished":
+        raise HTTPException(409, "已结束的比赛不能取消")
+    if _v(t.status) == "cancelled":
+        return {"msg": "ok"}
     t.status = TournamentStatus.cancelled
     t.registration_closed = True
     t.roster_frozen = True

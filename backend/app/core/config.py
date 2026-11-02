@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from functools import lru_cache
+from typing import Literal
 
 
 class Settings(BaseSettings):
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     # WeChat Mini Program
     WX_APP_ID: str = ""
     WX_APP_SECRET: str = ""
+    WX_SHARE_ENV_VERSION: Literal["release", "trial", "develop"] = "release"
 
     # WeChat Pay V3
     WX_MCH_ID: str = ""
