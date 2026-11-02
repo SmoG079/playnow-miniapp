@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.engine import make_url
 from alembic import command
 from alembic.config import Config
-from app.models.models import User, Club, Venue, VenueTimeSlot, Activity, Tournament, TournamentDraw, TournamentTeam, TournamentMatch
+from app.models.models import User, Venue, VenueTimeSlot, Activity, Tournament, TournamentDraw, TournamentTeam, TournamentMatch
 from app.services import tournament_engine as engine
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -46,16 +46,21 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
             command.upgrade(config, "20261015_post_people")
             with Session(connection) as session:
                 user = User(openid="isolated-cleanup-user")
-                club = Club(name="isolated-cleanup-club")
-                session.add_all([user, club]); session.flush()
-                venue = Venue(club_id=club.id, name="court", sport_type="tennis", price_per_hour=100)
+                session.add(user); session.flush()
+                # Reflect the old schema so later optional fields cannot leak into this fixture.
+                clubs_before = sa.Table("clubs", sa.MetaData(), autoload_with=connection)
+                club_id = session.execute(clubs_before.insert().values(
+                    name="isolated-cleanup-club", opening_time=time(8), closing_time=time(22),
+                    split_ratio="0.100", view_count=0, exposure_count=0, status="active",
+                    approval_status="approved")).inserted_primary_key[0]
+                venue = Venue(club_id=club_id, name="court", sport_type="tennis", price_per_hour=100)
                 session.add(venue); session.flush()
                 slot = VenueTimeSlot(venue_id=venue.id, date=date(2030, 1, 1), start_time=time(9), end_time=time(9, 30))
                 session.add(slot)
                 session.add(Activity(id=101, kind="tournament")); session.flush()
                 # Seed the historical table, never today's ORM schema at an older revision.
                 events_before = sa.Table("tournaments", sa.MetaData(), autoload_with=connection)
-                connection.execute(events_before.insert().values(id=101, activity_kind="tournament", club_id=club.id,
+                connection.execute(events_before.insert().values(id=101, activity_kind="tournament", club_id=club_id,
                     venue_id=venue.id, title="fixture", start_time=datetime(2030,1,1), end_time=datetime(2030,1,2),
                     max_participants=4, current_participants=0, entry_fee=0, status="draft", lock_venue=False,
                     auto_title=False, roster_frozen=False, registration_closed=False, draw_version=0,
@@ -72,7 +77,7 @@ def test_mysql_migrates_single_slots_prizes_and_draw_positions():
                     session.add(TournamentMatch(draw_id=draw.id, **{key: match[key] for key in ("group_no", "round_no", "position", "kind", "team_a_id", "team_b_id")}))
                 session.flush()
                 connection.execute(sa.text("INSERT INTO booking_orders(id,order_no,user_id,venue_id,club_id,slot_id,slot_ids,amount,status,business_type) VALUES (991,'isolated-old-slot',:user,:venue,:club,:slot,NULL,50,'cancelled','booking')"),
-                    dict(user=user.id, venue=venue.id, club=club.id, slot=slot.id))
+                    dict(user=user.id, venue=venue.id, club=club_id, slot=slot.id))
                 connection.execute(sa.text("UPDATE tournaments SET prize='旧奖项',prizes=NULL WHERE id=101"))
                 connection.execute(sa.text("UPDATE venues SET price_rules=JSON_ARRAY(JSON_OBJECT('type','time_range','start_time','09:00','end_time','11:00','price',120)) WHERE id=:id"), {'id':venue.id})
                 slot_id, draw_id, owner_id = slot.id, draw.id, user.id
