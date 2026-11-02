@@ -71,7 +71,7 @@ async def test_post_reviews_are_creator_only_and_repeated_actions_are_rejected(d
 @pytest.mark.asyncio
 async def test_tournament_review_keeps_admission_logic_and_creator_scope(db):
     creator=await db.get(User,'2')
-    t=await tournaments.create_tournament(TournamentCreate(club_id=1,title='正式比赛',address='球场',start_time=datetime.utcnow()+timedelta(days=2),end_time=datetime.utcnow()+timedelta(days=3),max_participants=2,config=TournamentConfig(approval_required=True)),creator,db)
+    t=await tournaments.create_tournament(TournamentCreate(club_id=None,title='正式比赛',address='球场',start_time=datetime.utcnow()+timedelta(days=2),end_time=datetime.utcnow()+timedelta(days=3),max_participants=2,config=TournamentConfig(approval_required=True)),creator,db)
     await tournaments.register_tournament(t['id'],RegistrationCommand(),await db.get(User,'3'),db)
     r=await db.scalar(select(TournamentRegistration).where(TournamentRegistration.tournament_id==t['id']))
     assert (await inbox(db)).total==0 and (await inbox(db,'2')).items[0]['kind']=='tournament'

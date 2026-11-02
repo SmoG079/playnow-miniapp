@@ -11,7 +11,7 @@ from app.schemas.tournament import TournamentCreate,TournamentConfig,Registratio
 from tests.test_tournaments import db
 
 async def activity(db,creator='2',title='海风杯'):
-    result=await tournaments.create_tournament(TournamentCreate(club_id=1,title=title,address='球场',start_time=datetime.utcnow()+timedelta(days=2),end_time=datetime.utcnow()+timedelta(days=3),max_participants=4,config=TournamentConfig(approval_required=True)),await db.get(User,creator),db)
+    result=await tournaments.create_tournament(TournamentCreate(club_id=None,title=title,address='球场',start_time=datetime.utcnow()+timedelta(days=2),end_time=datetime.utcnow()+timedelta(days=3),max_participants=4,config=TournamentConfig(approval_required=True)),await db.get(User,creator),db)
     return result['id']
 async def records(db,uid='2',kind='tournament',relation='joined',phase='all',keyword='',page=1,size=20):
     return await users.my_activities(kind,relation,phase,keyword,page,size,await db.get(User,uid),db)

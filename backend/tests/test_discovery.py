@@ -55,7 +55,7 @@ async def test_type_and_distance_order_applied_before_pagination(db):
 async def test_tournaments_city_and_shanghai_day_filter(db):
     owner=await db.get(User,2)
     for city,start in [('扬州市',datetime(TEST_YEAR,11,1,16,30)),('南京市',datetime(TEST_YEAR,11,1,16,30)),('扬州市',datetime(TEST_YEAR,11,2,18))]:
-        await tournaments.create_tournament(TournamentCreate(city=city,club_id=1,title=city,address='网球场',
+        await tournaments.create_tournament(TournamentCreate(city=city,club_id=None,title=city,address='网球场',
             start_time=start,end_time=start+timedelta(hours=2),max_participants=2),owner,db)
     from app.services.activity_discovery import list_activities
     result=await list_activities(db=db,activity_type='tournament',city='扬州市',sort_by='date_desc',lat=None,lng=None,
@@ -127,7 +127,7 @@ async def test_courts_in_same_club_are_independent_and_override_client_location(
         p=await post(db,'伪造城市',f'{TEST_YEAR}-11-01',venue_id=v.id,booking_id=order.id,latitude=1,longitude=1)
         assert p.city==v.city and p.latitude==v.latitude
         records.append(p)
-        t=await tournaments.create_tournament(TournamentCreate(city='伪造城市',latitude=1,longitude=1,club_id=1,venue_id=v.id,title='比赛',address='假地址',start_time=datetime(TEST_YEAR,11,1),end_time=datetime(TEST_YEAR,11,2),max_participants=2),owner,db)
+        t=await tournaments.create_tournament(TournamentCreate(city='伪造城市',latitude=1,longitude=1,club_id=None,venue_id=v.id,title='比赛',address='假地址',start_time=datetime(TEST_YEAR,11,1),end_time=datetime(TEST_YEAR,11,2),max_participants=2),owner,db)
         detail=await tournaments.get_tournament(t['id'],owner,db)
         assert detail['address']==v.address and detail['city']==v.city
     assert [p.id for p in (await listing(db,city='扬州市')).items]==[records[0].id]

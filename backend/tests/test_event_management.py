@@ -121,7 +121,7 @@ async def test_regular_creator_can_manage_draw_results_and_cancel_but_other_user
     from app.schemas.tournament import TournamentConfig, DrawCommand, VersionCommand, ResultCommand
     owner=await db.get(User,2)
     other=await db.get(User,5)
-    req=TournamentCreate(**dict(TOURNAMENT,max_participants=2,config=TournamentConfig()))
+    req=TournamentCreate(**dict(TOURNAMENT,club_id=None,max_participants=2,config=TournamentConfig()))
     created=await tournaments.create_tournament(req,owner,db)
     tid=created['id']
     await db.commit()
@@ -152,7 +152,7 @@ async def test_unknown_host_club_is_rejected_for_all_creators(db):
     from fastapi import HTTPException
     req=TournamentCreate(**dict(TOURNAMENT,club_id=999,config={}))
     for action in (tournaments.preview,tournaments.create_tournament):
-        with pytest.raises(HTTPException) as err: await action(req,await db.get(User,2),db)
+        with pytest.raises(HTTPException) as err: await action(req,await db.get(User,1),db)
         assert err.value.status_code==422
 
 @pytest.mark.asyncio
