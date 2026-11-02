@@ -86,14 +86,14 @@ onShow(refreshClubs);
               url: '/pages/admin/order-manage?club_id=' + clubs[index].id,
             })
           " /><wd-cell
-          title="场地管理"
+          title="社群详情与成员"
           prefix-icon="location"
           icon-size="22px"
           title-width="calc(100% - 40px)"
           is-link
           @click="
             uni.navigateTo({
-              url: '/pages/admin/venue-manage?club_id=' + clubs[index].id,
+              url: '/pages/common/club-detail?id=' + clubs[index].id,
             })
           " /></view
       ><wd-empty

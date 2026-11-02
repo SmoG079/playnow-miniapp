@@ -101,6 +101,8 @@ async def payment_success(db, data):
     order.status = OrderStatus.paid
     order.wx_transaction_id = data['transaction_id']
     order.payment_time = money.now()
+    from app.services.activity_wallet import capture
+    await capture(db, order)
     if not reg or _v(reg.status) != 'pending' or reg.payment != 'pending' or _v(post.status) == 'closed' or post_registration_closed(post):
         await money.request_refund(db, order, '报名已失效，原路退回')
     else:

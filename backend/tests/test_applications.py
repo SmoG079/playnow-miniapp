@@ -13,7 +13,7 @@ from app.schemas.tournament import TournamentCreate, TournamentConfig, Registrat
 from tests.test_tournaments import db
 
 async def club_request(db):
-    return await clubs.create_club(ClubCreate(name='待审核俱乐部',city='南京市',address='地图地址',latitude=32,longitude=118,contact_phone='13800138000'),await db.get(User,'2'),db)
+    return await clubs.create_club(ClubCreate(description='本地网球社群',name='待审核俱乐部',city='南京市',address='地图地址',latitude=32,longitude=118,contact_phone='13800138000'),await db.get(User,'2'),db)
 async def inbox(db,uid='1',scope='todo',kind='all',page=1,size=20):
     return await api.list_applications(scope,kind,page,size,await db.get(User,uid),db)
 async def pending_post(db):

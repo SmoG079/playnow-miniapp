@@ -29,13 +29,25 @@ call('PUT','/users/me',owner,json={'nickname':'E2E owner','ntrp_level':3.5})
 assert str(call('GET','/users/me',owner)['ntrp_level'])=='3.5'
 member_id=call('GET','/users/me',member)['id']
 call('PUT','/users/me',member,expected=422,json={'ntrp_level':8})
-club=call('POST','/clubs',owner,json={'name':'E2E isolated club','contact_phone':'13800000000','sport_types':['tennis'],'opening_time':'08:00','closing_time':'22:00'})['id']
+club=call('POST','/clubs',owner,json={'city':'上海市','description':'隔离网球社群','name':'E2E isolated club','contact_phone':'13800000000','sport_types':['tennis'],'opening_time':'08:00','closing_time':'22:00'})['id']
 assert club not in call('GET','/users/me',owner)['managed_club_ids']
 call('GET',f'/clubs/{club}',expected=404)
 call('POST',f'/applications/clubs/{club}/review',owner,expected=403,json={'approved':True})
 call('POST',f'/applications/clubs/{club}/review',admin,json={'approved':True,'reason':'isolated CI review'})
 assert club in call('GET','/users/me',owner)['managed_club_ids']
 call('GET','/clubs');call('GET',f'/clubs/{club}')
+call('POST',f'/clubs/{club}/community',member)
+assert call('GET',f'/clubs/{club}/community',member)['joined']
+call('DELETE',f'/clubs/{club}/community/{member_id}',other,expected=403)
+call('DELETE',f'/clubs/{club}/community/{member_id}',owner)
+assert not call('GET',f'/clubs/{club}/community',member)['joined']
+call('POST',f'/clubs/{club}/community',member)
+call('DELETE',f'/clubs/{club}/community',member)
+call('DELETE',f'/clubs/{club}/community',owner,expected=409)
+assert call('GET','/activity-wallet',owner)['available_cents']==0
+call('POST','/activity-wallet/withdrawals',owner,expected=503,json={'request_key':'isolated-http-gate'})
+call('GET','/activity-wallet',expected=401)
+
 call('PUT',f'/clubs/{club}',owner,json={'description':'scratch verification'})
 call('PUT',f'/clubs/{club}',other,expected=403,json={'name':'unauthorized'})
 venue=call('POST',f'/venues/with-club/{club}',owner,json={'name':'E2E court','price_per_hour':100})['id']

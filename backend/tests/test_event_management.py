@@ -1,3 +1,5 @@
+from datetime import date as _fixture_date
+TEST_YEAR = _fixture_date.today().year + 1
 """Required create fields, managed lists and cancellation persistence."""
 import pytest
 from pydantic import ValidationError
@@ -7,8 +9,8 @@ from app.schemas.schemas import PostCreate
 from app.schemas.tournament import TournamentCreate, ReasonCommand
 from tests.test_tournaments import db, event, register
 
-POST = dict(title="约球", preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3, price=0)
-TOURNAMENT = dict(title="比赛", club_id=1, address="网球公园", max_participants=8, start_time="2026-11-01T09:00:00+08:00", end_time="2026-11-01T17:00:00+08:00")
+POST = dict(title="约球", preferred_date=f"{TEST_YEAR}-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3, price=0)
+TOURNAMENT = dict(title="比赛", club_id=1, address="网球公园", max_participants=8, start_time=f"{TEST_YEAR}-11-01T09:00:00+08:00", end_time=f"{TEST_YEAR}-11-01T17:00:00+08:00")
 
 
 @pytest.mark.asyncio
@@ -43,7 +45,7 @@ async def test_comment_total_covers_all_pages_without_counting_replies(db):
     owner = await db.get(User, 2)
     post = await posts.create_post(PostCreate(**POST), owner, db)
     comments = [Comment(post_id=post.id, user_id=owner.id, content=f"评论{i}",
-                        created_at=datetime(2026, 10, 8)) for i in range(23)]
+                        created_at=datetime(TEST_YEAR, 10, 8)) for i in range(23)]
     db.add_all(comments)
     await db.flush()
     db.add(Comment(post_id=post.id, user_id=owner.id, content="回复", parent_id=comments[0].id))

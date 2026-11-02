@@ -33,7 +33,7 @@ async function load(append = false) {
   loading.value = true;
   try {
     const p = append ? page.value + 1 : 1;
-    let url = `/clubs?page=${p}&page_size=20&city=${encodeURIComponent(location.city)}`;
+    let url = `/clubs?community=true&page=${p}&page_size=20&city=${encodeURIComponent(location.city)}`;
     if (keyword.value) url += `&keyword=${encodeURIComponent(keyword.value)}`;
     if (sort.value === "distance" && location.latitude !== null)
       url += `&lat=${location.latitude}&lng=${location.longitude}&sort_by=distance`;
@@ -69,7 +69,7 @@ onReachBottom(() => more.value && load(true));
 </script>
 <template>
   <AppShell :active="props.selection ? undefined : 'clubs'" :back="props.selection" :title="props.selection ? '选择并预订场地' : ''"
-    ><MainHeader v-if="!props.selection" title="订场" context @city-change="load()" /><view class="content main-content"
+    ><MainHeader v-if="!props.selection" title="俱乐部" context @city-change="load()" /><view class="content main-content"
       ><view class="search-card"><wd-search
         v-model="keyword"
         placeholder="搜索俱乐部"
@@ -94,23 +94,23 @@ onReachBottom(() => more.value && load(true));
         v-for="c in clubs"
         :key="c.id"
         class="venue-card"
-        @click="openPage('/pages/booking/venue-detail?id=' + c.id + (props.selection ? '&return_mode=' + returnMode : ''))"
+        @click="openPage('/pages/common/club-detail?id=' + c.id + (props.selection ? '&return_mode=' + returnMode : ''))"
         ><view class="venue-photo"
           ><Photo
             width="100%"
             height="100%"
             :src="c.cover_image"
-            fallback="/static/court.jpg"
+            fallback="/static/tennis.jpg"
             mode="aspectFill"
           /><text v-if="c.distance != null" class="distance-badge"
             >{{ c.distance }}km</text
           ></view
         ><view class="venue-card-body"
           ><text class="section-title">{{ c.name }}</text
-          ><text class="muted">{{ c.nearest_venue_name ? c.nearest_venue_name + " · " : "" }}{{ c.venue_address || "球场位置待补充" }}</text
-          ><view><text class="tag">网球</text></view></view
+          ><text class="muted">{{ c.description ? c.description + " · " : "" }}{{ c.city || "城市待补充" }}</text
+          ><view><text class="tag">网球社群</text><text class="muted small">{{ c.member_count || 0 }} 位球友</text></view></view
         ></view
-      ><wd-empty v-if="!loading && !clubs.length" :tip="location.city ? '当前城市暂无球场' : '请先选择城市'"
+      ><wd-empty v-if="!loading && !clubs.length" :tip="location.city ? '当前城市暂无俱乐部' : '请先选择城市'"
         ><wd-button size="small" @click="openPage('/pages/publish/club-create')"
           >创建俱乐部</wd-button
         ></wd-empty

@@ -99,11 +99,12 @@ class UserUtrRecordResponse(BaseModel):
 # ── Club ──
 
 class ClubCreate(BaseModel):
-    city: Optional[str] = Field(None, min_length=1, max_length=64)
+    city: str = Field(..., min_length=1, max_length=64)
     name: str = Field(..., min_length=1, max_length=128)
     sport_types: list[str] = Field(default_factory=list)
-    description: Optional[str] = None
+    description: str = Field(..., min_length=1, max_length=1000)
     rules: Optional[str] = None
+    logo_image: Optional[str] = None
     cover_image: Optional[str] = None
     images: list[str] = Field(default_factory=list)
     documents: list[dict] = Field(default_factory=list)  # [{name, url, size}]
@@ -114,12 +115,12 @@ class ClubCreate(BaseModel):
     opening_time: Optional[str] = "08:00"
     closing_time: Optional[str] = "22:00"
 
-    @field_validator("city")
+    @field_validator("name", "description", "contact_phone", "city")
     @classmethod
     def normalized_city(cls, value):
         if value is None: return None
         value=value.strip()
-        if not value: raise ValueError("请选择活动所在城市")
+        if not value: raise ValueError("名称、介绍、城市和联系电话不可为空")
         return value
 
 
@@ -129,6 +130,7 @@ class ClubUpdate(BaseModel):
     sport_types: Optional[list[str]] = None
     description: Optional[str] = None
     rules: Optional[str] = None
+    logo_image: Optional[str] = None
     cover_image: Optional[str] = None
     images: Optional[list[str]] = None
     documents: Optional[list[dict]] = None
@@ -149,6 +151,8 @@ class ClubUpdate(BaseModel):
 
 
 class ClubBrief(BaseModel):
+    member_count: int = 0
+    description: Optional[str] = None
     approval_status: str = "approved"
     review_reason: Optional[str] = None
     reviewed_at: Optional[datetime] = None
@@ -156,6 +160,7 @@ class ClubBrief(BaseModel):
     id: int
     name: str
     sport_types: Any
+    logo_image: Optional[str] = None
     cover_image: Optional[str]
     address: Optional[str]
     latitude: Optional[Decimal]

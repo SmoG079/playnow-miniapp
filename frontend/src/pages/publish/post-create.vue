@@ -223,12 +223,7 @@ function returnToPublish() {
           </view>
           <text class="field-label">活动地点 *</text><ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
           <text class="field-label">地点名称</text><wd-input v-model="form.location_name" :disabled="!!form.booking_id" placeholder="例如：某某网球中心（某某店）" :maxlength="256" />
-          <view class="creation-label"><text class="field-label">关联预订场地（选填）</text><wd-button variant="text" size="small" @click="showPostComparison = true">了解区别</wd-button></view>
-          <view class="venue-association">
-            <text v-if="form.booking_id" class="linked-venue">{{ venueName }} · {{ form.preferred_date }} {{ form.preferred_start }}–{{ form.preferred_end }}</text>
-            <wd-button custom-class="post-booking-select-button" variant="plain" @click="goBook">{{ form.booking_id ? '重新选择并预订场地' : '选择并预订场地' }}</wd-button>
-            <wd-button v-if="form.booking_id" variant="text" @click="unlinkVenue">移除关联</wd-button>
-          </view>
+          <view v-if="form.booking_id" class="venue-association"><text class="linked-venue">{{ venueName }}（历史关联）</text><wd-button variant="text" @click="unlinkVenue">移除关联</wd-button></view>
         </view>
         <view class="creation-section">
           <text class="creation-heading">报名设置</text>

@@ -47,7 +47,7 @@ async function chooseClub(purpose = "host") {
   clubLoading.value = true;
   const selected = clubs.value[clubIndex.value];
   try {
-    const available = await listAll<any>(`/clubs?city=${encodeURIComponent(form.city)}`);
+    const available = await listAll<any>(`/clubs?community=true&city=${encodeURIComponent(form.city)}`);
     if (selected && !available.some(c => c.id === selected.id)) available.unshift(selected);
     clubs.value = available;
     clubIndex.value = selected ? clubs.value.findIndex(c => c.id === selected.id) : -1;
@@ -362,9 +362,8 @@ async function save() {
             ><view class="picker-field">{{ form.end }}</view></picker
           ></view
         >
-        <view class="field-label" id="required-address">比赛地点 *<FieldHelp title="比赛地点与预订" content="在地图中选择地点仅用于展示地址；关联预订场地需要先完成订场。比赛排场名称不会自动预订场地。" /></view>
+        <view class="field-label" id="required-address">比赛地点 *<FieldHelp title="比赛地点与预订" content="在地图中选择实际活动地点。活动场地由组织者自行安排。" /></view>
         <wd-input v-model="form.location_name" :disabled="!!linked?.venue_id" placeholder="地点名称，例如：某某网球中心" :maxlength="256" /><ActivityLocationSelect field label="比赛地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!linked?.venue_id" @busy="locationSelecting = $event" @select="point => Object.assign(form, point)" />
-        <wd-button block variant="plain" :disabled="!!linked?.venue_id || clubLoading" @click="chooseClub('booking')">{{ linked?.venue_id ? '已关联场地' : '预订并关联场地' }}</wd-button>
         </view
       >
       <ChoiceSheet v-model="clubSheet" :options="clubActions.map((action,index)=>({label:action.name,value:index}))" :value="clubPurpose === 'host' ? clubIndex + 1 : clubIndex" :title="clubPurpose === 'host' ? '选择主办俱乐部' : '选择预订场地的俱乐部'" @select="selectClub({index:Number($event)})" />

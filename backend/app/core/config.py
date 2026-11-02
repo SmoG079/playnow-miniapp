@@ -59,6 +59,20 @@ class Settings(BaseSettings):
 
     TOURNAMENT_SEAT_TTL_SECONDS: int = 600
 
+    # Community phase: pause court commerce without disabling historical refunds.
+    CLUB_BOOKING_ENABLED: bool = False
+    ACTIVITY_TRANSFER_ENABLED: bool = False
+    ACTIVITY_TRANSFER_SCENE_VERIFIED: bool = False
+    ACTIVITY_FEE_RATE_VERIFIED: bool = False
+    ACTIVITY_PAYMENT_FEE_RATE: str = "0.006"
+    ACTIVITY_TRANSFER_SCENE_ID: str = ""
+    ACTIVITY_TRANSFER_REPORT_INFOS: list[dict[str, str]] = []
+    ACTIVITY_TRANSFER_NOTIFY_URL: str = ""
+    ACTIVITY_TRANSFER_MIN_CENTS: int = 10
+    ACTIVITY_TRANSFER_MAX_CENTS: int = 20000
+    ACTIVITY_TRANSFER_DAILY_CENTS: int = 20000
+    ACTIVITY_TRANSFER_LIMITS_VERIFIED: bool = False
+
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
     PREPAY_ID_TTL_SECONDS: int = 300
@@ -110,6 +124,16 @@ class Settings(BaseSettings):
     def require_production_secret(self):
         if not self.DEBUG and (self.JWT_SECRET_KEY.startswith("generate-a-random-secret-key-here") or len(self.JWT_SECRET_KEY) < 32):
             raise ValueError("生产 JWT_SECRET_KEY 必须显式配置为至少 32 字符的独立随机密钥")
+        from decimal import Decimal, InvalidOperation
+        try:
+            rate = Decimal(self.ACTIVITY_PAYMENT_FEE_RATE)
+            if not rate.is_finite() or not Decimal(0) <= rate < Decimal(1): raise ValueError()
+        except (InvalidOperation, ValueError):
+            raise ValueError("ACTIVITY_PAYMENT_FEE_RATE must be between 0 and 1")
+        if not 10 <= self.ACTIVITY_TRANSFER_MIN_CENTS <= self.ACTIVITY_TRANSFER_MAX_CENTS <= 20000:
+            raise ValueError("Activity transfer per-bill limits must be between 10 and 20000 cents")
+        if self.ACTIVITY_TRANSFER_DAILY_CENTS < self.ACTIVITY_TRANSFER_MIN_CENTS:
+            raise ValueError("Activity transfer daily limit is below the minimum bill")
         return self
 
     class Config:

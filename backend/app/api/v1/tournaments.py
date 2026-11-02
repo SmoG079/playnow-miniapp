@@ -345,6 +345,8 @@ async def apply_request(db, t, req):
         v = await db.get(Venue, req.venue_id)
         if not v:
             raise HTTPException(422, "场地不存在")
+    if req.lock_venue and not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "平台场地预订暂未开放")
     if req.lock_venue:
         raise HTTPException(
             422, "请先通过订场流程预订场地；赛事排场不会自动锁定预约时段"

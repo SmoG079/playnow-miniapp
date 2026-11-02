@@ -7,7 +7,7 @@ module.exports = [
   },
   {
     "pagePath": "pages/booking/club-list",
-    "text": "订场",
+    "text": "俱乐部",
     "iconPath": "static/tabbar/calendar.png",
     "selectedIconPath": "static/tabbar/calendar-active.png"
   },

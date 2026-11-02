@@ -118,7 +118,7 @@ async def _execute_pending_settlements_impl():
     from app.services.settlement import execute_settlement, query_settlement_status
 
     settings = get_settings()
-    if not settings.PROFIT_SHARING_ENABLED:
+    if not settings.CLUB_BOOKING_ENABLED or not settings.PROFIT_SHARING_ENABLED:
         # 平台用自有商户号直接收款，暂不分账。SettlementRecord 只作记账留存，
         # 不向微信发起分账请求。 见 docs/wechat-pay-setup.md
         return {"processed": 0, "errors": 0, "skipped": "profit_sharing_disabled"}
@@ -349,3 +349,14 @@ async def _expire_price_rules_impl():
 @celery_app.task(name="app.tasks.tasks.expire_price_rules")
 def expire_price_rules():
     return run_async_task(_expire_price_rules_impl)
+
+
+async def _maintain_activity_transfers_impl():
+    from app.services.activity_wallet import maintain
+    async with (task_session_factory.get() or async_session_factory)() as session:
+        return await maintain(session)
+
+
+@celery_app.task(name="app.tasks.tasks.maintain_activity_transfers")
+def maintain_activity_transfers():
+    return run_async_task(_maintain_activity_transfers_impl)

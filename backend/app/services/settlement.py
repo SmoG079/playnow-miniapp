@@ -29,6 +29,8 @@ async def execute_settlement(session: AsyncSession, settlement_id: int) -> Settl
     This function does NOT commit; the caller is responsible for the transaction boundary.
     """
     settings = get_settings()
+    if not settings.CLUB_BOOKING_ENABLED or not settings.PROFIT_SHARING_ENABLED:
+        raise ValueError("场地分账暂未开放")
     wxpay = get_wxpay()
 
     result = await session.execute(

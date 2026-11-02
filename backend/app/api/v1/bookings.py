@@ -56,6 +56,8 @@ async def create_booking(
     db: AsyncSession = Depends(get_db),
 ):
     """Lock one or more consecutive slots and create a pending booking order."""
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "订场服务暂未开放")
     settings = get_settings()
     await check_rate_limit(
         f"rate:booking:{current_user.id}",
@@ -352,6 +354,9 @@ async def pay_booking(
         return {"msg": "ok", "order_no": order.order_no, "amount": str(order.amount), "already_paid": True}
     if _v(order.status) != "pending":
         raise HTTPException(status_code=400, detail="Order is not pending")
+
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "订场服务暂未开放，请取消未支付订单")
 
     slots = await locked_order_slots(db, order)
     now = _utc_now()

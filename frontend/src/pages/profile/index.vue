@@ -29,6 +29,7 @@ onShow(() => {
 const menus = computed(() => {
   const common = [
     ["calendar-line", "我的预约", "/pages/profile/my-bookings"],
+    ["money", "活动提现", "/pages/profile/activity-wallet"],
     ["user", "我的活动", "/pages/profile/my-activities"],
     ["check", "申请处理", "/pages/profile/applications"],
   ];

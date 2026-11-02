@@ -7,6 +7,8 @@
     }
   },
   "pages": [
+    { "path": "pages/profile/activity-wallet" },
+    { "path": "pages/common/club-detail" },
     { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/booking/club-list" },
     { "path": "pages/booking/select" },
@@ -46,7 +48,7 @@
     { "path": "pages/common/user-profile" }
   ],
   "tabBar": {
-    "custom": true,
+    "custom": false,
     "color": "#849188",
     "selectedColor": "#147553",
     "backgroundColor": "#ffffff",
@@ -62,7 +64,7 @@
       },
       {
         "pagePath": "pages/booking/club-list",
-        "text": "订场",
+        "text": "俱乐部",
         "iconPath": "static/tabbar/calendar.png",
         "selectedIconPath": "static/tabbar/calendar-active.png"
       },

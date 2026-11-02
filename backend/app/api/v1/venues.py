@@ -38,6 +38,9 @@ async def create_venue_for_club(
     _: User = Depends(get_club_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import get_settings
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地经营管理暂未开放")
     venue = Venue(
         club_id=club_id,
         name=req.name,
@@ -68,6 +71,9 @@ async def update_venue(
     _: User = Depends(get_club_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import get_settings
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地经营管理暂未开放")
     result = await db.execute(
         select(Venue).where(Venue.id == venue_id, Venue.club_id == club_id).with_for_update()
     )
@@ -115,6 +121,9 @@ async def get_slots(
     date_to: date = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import get_settings
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地预订暂未开放")
     if date:
         date_from = date_to = date
     if not date_from or not date_to:
@@ -193,6 +202,9 @@ async def generate_slots(
     _: User = Depends(_require_club_admin_for_venue),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import get_settings
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地经营管理暂未开放")
     """Generate time slots for a date range."""
     logger.info(
         "generate_slots called: venue_id=%s date_from=%s date_to=%s start_time=%s end_time=%s interval=%s price_rules=%s",
@@ -233,6 +245,9 @@ async def update_slot_status(
     _: User = Depends(_require_club_admin_for_venue),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import get_settings
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地经营管理暂未开放")
     """Toggle a single slot between available and maintenance."""
     result = await db.execute(
         select(VenueTimeSlot).where(

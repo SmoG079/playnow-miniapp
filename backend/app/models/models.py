@@ -81,6 +81,7 @@ class Club(Base):
     sport_types = Column(JSON, comment='["badminton","basketball"]')
     description = Column(Text)
     rules = Column(Text, comment='场地规则')
+    logo_image = Column(String(512))
     cover_image = Column(String(512))
     images = Column(JSON)
     documents = Column(JSON, comment='PDF文件列表 [{name, url, size}]')
@@ -672,3 +673,52 @@ class DirectMessage(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint('conversation_id','sender_id','client_id',name='uq_direct_client_message'),Index('idx_direct_history','conversation_id','id'))
+
+
+class CommunityMember(Base):
+    """Ordinary community membership never grants ClubMember management access."""
+    __tablename__ = "community_members"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    club_id = Column(BigInteger, ForeignKey("clubs.id"), nullable=False)
+    user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("club_id", "user_id", name="uq_community_member"),)
+
+
+class ActivityEarning(Base):
+    __tablename__ = "activity_earnings"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    order_id = Column(BigInteger, ForeignKey("booking_orders.id"), nullable=False, unique=True)
+    fee_rate = Column(String(24), nullable=True)
+    unlock_at = Column(DateTime, nullable=True)
+    owner_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ActivityWithdrawal(Base):
+    __tablename__ = "activity_withdrawals"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    owner_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"), nullable=False, index=True)
+    request_key = Column(String(64), nullable=False)
+    # Immutable fee and per-order allocation snapshots, all money is integer cents.
+    allocations = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("owner_id", "request_key", name="uq_activity_withdrawal_request"),)
+
+
+class ActivityTransfer(Base):
+    __tablename__ = "activity_transfers"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    withdrawal_id = Column(BigInteger, ForeignKey("activity_withdrawals.id"), nullable=False, index=True)
+    out_bill_no = Column(String(32), nullable=False, unique=True)
+    amount_cents = Column(Integer, nullable=False)
+    state = Column(String(24), nullable=False, default="NEW", index=True)
+    transfer_bill_no = Column(String(64))
+    package_info = Column(Text)
+    # Freeze merchant, app, recipient and scene together before the first request.
+    request_payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime)
+    error_code = Column(String(64))
+    __table_args__ = (CheckConstraint("amount_cents > 0", name="ck_activity_transfer_amount"),)

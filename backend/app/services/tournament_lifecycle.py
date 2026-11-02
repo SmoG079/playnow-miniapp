@@ -406,6 +406,8 @@ async def payment_success(db, data):
     order.status = OrderStatus.paid
     order.wx_transaction_id = data["transaction_id"]
     order.payment_time = now()
+    from app.services.activity_wallet import capture
+    await capture(db, order)
     await refresh_admissions(db, t)
     if (
         not r

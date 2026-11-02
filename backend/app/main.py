@@ -70,6 +70,8 @@ app.add_middleware(RequestLogMiddleware)
 
 # Register routers
 api_prefix = settings.API_V1_PREFIX
+from app.api.v1 import wallet
+app.include_router(wallet.router, prefix=api_prefix)
 app.include_router(auth.router, prefix=api_prefix)
 app.include_router(sharing.router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)

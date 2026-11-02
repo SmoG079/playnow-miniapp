@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 """Publishing permissions against a disposable database; no payment API calls."""
 import pytest
 import pytest_asyncio
@@ -44,7 +45,7 @@ async def db(monkeypatch):
 
 
 def request(**kwargs):
-    return PostCreate(title="一起打球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3, **kwargs)
+    return PostCreate(title="一起打球", price=0, preferred_date=(datetime.now()+timedelta(days=2)).date(), preferred_start="09:00", preferred_end="11:00", max_players=3, **kwargs)
 
 
 @pytest.mark.asyncio

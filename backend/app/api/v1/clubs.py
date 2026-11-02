@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete
 import httpx
 import logging
 from app.core.database import get_db
@@ -15,7 +15,7 @@ from app.services.pricing import slot_charge
 from app.services.slots import ensure_slots, validate_booking_date
 from app.core.config import get_settings
 from app.api.deps import get_current_user, get_optional_user, get_club_admin, _v
-from app.models.models import User, Club, ClubMember, Venue, BookingOrder, SettlementRecord, Notification, NotificationType
+from app.models.models import User, Club, ClubMember, CommunityMember, Venue, BookingOrder, SettlementRecord, Notification, NotificationType
 from app.models.models import ClubMemberRole
 from app.utils.geo import haversine
 from app.schemas.schemas import (
@@ -95,13 +95,14 @@ async def list_clubs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    community: bool = False,
 ):
     query = select(Club).where(Club.status == "active", Club.approval_status == "approved")
     count_query = select(func.count(Club.id)).where(Club.status == "active", Club.approval_status == "approved")
 
     if city is not None:
         selected_city = city_name(city)
-        in_city = select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active, Venue.city == selected_city).correlate(Club).exists() if selected_city else False
+        in_city = ((Club.city == selected_city) if community else select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active, Venue.city == selected_city).correlate(Club).exists()) if selected_city else False
         query = query.where(in_city)
         count_query = count_query.where(in_city)
 
@@ -117,7 +118,7 @@ async def list_clubs(
     total = total_result.scalar() or 0
 
     has_location = lat is not None and lng is not None
-    venue_distance = distance_expr(lat, lng, Venue.latitude, Venue.longitude) if has_location else None
+    venue_distance = distance_expr(lat, lng, Club.latitude if community else Venue.latitude, Club.longitude if community else Venue.longitude) if has_location else None
     nearest = select(Venue.id).where(Venue.club_id == Club.id, Venue.status == VenueStatus.active)
     if city is not None:
         nearest = nearest.where(Venue.city == city_name(city))
@@ -135,7 +136,8 @@ async def list_clubs(
     items, clubs = [], []
     for c, v in result.all():
         clubs.append(c)
-        distance = haversine(lat, lng, float(v.latitude), float(v.longitude)) if has_location and v and v.latitude is not None and v.longitude is not None else None
+        location = c if community else v
+        distance = haversine(lat, lng, float(location.latitude), float(location.longitude)) if has_location and location and location.latitude is not None and location.longitude is not None else None
         items.append(ClubBrief.model_validate(c).model_copy(update={
             "distance": distance, "nearest_venue_id": v.id if v else None,
             "nearest_venue_name": v.name if v else None,
@@ -144,6 +146,10 @@ async def list_clubs(
             "venue_latitude": float(v.latitude) if v and v.latitude is not None else None,
             "venue_longitude": float(v.longitude) if v and v.longitude is not None else None,
         }))
+
+    if community and clubs:
+        counts = dict((await db.execute(select(CommunityMember.club_id,func.count(CommunityMember.id)).where(CommunityMember.club_id.in_([c.id for c in clubs])).group_by(CommunityMember.club_id))).all())
+        items = [item.model_copy(update={"member_count": counts.get(item.id,0)}) for item in items]
 
     # Increment exposure count for listed clubs
     if clubs:
@@ -201,6 +207,7 @@ async def create_club(
         sport_types=req.sport_types,
         description=req.description,
         rules=req.rules,
+        logo_image=req.logo_image,
         cover_image=req.cover_image or (req.images[0] if req.images else None),
         images=req.images,
         documents=req.documents,
@@ -281,6 +288,7 @@ def _club_to_detail(club: Club) -> ClubDetail:
         city=club.city,
         name=club.name,
         sport_types=club.sport_types,
+        logo_image=club.logo_image,
         cover_image=club.cover_image,
         address=club.address,
         latitude=club.latitude,
@@ -397,6 +405,8 @@ async def get_club_venue_slots(
     venue_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    if not get_settings().CLUB_BOOKING_ENABLED:
+        raise HTTPException(503, "场地预订暂未开放")
     """Return all venues for a club and their time slots for a specific date,
     formatted as a grid (rows = time, columns = venues)."""
     validate_booking_date(query_date)
@@ -510,3 +520,50 @@ async def get_club_venue_slots(
 def _time_from_str(s: str) -> time:
     h, m = map(int, s.split(":"))
     return time(h, m)
+
+
+async def _community_owner(db, club):
+    owner = await db.scalar(select(ClubMember.user_id).where(ClubMember.club_id == club.id, ClubMember.role == ClubMemberRole.owner).order_by(ClubMember.id).limit(1))
+    return owner or club.created_by
+
+
+@router.get("/{club_id}/community")
+async def community_state(club_id: int, db: AsyncSession = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
+    club = await db.get(Club, club_id)
+    if not club or club.approval_status != "approved" or _v(club.status) != "active":
+        raise HTTPException(404, "Club not found")
+    owner_id = await _community_owner(db, club)
+    members = (await db.execute(select(User.public_id, User.nickname).join(CommunityMember, CommunityMember.user_id == User.id).where(CommunityMember.club_id == club_id))).all()
+    return {"count": len(members), "joined": bool(user and await db.scalar(select(CommunityMember.id).where(CommunityMember.club_id == club_id, CommunityMember.user_id == user.id))), "owner": bool(user and owner_id == user.id), "members": [{"id": r.public_id, "name": r.nickname or "球友"} for r in members] if user and owner_id == user.id else []}
+
+
+@router.post("/{club_id}/community")
+async def join_community(club_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    club = await db.scalar(select(Club).where(Club.id == club_id).with_for_update())
+    if not club or club.approval_status != "approved" or _v(club.status) != "active":
+        raise HTTPException(404, "Club not found")
+    if not await db.scalar(select(CommunityMember.id).where(CommunityMember.club_id == club_id, CommunityMember.user_id == user.id).with_for_update()):
+        db.add(CommunityMember(club_id=club_id, user_id=user.id))
+    await db.flush()
+    return {"msg": "ok"}
+
+
+@router.delete("/{club_id}/community")
+async def leave_community(club_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    club = await db.scalar(select(Club).where(Club.id == club_id).with_for_update())
+    if not club: raise HTTPException(404, "Club not found")
+    if await _community_owner(db, club) == user.id: raise HTTPException(409, "群主不能直接退出俱乐部")
+    await db.execute(delete(CommunityMember).where(CommunityMember.club_id == club_id, CommunityMember.user_id == user.id))
+    return {"msg": "ok"}
+
+
+@router.delete("/{club_id}/community/{public_id}")
+async def remove_community_member(club_id: int, public_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    club = await db.scalar(select(Club).where(Club.id == club_id).with_for_update())
+    if not club: raise HTTPException(404, "Club not found")
+    if await _community_owner(db, club) != user.id: raise HTTPException(403, "仅群主可移除成员")
+    target = await db.scalar(select(User).where(User.public_id == public_id))
+    if not target: raise HTTPException(404, "User not found")
+    if target.id == user.id: raise HTTPException(409, "群主不能移除自己")
+    await db.execute(delete(CommunityMember).where(CommunityMember.club_id == club_id, CommunityMember.user_id == target.id))
+    return {"msg": "ok"}

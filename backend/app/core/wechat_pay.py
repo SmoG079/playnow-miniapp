@@ -122,5 +122,6 @@ def get_wxpay() -> WeChatPay:
         cert_dir=None if public_key else (settings.WX_PAY_CERT_DIR or None),
         public_key=public_key,
         public_key_id=public_key_id,
+        timeout=(5, 20),
         logger=None,  # SDK debug output contains full sensitive callback resources.
     )

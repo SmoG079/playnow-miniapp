@@ -95,10 +95,13 @@ async def review_club(club_id: int, req: ClubReview,
     if req.approved:
         member = await db.scalar(select(ClubMember).where(ClubMember.club_id == club.id, ClubMember.user_id == creator.id))
         if not member: db.add(ClubMember(club_id=club.id, user_id=creator.id, role=ClubMemberRole.owner))
+        from app.models.models import CommunityMember
+        ordinary = await db.scalar(select(CommunityMember.id).where(CommunityMember.club_id == club.id, CommunityMember.user_id == creator.id))
+        if not ordinary: db.add(CommunityMember(club_id=club.id,user_id=creator.id))
         if _v(creator.role) == "user": creator.role = "club_admin"
     db.add(Notification(user_id=creator.id, type=NotificationType.system,
         title="俱乐部申请已通过" if req.approved else "俱乐部申请未通过",
-        content=f"《{club.name}》" + ("已通过审核，可以管理俱乐部和创建场地。" if req.approved else f"未通过审核：{req.reason}"),
+        content=f"《{club.name}》" + ("已通过审核，可以管理社群和组织活动。" if req.approved else f"未通过审核：{req.reason}"),
         ref_type="club_application", ref_id=club.id))
     await db.flush()
     logger.info("club application reviewed: club=%s result=%s", club.id, club.approval_status)

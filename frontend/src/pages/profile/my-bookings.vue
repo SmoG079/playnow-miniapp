@@ -202,11 +202,6 @@ async function refreshRefund(b: any) {
             ><wd-button
               v-if="b.status === 'pending'"
               size="small"
-              @click="pay(b)"
-              >支付</wd-button
-            ><wd-button
-              v-if="b.status === 'pending'"
-              size="small"
               variant="plain"
               :disabled="refreshing === b.id"
               @click="refreshStatus(b)"

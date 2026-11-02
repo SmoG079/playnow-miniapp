@@ -73,8 +73,8 @@ function callClub() {
             round
             width="75px"
             height="75px"
-            :src="club.cover_image"
-            fallback="/static/court.jpg"
+            :src="club.logo_image || club.cover_image"
+            fallback="/static/tennis.jpg"
           /><view
             ><text class="page-title compact">{{ club.name }}</text
             ><text class="muted">{{ club.address }}</text
@@ -82,52 +82,20 @@ function callClub() {
               club.contact_phone
             }}</text></view
           ></view
-        ><view class="profile-stats"
-          ><view
-            ><text>{{ stats?.total_venues || club.venues?.length || 0 }}</text
-            ><text>场地数</text></view
-          ><view
-            ><text>{{ stats?.today_orders || stats?.today_bookings || 0 }}</text
-            ><text>今日订单</text></view
-          ><view
-            ><text>¥{{ stats?.today_revenue || 0 }}</text
-            ><text>今日收入</text></view
-          ></view
-        ><view class="section-head row between"
-          ><text class="section-title"
-            >场地管理（{{ club.venues?.length || 0 }}）</text
-          ><text class="link" @click="go('/pages/publish/venue-manage')"
-            >+ 添加场地</text
-          ></view
-        ><view class="menu-list"
-          ><wd-cell
-            v-for="venue in club.venues || []"
-            :key="venue.id"
-            :title="venue.name"
-            :label="`¥${venue.price_per_hour}/小时 · ${statusNames[venue.status] || '状态待确认'}`"
-            is-link
-            @click="
-              uni.navigateTo({
-                url: `/pages/publish/venue-manage?club_id=${club.id}&venue_id=${venue.id}`,
-              })
-            "
-          /><text v-if="!club.venues?.length" class="muted empty-hint"
-            >暂无场地，点击上方添加</text
-          ></view
         ><view class="menu-list section-head"
           ><wd-cell
             title="编辑俱乐部"
             is-link
             @click="go('/pages/publish/club-create')" /><wd-cell
-            title="场地管理"
+            title="社群详情与成员"
             is-link
-            @click="go('/pages/admin/venue-manage')" /><wd-cell
-            title="订单管理"
+            @click="uni.navigateTo({url:'/pages/common/club-detail?id='+club.id})" /><wd-cell
+            title="历史预约订单"
             is-link
             @click="go('/pages/admin/order-manage')" /><wd-cell
-            title="经营统计"
+            title="本人活动提现"
             is-link
-            @click="go('/pages/admin/dashboard')" /><wd-cell
+            @click="go('/pages/profile/activity-wallet')" /><wd-cell
             title="创建赛事"
             is-link
             @click="

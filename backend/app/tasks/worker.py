@@ -20,6 +20,7 @@ celery_app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
     beat_schedule={
+        "maintain-activity-transfers": {"task": "app.tasks.tasks.maintain_activity_transfers", "schedule": 60.0},
         "expire-price-rules": {"task": "app.tasks.tasks.expire_price_rules", "schedule": 60.0},
         "maintain-tournaments": {"task": "app.tasks.tasks.maintain_tournaments", "schedule": 60.0},
         "maintain-booking-payments": {"task": "app.tasks.tasks.maintain_booking_payments", "schedule": 60.0},

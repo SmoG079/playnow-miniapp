@@ -1,3 +1,5 @@
+from datetime import date as _fixture_date
+TEST_YEAR = _fixture_date.today().year + 1
 from datetime import date, datetime, timedelta
 import pytest
 from app.models.models import User, MatchPost, Club
@@ -23,25 +25,25 @@ async def post(db,city,day,**fields):
 
 @pytest.mark.asyncio
 async def test_city_isolation_empty_city_and_dates_before_pagination(db):
-    old=await post(db,'扬州市','2026-11-01')
-    far=await post(db,'扬州市','2026-12-01')
-    other=await post(db,'南京市','2026-11-01')
-    legacy=await post(db,None,'2026-11-01')
-    stored=await db.get(MatchPost,legacy.id);stored.preferred_date=date(2026,10,1);await db.flush()
+    old=await post(db,'扬州市',f'{TEST_YEAR}-11-01')
+    far=await post(db,'扬州市',f'{TEST_YEAR}-12-01')
+    other=await post(db,'南京市',f'{TEST_YEAR}-11-01')
+    legacy=await post(db,None,f'{TEST_YEAR}-11-01')
+    stored=await db.get(MatchPost,legacy.id);stored.preferred_date=date(TEST_YEAR,10,1);await db.flush()
     assert [x.id for x in (await listing(db,page_size=1)).items]==[old.id]
     assert [x.id for x in (await listing(db,page_size=1,sort_by='date_desc')).items]==[far.id]
     assert (await listing(db)).total==2
     assert [x.id for x in (await listing(db,city='南京市')).items]==[other.id]
     assert (await listing(db,city=None)).total==0
-    assert [x.id for x in (await listing(db,on_date=date(2026,12,1))).items]==[far.id]
-    assert (await listing(db,on_date=date(2026,12,1))).total==1
+    assert [x.id for x in (await listing(db,on_date=date(TEST_YEAR,12,1))).items]==[far.id]
+    assert (await listing(db,on_date=date(TEST_YEAR,12,1))).total==1
     assert (await db.get(MatchPost,legacy.id)) is not None
 
 @pytest.mark.asyncio
 async def test_type_and_distance_order_applied_before_pagination(db):
-    near=await post(db,'扬州市','2026-11-01',latitude=32.4,longitude=119.4)
-    far=await post(db,'扬州市','2026-11-01',latitude=32.9,longitude=119.9)
-    unknown=await post(db,'扬州市','2026-11-01')
+    near=await post(db,'扬州市',f'{TEST_YEAR}-11-01',latitude=32.4,longitude=119.4)
+    far=await post(db,'扬州市',f'{TEST_YEAR}-11-01',latitude=32.9,longitude=119.9)
+    unknown=await post(db,'扬州市',f'{TEST_YEAR}-11-01')
     result=await listing(db,sort_by='distance',lat=32.4,lng=119.4,page_size=1)
     assert [x.id for x in result.items]==[near.id] and result.total==3
     assert result.items[0].distance==0
@@ -52,12 +54,12 @@ async def test_type_and_distance_order_applied_before_pagination(db):
 @pytest.mark.asyncio
 async def test_tournaments_city_and_shanghai_day_filter(db):
     owner=await db.get(User,2)
-    for city,start in [('扬州市',datetime(2026,11,1,16,30)),('南京市',datetime(2026,11,1,16,30)),('扬州市',datetime(2026,11,2,18))]:
+    for city,start in [('扬州市',datetime(TEST_YEAR,11,1,16,30)),('南京市',datetime(TEST_YEAR,11,1,16,30)),('扬州市',datetime(TEST_YEAR,11,2,18))]:
         await tournaments.create_tournament(TournamentCreate(city=city,club_id=1,title=city,address='网球场',
             start_time=start,end_time=start+timedelta(hours=2),max_participants=2),owner,db)
     from app.services.activity_discovery import list_activities
     result=await list_activities(db=db,activity_type='tournament',city='扬州市',sort_by='date_desc',lat=None,lng=None,
-        page=1,page_size=1,on_date=date(2026,11,2))
+        page=1,page_size=1,on_date=date(TEST_YEAR,11,2))
     assert result['total']==1 and result['items'][0]['city']=='扬州市'
 
 @pytest.mark.parametrize('province,city,district,expected',[
@@ -69,7 +71,7 @@ def test_provider_city_normalization(province,city,district,expected):
 @pytest.mark.asyncio
 async def test_manual_city_selection_does_not_require_map_provider(db):
     from fastapi import HTTPException
-    await post(db,'扬州市','2026-11-01')
+    await post(db,'扬州市',f'{TEST_YEAR}-11-01')
     assert (await listing(db)).total==1
     with pytest.raises(HTTPException) as err: await listing(db,sort_by='distance')
     assert err.value.status_code==422
@@ -122,10 +124,10 @@ async def test_courts_in_same_club_are_independent_and_override_client_location(
     for v in (first,second):
         order=BookingOrder(user_id=owner.id,club_id=1,venue_id=v.id,order_no="location-test-"+str(v.id),amount=10,status=OrderStatus.paid,business_type='booking')
         db.add(order); await db.flush()
-        p=await post(db,'伪造城市','2026-11-01',venue_id=v.id,booking_id=order.id,latitude=1,longitude=1)
+        p=await post(db,'伪造城市',f'{TEST_YEAR}-11-01',venue_id=v.id,booking_id=order.id,latitude=1,longitude=1)
         assert p.city==v.city and p.latitude==v.latitude
         records.append(p)
-        t=await tournaments.create_tournament(TournamentCreate(city='伪造城市',latitude=1,longitude=1,club_id=1,venue_id=v.id,title='比赛',address='假地址',start_time=datetime(2026,11,1),end_time=datetime(2026,11,2),max_participants=2),owner,db)
+        t=await tournaments.create_tournament(TournamentCreate(city='伪造城市',latitude=1,longitude=1,club_id=1,venue_id=v.id,title='比赛',address='假地址',start_time=datetime(TEST_YEAR,11,1),end_time=datetime(TEST_YEAR,11,2),max_participants=2),owner,db)
         detail=await tournaments.get_tournament(t['id'],owner,db)
         assert detail['address']==v.address and detail['city']==v.city
     assert [p.id for p in (await listing(db,city='扬州市')).items]==[records[0].id]

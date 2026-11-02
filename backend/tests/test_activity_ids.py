@@ -31,7 +31,7 @@ def test_alembic_discovers_shared_id_revision_without_loading_database(tmp_path)
         cwd=tmp_path, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "20261020_activity_payment (head)"
+    assert result.stdout.strip() == "20261102_activity_wallet (head)"
 
 
 @pytest_asyncio.fixture
@@ -61,7 +61,7 @@ async def database(tmp_path, monkeypatch):
 async def create(db, kind):
     user = await db.get(User, 1)
     if kind == "post":
-        return (await posts.create_post(PostCreate(title="约球", price=0, preferred_date="2026-11-01", preferred_start="09:00", preferred_end="11:00", max_players=3), user, db)).id
+        return (await posts.create_post(PostCreate(title="约球", price=0, preferred_date=(datetime.now()+timedelta(days=2)).date(), preferred_start="09:00", preferred_end="11:00", max_players=3), user, db)).id
     result = await tournaments.create_tournament(TournamentCreate(
         address="测试网球场",
         club_id=1, title="比赛", start_time=datetime.utcnow()+timedelta(days=1),

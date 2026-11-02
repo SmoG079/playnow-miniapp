@@ -21,7 +21,7 @@ async function retry(x: any) {
 <template>
   <AppShell back title="分账记录"
     ><view class="content list-content"
-      ><view v-for="x in items" :key="x.id" class="record-card"
+      ><text class="muted">场地分账暂未开放，以下仅展示历史记录。</text><view v-for="x in items" :key="x.id" class="record-card"
         ><view class="row between"
           ><text class="strong">{{ x.order_no }}</text
           ><text class="tag">{{
@@ -30,7 +30,7 @@ async function retry(x: any) {
         ><text class="muted small"
           >订单 ¥{{ x.total_amount }} · 俱乐部 ¥{{ x.club_amount }}</text
         ><text v-if="x.fail_reason" class="error-text">{{ x.fail_reason }}</text
-        ><wd-button v-if="x.status === 'failed'" size="small" @click="retry(x)"
+        ><wd-button v-if="false" size="small" @click="retry(x)"
           >重试</wd-button
         ></view
       ><wd-empty v-if="!items.length" tip="暂无分账记录" /></view

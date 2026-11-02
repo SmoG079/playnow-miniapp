@@ -50,7 +50,7 @@ function goClub() { openForm("/pages/publish/club-create"); }
           <view class="entry-icon"><wd-icon name="company" size="26px" /></view>
           <view class="entry-copy">
             <text class="entry-title">创建俱乐部</text>
-            <text class="entry-description">让球友相聚，管理你的俱乐部和球场。</text>
+            <text class="entry-description">让球友相聚，组织属于你们的网球社群。</text>
           </view>
           <wd-icon name="arrow-right" size="16px" color="#a0ada5" />
         </button>

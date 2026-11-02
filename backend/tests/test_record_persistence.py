@@ -177,7 +177,7 @@ async def test_club_data_round_trip_and_edit_preserves_other_fields(db):
     db.add(PrivateUpload(id=filename, user_id=user.id, backend="local", content_type="application/pdf"))
     await db.flush()
     created = await clubs.create_club(ClubCreate(
-        name="新俱乐部", sport_types=["tennis"], rules="请穿网球鞋",
+        city="南京市", name="新俱乐部", sport_types=["tennis"], rules="请穿网球鞋",
         description="介绍", contact_phone="13800138000", address="地址",
         opening_time="09:30", closing_time="20:30", images=["https://test/image.png"],
         documents=[{"name": "规则", "url": f"{get_settings().PUBLIC_BASE_URL}/api/v1/media/doc/{filename}"}],
