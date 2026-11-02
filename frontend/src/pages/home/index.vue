@@ -119,7 +119,7 @@ onReachBottom(loadMore);
         <view class="filter-line filter-secondary">
           <ChoicePicker title="NTRP 等级" :range="levelOptions" :value="ntrp" @change="levelChange"><view class="filter-control" :class="{'filter-selected':ntrp>0}"><text>{{ ntrp ? 'NTRP '+levelOptions[ntrp] : 'NTRP 等级' }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
           <button class="my-level filter-control" @click="myLevel">适合我的级别</button>
-          <button class="view-tournaments filter-control" :class="{selected:mode===4}" @click="viewTournaments">查看比赛</button>
+          <button class="view-tournaments filter-control" :class="{selected:typeValues[mode]==='tournament'}" @click="viewTournaments">查看比赛</button>
         </view>
       </view>
       <ActivityCard v-for="item in visibleItems" :key="item.kind+'-'+item.id" :item="item" :kind="item.kind" @open="openPage('/pages/common/'+(item.kind==='tournament'?'tournament-detail':'post-detail')+'?id='+item.id)" />
