@@ -96,6 +96,9 @@ async def test_mysql_serializes_last_seat_and_draw_versions(operation, monkeypat
                 await api.register_tournament(
                     event_id, RegistrationCommand(), users[2], db
                 )
+                for attendee in (await db.scalars(select(TournamentRegistration).where(TournamentRegistration.tournament_id == event_id))).all():
+                    attendee.checked_in_at = datetime.utcnow()
+                await db.flush()
                 await api.close_registration(event_id, users[0], db)
             await db.commit()
         barrier = asyncio.Event()

@@ -15,6 +15,7 @@ import {drawBlockReason} from '../src/domain/draw-readiness';
 import type {Tournament} from '../src/services/tournaments';
 describe('draw eligibility',()=>{
   const fixture={config:{discipline:'singles',group_count:1},draw_block_reason:'至少需要 2 名符合抽签条件的选手，当前 1 名',registrations:[{status:'confirmed',admission:'active',approval:'approved',payment:'none'}]} as Tournament;
+  it('requires attendance before drawing',()=>expect(drawBlockReason({...fixture,unchecked_count:2})).toContain('2位参赛者未签到'));
   it('uses the server eligibility decision',()=>expect(drawBlockReason(fixture)).toContain('当前 1 名'));
   it('prefers server pairing validation',()=>expect(drawBlockReason({...fixture,draw_block_reason:'第1组尚有未配对人员'})).toContain('未配对'));
   it('does not evaluate initial roster in knockout stage',()=>expect(drawBlockReason({...fixture,draw_stage:'knockout'})).toBe(''));

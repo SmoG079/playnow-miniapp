@@ -72,6 +72,7 @@ export interface Match {
   scheduled_end?: string;
 }
 export interface Registration {
+  checked_in_at?: string | null;
   user_ntrp_level?: number | null;
   entry_team_id?: number | null;
   entry_seat?: number | null;
@@ -92,6 +93,8 @@ export interface Registration {
   refund_status?: string;
 }
 export interface Tournament {
+  checkin_open?: boolean;
+  unchecked_count?: number;
   organizer_nickname?: string | null;
   organizer_avatar?: string | null;
   club_avatar?: string | null;

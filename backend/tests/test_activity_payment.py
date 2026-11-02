@@ -120,6 +120,9 @@ async def test_offline_tournament_admission_draw_and_cancel_without_orders(db,mo
     assert not (await db.scalars(select(RefundRecord))).all()
     await tournaments.register_tournament(tid,RegistrationCommand(),await db.get(User,'5'),db)
     if approval:await tournaments.review(tid,reg.id,ReviewCommand(approved=True,reason='通过'),owner,db)
+    for attendee in (await db.scalars(select(TournamentRegistration).where(TournamentRegistration.tournament_id==tid))).all():
+        if life.eligible(attendee): attendee.checked_in_at=life.now()
+    await db.flush()
     await tournaments.close_registration(tid,owner,db)
     await tournaments.create_draw(tid,DrawCommand(expected_version=0,idempotency_key='offline-draw'),owner,db)
 

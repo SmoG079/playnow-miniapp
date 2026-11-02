@@ -451,6 +451,7 @@ async def get_tournament(
             user_avatar=avatar,
             user_ntrp_level=float(level) if level is not None else None,
             status=_v(r.status),
+            checked_in_at=r.checked_in_at,
             partner_user_id=r.partner_user_id,
             requested_group=r.requested_group,
             entry_team_id=r.entry_team_id, entry_seat=r.entry_seat,
@@ -490,6 +491,7 @@ async def get_tournament(
                     user_avatar=avatar,
             user_ntrp_level=float(level) if level is not None else None,
                     status=_v(r.status),
+            checked_in_at=r.checked_in_at,
                     partner_user_id=r.partner_user_id,
                     requested_group=r.requested_group,
                 )
@@ -508,6 +510,8 @@ async def get_tournament(
         if venue:
             data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
     data.update((await organizer_profiles(db, [t.id])).get(t.id, {}))
+    data["checkin_open"] = checkin_open(t)
+    data["unchecked_count"] = sum(life.eligible(r) and not r.checked_in_at for r, *_ in rows)
     data["auto_title"] = t.auto_title
     data["organizer_user_id"] = t.user_id
     if not t.club_id:
@@ -651,6 +655,8 @@ async def get_tournament(
         .all()
         if manage or x.published_at
     ]
+    if data["unchecked_count"]:
+        data["draw_block_reason"] = f"还有{data['unchecked_count']}位参赛者未签到"
     return data
 
 
@@ -675,6 +681,46 @@ async def get_draw(
         matches=[match_dict(m) for m in ms],
         rankings=await rankings(db, d, ms),
     )
+
+
+def checkin_open(t):
+    return (_v(t.status) not in ("finished", "cancelled")
+            and t.start_time - timedelta(minutes=30) <= life.now() < t.end_time)
+
+
+@router.get("/{ident}/registration-conflicts")
+async def registration_conflicts(ident: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    t = await db.get(Tournament, ident)
+    if not t:
+        raise HTTPException(404, "赛事不存在")
+    rows = (await db.execute(select(Tournament).join(TournamentRegistration,
+        TournamentRegistration.tournament_id == Tournament.id).where(
+        TournamentRegistration.user_id == user.id,
+        TournamentRegistration.admission.in_(("active", "review", "waitlist")),
+        TournamentRegistration.status != TournamentRegStatus.cancelled,
+        Tournament.id != ident, Tournament.status.notin_(("finished", "cancelled")),
+        Tournament.start_time < t.end_time, Tournament.end_time > t.start_time))).scalars().all()
+    return [dict(id=x.id, title=x.title, start_time=x.start_time, end_time=x.end_time) for x in rows]
+
+
+@router.post("/{ident}/registrations/{registration_id}/check-in")
+async def check_in(ident: int, registration_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    t = await life.locked_event(db, ident)
+    r = await db.get(TournamentRegistration, registration_id)
+    if not r or r.tournament_id != ident:
+        raise HTTPException(404, "报名不存在")
+    if r.user_id != user.id:
+        await admin(db, t, user)
+    if not life.eligible(r) or _v(t.status) in ("finished", "cancelled"):
+        raise HTTPException(409, "仅有效已确认报名可以签到")
+    if r.checked_in_at:
+        return dict(checked_in_at=r.checked_in_at)
+    if not checkin_open(t):
+        raise HTTPException(409, "签到时间为开赛前30分钟至赛事结束")
+    r.checked_in_at = life.now()
+    r.checked_in_by = user.id
+    life.audit(db, t, user, "checked_in", {"registration_id":r.id})
+    return dict(checked_in_at=r.checked_in_at)
 
 
 @router.post("/{ident}/register")
@@ -717,6 +763,8 @@ async def register_tournament(
     r.admission = "review"
     r.status = TournamentRegStatus.registered
     r.created_at = life.now()
+    r.checked_in_at = None
+    r.checked_in_by = None
     r.review_reason = None
     await db.flush()
     if cfg and cfg.pairing == "fixed":
@@ -1084,6 +1132,8 @@ async def create_draw(
         and (not req.reason.strip() or (played and not req.archive_results))
     ):
         raise HTTPException(409, "重抽须填写原因；已有结果时须明确确认归档旧结果")
+    if any(life.eligible(r) and not r.checked_in_at for r in regs):
+        raise HTTPException(409, "请先完成全部参赛者签到，再抽签")
     seed = secrets.token_hex(16)
     snapshot = {}
     origins = {}

@@ -310,6 +310,8 @@ async function join() {
     uni.showToast({ title: "请选择报名性别", icon: "none" });
     return;
   }
+  const conflicts = await request<{id:number; title:string; start_time:string; end_time:string}[]>(`/tournaments/${id.value}/registration-conflicts`);
+  if (conflicts.length && !(await confirm("时间冲突：\n" + conflicts.map(x => `${x.title}（${localTime(x.start_time)} — ${localTime(x.end_time)}）`).join("\n") + "\n仍要报名吗？"))) return;
   const text = registrationNotice(t.value.entry_fee, t.value.payment_method || "online");
   if (!(await confirm(text))) return;
   const r = await run("register", {
@@ -673,6 +675,8 @@ function tie() {
             :model-value="mine.requested_group || 0" title="更换参赛组" :disabled="busy"
             :options="[{value:0,label:'自动分组'},...(t.registration_groups || []).map(g=>({value:g.group_no,label:'第 '+g.group_no+' 组',description:g.reserved+'/'+g.capacity+' 人已占位'}))]"
             @change="changeGroup(Number($event))" />
+          <text>{{ mine.checked_in_at ? "已签到：" + localTime(mine.checked_in_at) : "未签到（开赛前30分钟开放）" }}</text>
+          <wd-button v-if="t.checkin_open && mine.status === 'confirmed' && mine.admission === 'active' && !mine.checked_in_at" size="small" :loading="busy" @click="run(`registrations/${mine.id}/check-in`)">签到</wd-button>
           <text>我的报名：{{ stateNames[mine.admission || ""] }}</text
           ><text class="muted"
             >{{ stateNames[mine.approval || ""] }} ·
@@ -818,8 +822,9 @@ function tie() {
             ></view
           >
           <wd-button v-if="cancelledRegistrations.length" size="small" variant="text" @click="showCancelledRecords=!showCancelledRecords">{{ showCancelledRecords ? '收起取消记录' : '查看取消记录' }}（{{ cancelledRegistrations.length }}）</wd-button>
+          <text class="muted">未签到：{{ t.unchecked_count || 0 }} 人；全部参赛者签到后可抽签</text>
           <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
-            ><view class="registration-profile"><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view><text class="muted small">{{ stateNames[r.admission || ""] }}</text></view><text class="muted"
+            ><text>{{ r.checked_in_at ? "已签到" : "未签到" }}</text><wd-button v-if="t.checkin_open && r.status === 'confirmed' && r.admission === 'active' && !r.checked_in_at" size="small" :loading="busy" @click="run(`registrations/${r.id}/check-in`)">代签到</wd-button><view class="registration-profile"><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view><text class="muted small">{{ stateNames[r.admission || ""] }}</text></view><text class="muted"
               >{{ stateNames[r.approval || ""] }} ·
               {{ stateNames[r.payment || ""] }}</text
             ><view class="choices"

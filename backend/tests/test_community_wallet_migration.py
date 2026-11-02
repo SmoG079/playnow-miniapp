@@ -33,6 +33,9 @@ def test_community_wallet_upgrade_preserves_receipts_and_members():
             orders=table('booking_orders')
             for i,tx in enumerate(('real-wallet-tx','dev_placeholder',None),1):
                 c.execute(orders.insert().values(id=i,order_no='migrate-'+str(i),business_type='post',post_id=701,user_id='2',amount=214,status='paid',slot_ids=[],wx_transaction_id=tx))
+            c.execute(table('activities').insert().values(id=702,kind='tournament',created_at=datetime(2026,1,1)))
+            c.execute(table('tournaments').insert().values(id=702,user_id='1',title='历史比赛',start_time=datetime(2027,1,1),end_time=datetime(2027,1,2),lock_venue=False,current_participants=1,max_participants=2,entry_fee=0,prizes=[],config={},auto_title=False,registration_closed=False,roster_frozen=False,draw_version=0,published_version=0,status='open'))
+            c.execute(table('tournament_registrations').insert().values(id=1,tournament_id=702,user_id='2',status='confirmed',approval='approved',payment='none',admission='active',requested_group=0))
             c.commit()
             before=c.execute(sa.text('SELECT id,amount,status,wx_transaction_id FROM booking_orders ORDER BY id')).all()
             command.upgrade(cfg,'head');c.commit();command.upgrade(cfg,'head');c.commit()
@@ -41,7 +44,8 @@ def test_community_wallet_upgrade_preserves_receipts_and_members():
             assert c.execute(sa.text('SELECT club_id,user_id FROM community_members')).one()==(1,'1')
             assert c.scalar(sa.text('SELECT COUNT(*) FROM activity_transfers'))==0
             assert c.scalar(sa.text('SELECT COUNT(*) FROM activity_withdrawals'))==0
-            assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='20261102_activity_wallet'
+            assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='20261102_checkin'
+            assert c.execute(sa.text('SELECT tournament_id,user_id,status,checked_in_at,checked_in_by FROM tournament_registrations WHERE id=1')).one()==(702,'2','confirmed',None,None)
             inspector=sa.inspect(c)
             assert any(f['constrained_columns']==['order_id'] for f in inspector.get_foreign_keys('activity_earnings'))
             assert any(f['constrained_columns']==['user_id'] for f in inspector.get_foreign_keys('community_members'))

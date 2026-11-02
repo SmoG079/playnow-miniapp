@@ -76,9 +76,15 @@ async def event(db, people=8, cfg=None, fee=0):
 
 
 async def register(db, tid, uid, **kwargs):
-    return await api.register_tournament(
+    result = await api.register_tournament(
         tid, RegistrationCommand(**kwargs), await db.get(User, uid), db
     )
+    # Existing bracket fixtures represent players already present at the venue.
+    reg = await db.get(TournamentRegistration, result["registration_id"])
+    reg.checked_in_at = life.now()
+    reg.checked_in_by = str(uid)
+    await db.flush()
+    return result
 
 
 @pytest.mark.asyncio

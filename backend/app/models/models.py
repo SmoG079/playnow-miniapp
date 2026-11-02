@@ -493,6 +493,8 @@ class TournamentRegistration(Base):
     entry_seat = Column(Integer)
     partner_user_id = Column(String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql"), ForeignKey("users.id"))
     invite_token = Column(String(64), unique=True)
+    checked_in_at = Column(DateTime, nullable=True)
+    checked_in_by = Column(String(64), nullable=True)
     seat_expires_at = Column(DateTime)
     review_reason = Column(String(256))
     created_at = Column(DateTime, default=datetime.utcnow)
