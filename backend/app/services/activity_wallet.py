@@ -112,6 +112,8 @@ async def snapshot(db, owner_id, lock=False):
         current_unlock = activity_unlock(activity,order.business_type)
         # Never unlock earlier by shortening the activity after receiving money.
         unlock = max(earning.unlock_at,current_unlock) if earning.unlock_at and current_unlock else None
+        if earning.id in s.ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS:
+            unlock = earning.created_at
         end = current_unlock - timedelta(hours=24) if current_unlock else None
         gross = cents(order.amount)
         rate = earning.fee_rate or s.ACTIVITY_PAYMENT_FEE_RATE

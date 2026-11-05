@@ -27,6 +27,22 @@ async def receipt(db,amount='100.00',hours=25,suffix='1',transaction='real-tx'):
     return order,post
 
 @pytest.mark.asyncio
+async def test_manual_unlock_only_selected_receipt_preserves_refunds_and_ownership(db,enabled,monkeypatch):
+    order,_=await receipt(db,hours=0,suffix='manual')
+    await receipt(db,hours=0,suffix='still-locked')
+    earning=await db.scalar(select(ActivityEarning).where(ActivityEarning.order_id==order.id))
+    monkeypatch.setattr(enabled,'ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS',[earning.id])
+    data=await wallet.overview(db,'1')
+    assert data['available_cents']==9940 and data['locked_cents']==9940
+    assert (await wallet.overview(db,'2'))['available_cents']==0
+    monkeypatch.setattr(enabled,'ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS',[])
+    assert (await wallet.overview(db,'1'))['available_cents']==0
+    monkeypatch.setattr(enabled,'ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS',[earning.id])
+    order.status=OrderStatus.refunding
+    await db.flush()
+    assert (await wallet.overview(db,'1'))['available_cents']==0
+
+@pytest.mark.asyncio
 async def test_real_receipts_only_unlock_after_24_hours_and_fee_once(db,enabled,monkeypatch):
     order,post=await receipt(db,hours=23)
     await wallet.capture(db,order)

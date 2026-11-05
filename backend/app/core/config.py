@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     ACTIVITY_TRANSFER_MAX_CENTS: int = 20000
     ACTIVITY_TRANSFER_DAILY_CENTS: int = 20000
     ACTIVITY_TRANSFER_LIMITS_VERIFIED: bool = False
+    # Explicitly approved existing receipts only; never a global unlock switch.
+    ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS: list[int] = []
 
     # Booking
     BOOKING_LOCK_TTL_SECONDS: int = 600
