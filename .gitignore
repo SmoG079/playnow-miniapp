@@ -35,6 +35,12 @@ backend/ssl/*.key
 
 # Temp files
 需求.txt
+.qa-artifacts/
+tmp-ui-smoke/
+
+# Downloaded WeChat Pay knowledge base and local sync state
+.agents/skills/wechatpay-payment-integration/assets/微信支付官网文档/
+.agents/skills/wechatpay-payment-integration/scripts/.wechatpay-resource-sync-state.json
 
 # Logs
 *.log

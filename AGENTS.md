@@ -31,6 +31,8 @@ PlayNow 是面向网球俱乐部的微信小程序，提供场地预约、约球
 ## 前端约定
 
 - 路由和原生 tabBar 在 `frontend/src/pages.json`。保留首页、订场、发布、消息、我的五个入口及 `frontend/src/static/tabbar/` 图标；不要无故改为 custom tabBar。
+- **默认启动页必须是 `pages/home/index`。** uni-app 将 `pages` 数组第一项作为默认启动页；新增页面应追加到首页之后，不得插到首页之前。若设置 `entryPagePath`，也必须指向首页，除非产品明确要求更改默认入口。2026-11-02 新增活动提现页时曾将其插到首项，导致应用默认打开活动提现，不能重复此问题。
+- 修改 `frontend/src/pages.json` 后，除常规前端检查外，还要核对实际小程序构建产物 `frontend/dist/build/mp-weixin/app.json`：`pages[0]` 必须为 `pages/home/index`，`entryPagePath` 若存在也必须为该值。不要只检查 tabBar 的首页位置或通过指定页面预览判断启动页正确；验收时还需以默认入口冷启动确认。
 - 全局使用自定义导航栏。复用 `frontend/src/components/AppShell.vue`，处理状态栏与安全区；新增页面同时维护路由，增加页面较多时评估分包和实际包体积。
 - Wot UI 的 easycom 规则指向 `@wot-ui/ui/components/`，组件无需逐个手动导入。相关 hook 从已安装的 `@wot-ui/ui` 包导入，不照搬 `uni_modules` 路径。
 - **生成或修改 Wot UI 组件代码前，必须阅读 `.agents/skills/wot-ui-v2/SKILL.md`，并查询项目配置的 `wot-ui` MCP 服务获取版本匹配的 API 和示例。** CLI 查询可辅助排查，但不能省略项目要求的 MCP 查询。服务不可用时明确说明限制，不凭记忆猜测 API。

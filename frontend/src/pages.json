@@ -7,9 +7,9 @@
     }
   },
   "pages": [
+    { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/profile/activity-wallet" },
     { "path": "pages/common/club-detail" },
-    { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/booking/club-list" },
     { "path": "pages/booking/select" },
     { "path": "pages/booking/venue-detail" },
