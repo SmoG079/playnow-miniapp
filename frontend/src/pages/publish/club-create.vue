@@ -134,9 +134,9 @@ async function save() {
     ><view class="content publish-content"
       >
       <text class="field-label">所在城市 *</text><wd-input v-model="form.city" placeholder="例如：上海市" /><text class="field-label">俱乐部名称 *</text
-      ><wd-input v-model="form.name" /><text class="field-label"
+      ><wd-input v-model="form.name" placeholder="例如：运河网球俱乐部" /><text class="field-label"
         >联系电话 *</text
-      ><wd-input v-model="form.contact_phone" type="number" /><text
+      ><wd-input v-model="form.contact_phone" type="number" placeholder="用于球友联系组织者" /><text
         class="field-label"
         >具体地点（选填）</text
       ><view class="picker-field" @click="chooseLocation"
@@ -146,6 +146,7 @@ async function save() {
       <text class="field-label">介绍 *</text
       ><wd-textarea
         v-model="form.description"
+        placeholder="介绍常规活动、适合的级别和加入方式"
         :maxlength="1000"
         show-word-limit
       /><text class="field-label">俱乐部 LOGO（选填）</text><view class="image-grid"><Photo v-if="form.logo_image" :src="form.logo_image" round width="72px" height="72px" @click="form.logo_image = ''" /><wd-button size="small" variant="plain" :disabled="imageUploading" @click="chooseLogo">上传 LOGO</wd-button></view><text class="field-label">社群宣传图（选填，最多9张）</text

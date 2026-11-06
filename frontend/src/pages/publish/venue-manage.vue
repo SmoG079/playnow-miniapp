@@ -90,7 +90,7 @@ async function save() {
       ><wd-input v-model="form.name" placeholder="例如 1 号室外硬地" /><text
         class="field-label"
         >每小时价格 *</text
-      ><wd-input v-model="form.price_per_hour" type="digit" /><text
+      ><wd-input v-model="form.price_per_hour" type="digit" placeholder="填写每小时价格（元）" /><text
         class="field-label"
         >最大容量</text
       ><wd-input-number v-model="form.max_capacity" :min="1" :max="30" /><text

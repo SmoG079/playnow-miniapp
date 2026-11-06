@@ -486,8 +486,8 @@ async function save() {
         >
       </wd-collapse></view>
       <view class="publish-action"
-        ><view class="creation-label"><wd-button block variant="plain" :disabled="!draftReady || loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
-        ><FieldHelp title="保存草稿" content="草稿保存在当前设备，退出后可继续填写。" /></view><wd-button
+        ><wd-button block variant="plain" :disabled="!draftReady || loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button
+        ><wd-button
           block
           variant="plain"
           :loading="loading || coverUploading || locationSelecting"
@@ -498,7 +498,7 @@ async function save() {
           :loading="loading || coverUploading || locationSelecting"
           @click="save"
           >{{ editId ? "保存赛事" : "发布赛事" }}</wd-button
-        ></view
+        ><text class="draft-note">草稿保存在当前设备，退出后可继续填写</text></view
       >
     </view>
     <wd-popup
@@ -540,7 +540,7 @@ async function save() {
 }
 .muted {
   display: block;
-  color: #888;
+  color: var(--playnow-muted);
   font-size: 12px;
   margin: 8px 0;
 }
@@ -562,7 +562,7 @@ async function save() {
 </style>
 
 <style scoped>
-.prize-editor { margin-bottom:16px; padding:12px; border:1px solid #e5e8e5; border-radius:12px; }
+.prize-editor { margin-bottom:16px; padding:12px; border:1px solid var(--playnow-card-border); border-radius:12px; }
 :deep(.prize-textarea) { min-height:140px; }
 </style>
 

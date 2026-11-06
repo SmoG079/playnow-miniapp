@@ -110,13 +110,13 @@ function next() {
 .rating-notice, .rating-intro { display: block; font-size: 12px; line-height: 1.7; color: #7a867f; margin-bottom: 12px; }
 .rating-intro { color: #334e3e; font-size: 14px; }
 .rating-card { background: #f3f5f2; border: 1px solid transparent; border-radius: 12px; margin-bottom: 10px; }
-.rating-card.chosen { background: #e7f2ea; border-color: #147553; }
+.rating-card.chosen { background: #e7f2ea; border-color: var(--playnow-brand); }
 .rating-level-row { display: flex; align-items: center; gap: 12px; }
 .rating-level { flex-shrink: 0; width: 38px; height: 42px; line-height: 42px; text-align: center; background: #fff; border-radius: 9px; font-size: 25px; font-weight: 700; }
 .rating-level-copy { flex: 1; min-width: 0; text-align: left; }
 .rating-name { display: block; font-size: 17px; font-weight: 650; margin-bottom: 4px; }
 .rating-description { display: block; font-size: 13px; line-height: 1.6; white-space: normal; text-align: left; }
-.rating-progress { display: block; color: #147553; font-size: 13px; margin-bottom: 8px; }
+.rating-progress { display: block; color: var(--playnow-brand); font-size: 13px; margin-bottom: 8px; }
 .rating-question { display: block; font-size: 19px; font-weight: 650; margin-bottom: 16px; }
 .rating-footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px 22px; border-top: 1px solid #edf0ed; }
 </style>

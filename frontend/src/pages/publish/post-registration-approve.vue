@@ -58,8 +58,8 @@ async function review(r: any, status: string) {
 .registration-person{display:flex;align-items:center;justify-content:flex-start;gap:10px;text-align:left}
 .registration-identity{flex:1;min-width:0}
 .registration-name{flex:1;min-width:0;line-height:1.5;overflow-wrap:anywhere}
-.registration-status{flex-shrink:0;font-size:12px;color:#839087}
-.status-approved{color:#159660}
+.registration-status{flex-shrink:0;font-size:12px;color:var(--playnow-muted)}
+.status-approved{color:var(--playnow-brand)}
 .status-pending{color:#b27b21}
 .registration-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 </style>

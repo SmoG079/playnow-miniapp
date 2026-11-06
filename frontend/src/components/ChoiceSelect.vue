@@ -17,5 +17,5 @@ function select(value:ChoiceValue | ChoiceValue[]) { if(Array.isArray(value))ret
   </view>
 </template>
 <style scoped>
-.choice-select{min-width:0}.choice-field{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:60px;padding:12px 0;box-sizing:border-box;border-bottom:1px solid #edf1ee}.choice-field-label{font-size:14px;font-weight:600;color:#385444;flex-shrink:0}.choice-field-value{display:flex;align-items:center;justify-content:flex-end;gap:9px;min-width:0;font-size:14px;line-height:22px;color:#203c2b}.choice-field-value text{overflow-wrap:anywhere;text-align:right}.is-disabled .choice-trigger{opacity:.55}
+.choice-select{min-width:0}.choice-field{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:60px;padding:12px 0;box-sizing:border-box;border-bottom:1px solid #edf1ee}.choice-field-label{font-size:14px;font-weight:600;color:#385444;flex-shrink:0}.choice-field-value{display:flex;align-items:center;justify-content:flex-end;gap:9px;min-width:0;font-size:14px;line-height:22px;color:var(--playnow-text)}.choice-field-value text{overflow-wrap:anywhere;text-align:right}.is-disabled .choice-trigger{opacity:.55}
 </style>

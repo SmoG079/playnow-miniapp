@@ -67,8 +67,8 @@ async function read(m: any) {
 </template>
 <style scoped>
 .chat-stream {
-  padding: 12px;
-  background: #f5f7f6;
+  padding: 0 var(--playnow-gutter);
+  background: var(--playnow-bg);
   min-height: 100%;
 }
 .bubble-row {
@@ -79,19 +79,18 @@ async function read(m: any) {
 .bubble {
   width:100%;
   min-width:0;
-  padding: 11px 13px;
+  padding: 18px 16px;
   border-radius: var(--playnow-card-radius);
   border: 1px solid var(--playnow-card-border);
   border-left:3px solid transparent;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(20, 117, 83, 0.06);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 .bubble.unread {
   background: #eaf3ee;
-  border-left: 3px solid #147553;
+  border-left: 3px solid var(--playnow-brand);
 }
 .bubble-title {
   font-size: 15px;
@@ -104,7 +103,7 @@ async function read(m: any) {
   line-height: 1.5;
 }
 .bubble-time {
-  font-size: 11px;
+  font-size:12px;
   color: #a9a9a3;
   align-self: flex-end;
 }

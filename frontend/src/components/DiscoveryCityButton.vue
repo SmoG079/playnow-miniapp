@@ -23,7 +23,7 @@ function select(e: any) {
 </script>
 <template>
   <button class="city-pill" aria-label="选择当前城市" @click="visible = true">
-    <wd-icon name="location" size="15px" color="#c8e6b8" /><text>{{ location.city || "城市" }}</text><wd-icon name="arrow-down" size="11px" />
+    <wd-icon name="location" size="15px" color="var(--playnow-brand)" /><text>{{ location.city || "城市" }}</text><wd-icon name="arrow-down" size="11px" />
   </button>
   <wd-popup v-model="visible" position="bottom" :z-index="200" closable safe-area-inset-bottom custom-style="border-radius:20px 20px 0 0">
     <view class="city-options"><text class="section-title">选择城市</text>

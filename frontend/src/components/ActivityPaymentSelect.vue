@@ -15,5 +15,5 @@ const options=[
   </view>
 </template>
 <style scoped>
-.payment-select{margin:6px 0 12px}.payment-help{display:block;margin-top:8px;font-size:12px;line-height:20px;color:#87968c}
+.payment-select{margin:6px 0 12px}.payment-help{display:block;margin-top:8px;font-size:12px;line-height:20px;color:var(--playnow-muted)}
 </style>

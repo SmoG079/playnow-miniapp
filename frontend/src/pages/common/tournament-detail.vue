@@ -547,12 +547,12 @@ function tie() {
       />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
-        ><text class="tag">{{ cardState(t, null, "tournament").label }}</text
+        ><view class="tournament-tags"><text class="tag">{{ cardState(t, null, "tournament").label }}</text
         ><text class="tag">{{
           cfg
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
             : "赛事"
-        }}</text
+        }}</text></view
         ><ActivityFacts :schedule="cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').dateLabel + ' ' + cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').timeLabel" :name="t.location_name || '地点名称待补充'" :address="t.address" :can-navigate="t.latitude != null && t.longitude != null" @navigate="uni.openLocation({latitude:Number(t.latitude),longitude:Number(t.longitude),name:t.location_name,address:t.address})" />
         <text class="muted small">已报名 {{ t.current_participants }}/{{ t.max_participants }} 人</text>
         <view v-if="myPosition" class="list-card"
@@ -596,7 +596,7 @@ function tie() {
               <view v-if="t.prizes.length" class="intro-section prizes-section">
                 <text class="intro-heading">奖项设置</text>
                 <view v-for="(prize,i) in t.prizes" :key="i" class="prize-row">
-                  <view class="prize-name"><wd-icon name="trophy" size="16px" color="#0787c8" /><text>{{ prize.name }}</text></view>
+                  <view class="prize-name"><wd-icon name="trophy" size="16px" color="var(--playnow-brand)" /><text>{{ prize.name }}</text></view>
                   <text v-if="prize.description" class="prize-description">{{ prize.description }}</text>
                 </view>
               </view>
@@ -977,11 +977,12 @@ function tie() {
   </AppShell>
 </template>
 <style scoped>
-.organizer-profile{display:flex;align-items:center;gap:10px;min-width:0}.organizer-copy{display:flex;flex-direction:column;gap:5px;min-width:0}.organizer-name{font-size:16px;line-height:24px;font-weight:600;overflow-wrap:anywhere}.organizer-type{font-size:11px;line-height:18px;color:#718579}
+.tournament-tags { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.organizer-profile{display:flex;align-items:center;gap:10px;min-width:0}.organizer-copy{display:flex;flex-direction:column;gap:5px;min-width:0}.organizer-name{font-size:16px;line-height:24px;font-weight:600;overflow-wrap:anywhere}.organizer-type{font-size:12px;line-height:18px;color:var(--playnow-muted)}
 
-.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
+.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 
-.intro-pane{padding:16px!important;border:1px solid #dce8ee;border-radius:14px;background:#fff}.intro-section{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid #e6edf1}.intro-section:first-child{padding-top:0;border-top:0}.intro-section:last-child{padding-bottom:0}.intro-heading{display:block;font-size:16px;font-weight:700;color:#244356;line-height:24px}.intro-copy{display:block;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px;color:#526772}.prize-row{padding:14px;background:#f0f8fd;border-left:3px solid #0787c8;border-radius:8px;display:flex;flex-direction:column;gap:8px}.prize-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;line-height:22px;color:#146790}.prize-description{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;color:#536975}
+.pane.intro-pane{padding:20px 16px;border:1px solid #dce8ee;border-radius:14px;background:#fff}.intro-section{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid #e6edf1}.intro-section:first-child{padding-top:0;border-top:0}.intro-section:last-child{padding-bottom:0}.intro-heading{display:block;font-size:16px;font-weight:700;color:var(--playnow-text);line-height:24px}.intro-copy{display:block;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:14px;color:var(--playnow-muted)}.prize-row{padding:14px;background:var(--playnow-brand-soft);border-left:3px solid var(--playnow-brand);border-radius:8px;display:flex;flex-direction:column;gap:8px}.prize-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;line-height:22px;color:var(--playnow-brand)}.prize-description{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;color:var(--playnow-muted)}
 
 .participant-avatars {
   display: flex;
@@ -989,7 +990,8 @@ function tie() {
   margin-bottom: 8px;
 }
 .tournament-content {
-  padding-bottom: 120px;
+  padding-top: 24px;
+  padding-bottom: calc(140px + env(safe-area-inset-bottom));
 }
 .pane {
   padding: 16px 0;
@@ -1009,8 +1011,8 @@ function tie() {
 }
 .muted {
   display: block;
-  color: #888;
-  font-size: 12px;
+  color: var(--playnow-muted);
+  font-size: 13px;
   margin: 8px 0;
 }
 .switch-row {

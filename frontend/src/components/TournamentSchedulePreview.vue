@@ -49,11 +49,11 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
 </template>
 <style scoped>
 .preview-content {
-  --playnow-card-border: #dce8df;
+  --playnow-card-border: var(--playnow-card-border);
   --playnow-card-radius: 14px;
   padding: 28px 16px 40px;
   background: #f5f8f6;
-  color: #183326;
+  color: var(--playnow-text);
 }
 .preview-title {
   display: block;
@@ -66,16 +66,16 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
   display: inline-block;
   padding: 4px 9px;
   margin-top: 10px;
-  border: 1px solid #dce8df;
+  border: 1px solid var(--playnow-card-border);
   border-radius: 8px;
-  background: #edf6ef;
-  color: #00633c;
+  background: var(--playnow-brand-soft);
+  color: var(--playnow-brand);
   font-size: 12px;
   line-height: 18px;
 }
 .muted {
   display: block;
-  color: #718579;
+  color: var(--playnow-muted);
   font-size: 12px;
   line-height: 20px;
   margin: 12px 0;
@@ -84,8 +84,8 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
   display: block;
   line-height: 1.7;
   padding: 12px 14px;
-  border: 1px solid #dce8df;
-  border-left: 3px solid #147553;
+  border: 1px solid var(--playnow-card-border);
+  border-left: 3px solid var(--playnow-brand);
   border-radius: 10px;
   background: #fff;
   color: #3c5b49;
@@ -102,7 +102,7 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
   min-width: 0;
   background: #fff;
   border-radius: 12px;
-  border: 1px solid #dce8df;
+  border: 1px solid var(--playnow-card-border);
   text-align: center;
   padding: 16px 4px;
 }
@@ -110,7 +110,7 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #00633c;
+  color: var(--playnow-brand);
   line-height: 28px;
   overflow-wrap: anywhere;
 }
@@ -119,14 +119,14 @@ defineProps<{ preview: SchedulePreview; config: TournamentConfig; registrations?
   display: block;
   margin-top: 8px;
   font-size: 12px;
-  color: #718579;
+  color: var(--playnow-muted);
   line-height: 18px;
 }
 .court-badge {
   display: inline-block;
   border: 1px solid #cfe3d5;
   background: #e7f2eb;
-  color: #00633c;
+  color: var(--playnow-brand);
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;

@@ -20,11 +20,11 @@ const emit = defineEmits<{ select: [team: EntryTeam, seat: EntryTeam['seats'][nu
   </view>
 </template>
 <style scoped>
-.entry-team{background:#fff;border:1px solid #e1e7e3;border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.entry-team{background:#fff;border:1px solid var(--playnow-card-border);border-radius:16px;padding:14px 16px;margin-bottom:12px}
 .entry-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px}
-.entry-title{font-size:15px;font-weight:650;color:#203c2d}.entry-count{font-size:12px;color:#839087}
+.entry-title{font-size:15px;font-weight:650;color:#203c2d}.entry-count{font-size:12px;color:var(--playnow-muted)}
 .entry-person{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #edf0ee;min-height:46px}
-.entry-person.entry-mine{background:#f5fbf7}.entry-copy{flex:1;min-width:0}.entry-name{display:block;font-size:14px;line-height:1.5;overflow-wrap:anywhere;color:#243c2e}
-.entry-status{flex-shrink:0;font-size:11px;color:#839087}.entry-plus{height:40px;width:40px;flex-shrink:0;border:1px dashed #aeb9b2;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.entry-open .entry-name{color:#839087}.entry-gender{display:inline-block;font-size:11px;margin-top:4px;border-radius:8px;padding:1px 7px;background:#edf5ff;color:#538ac3}.entry-gender.female{background:#fff0f5;color:#d66c96}
+.entry-person.entry-mine{background:#f5fbf7}.entry-copy{flex:1;min-width:0}.entry-name{display:block;font-size:14px;line-height:1.5;overflow-wrap:anywhere;color:var(--playnow-text)}
+.entry-status{flex-shrink:0;font-size:12px;color:var(--playnow-muted)}.entry-plus{height:40px;width:40px;flex-shrink:0;border:1px dashed #aeb9b2;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.entry-open .entry-name{color:var(--playnow-muted)}.entry-gender{display:inline-block;font-size:12px;margin-top:4px;border-radius:8px;padding:1px 7px;background:#edf5ff;color:#538ac3}.entry-gender.female{background:#fff0f5;color:#d66c96}
 </style>

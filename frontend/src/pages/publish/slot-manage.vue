@@ -88,26 +88,26 @@ async function toggle(x: any) {
           mode="date"
           :value="form.date_from"
           @change="form.date_from = $event.detail.value"
-          ><view class="picker-field">{{ form.date_from }}</view></picker
+          ><text class="slot-field-label">开始日期</text><view class="picker-field">{{ form.date_from }}</view></picker
         ><picker
           mode="date"
           :value="form.date_to"
           @change="form.date_to = $event.detail.value"
-          ><view class="picker-field">{{ form.date_to }}</view></picker
+          ><text class="slot-field-label">结束日期</text><view class="picker-field">{{ form.date_to }}</view></picker
         ></view
       ><view class="form-two"
         ><picker
           mode="time"
           :value="form.start_time"
           @change="form.start_time = $event.detail.value"
-          ><view class="picker-field">{{ form.start_time }}</view></picker
+          ><text class="slot-field-label">每日开始时间</text><view class="picker-field">{{ form.start_time }}</view></picker
         ><picker
           mode="time"
           :value="form.end_time"
           @change="form.end_time = $event.detail.value"
-          ><view class="picker-field">{{ form.end_time }}</view></picker
+          ><text class="slot-field-label">每日结束时间</text><view class="picker-field">{{ form.end_time }}</view></picker
         ></view
-      ><ChoicePicker title="时段长度"
+      ><text class="slot-field-label">时段长度</text><ChoicePicker title="时段长度"
         class="slot-interval"
         :range="intervals.map((x) => x + ' 分钟')"
         :value="intervalIndex"
@@ -133,6 +133,7 @@ async function toggle(x: any) {
 
 <style scoped>
 .slot-manage-content .form-two { margin-bottom: 12px; }
+.slot-field-label { display:block; margin-bottom:8px; font-size:13px; color:var(--playnow-muted); }
 .slot-interval { display: block; margin-bottom: 16px; }
 .record-card > view > .muted.small { display: block; margin-top: 6px; }
 </style>

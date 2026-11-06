@@ -1,0 +1,68 @@
+/* Shared by page and root-portal overlays; Wot UI 2.3.2 public tokens. */
+page,
+body {
+  --playnow-brand: #147553;
+  --playnow-brand-deep: #183f30;
+  --playnow-brand-soft: #e8f1ec;
+  --playnow-text: #20342b;
+  --playnow-muted: #617268;
+  --playnow-bg: #f5f7f6;
+  --playnow-surface: #fff;
+  --playnow-card-border: #e1e7e3;
+  --playnow-card-radius: 14px;
+  --playnow-field-radius: 10px;
+  --playnow-gutter: 20px;
+  --playnow-content-width: 640px;
+  --wot-primary-1: var(--playnow-brand-soft);
+  --wot-primary-2: #d3e6db;
+  --wot-primary-6: var(--playnow-brand);
+  --wot-primary-7: #105c42;
+  --wot-button-height-small: 44px;
+  --wot-button-height-medium: 48px;
+  --wot-button-radius-main: var(--playnow-field-radius);
+  --wot-button-primary-bg: var(--playnow-brand);
+  --wot-button-primary-color: var(--playnow-brand);
+  --wot-input-number-action-size: 44px;
+  --wot-input-number-input-height: 44px;
+  --wot-input-number-input-width: 36px;
+  --wot-input-number-action-color: var(--playnow-brand);
+  --wot-input-number-action-bg: var(--playnow-bg);
+  --wot-input-number-input-bg: var(--playnow-bg);
+  --wot-input-padding: 12px 14px;
+  --wot-input-inner-height: 24px;
+  --wot-input-inner-font-size: 15px;
+  --wot-input-bg: var(--playnow-surface);
+  --wot-input-inner-color: var(--playnow-text);
+  --wot-input-inner-placeholder-color: var(--playnow-muted);
+  --wot-textarea-padding: 12px 14px;
+  --wot-textarea-inner-font-size: 15px;
+  --wot-textarea-inner-line-height: 24px;
+  --wot-textarea-inner-color: var(--playnow-text);
+  --wot-textarea-inner-placeholder-color: var(--playnow-muted);
+  --wot-cell-title-color: var(--playnow-text);
+  --wot-cell-title-font-size: 15px;
+  --wot-cell-value-color: var(--playnow-muted);
+  --wot-cell-label-color: var(--playnow-muted);
+  --wot-cell-icon-color: var(--playnow-brand);
+  --wot-cell-arrow-color: var(--playnow-muted);
+  --wot-empty-icon-size: 64px;
+  --wot-empty-icon-color: #a5b7ac;
+  --wot-empty-text-color: var(--playnow-muted);
+  --wot-empty-text-font-size: 14px;
+  --wot-empty-text-font-weight: 400;
+  --wot-tag-small-font-size: 12px;
+  --wot-tag-small-line-height: 20px;
+  --wot-tag-medium-font-size: 12px;
+  --wot-tag-medium-line-height: 20px;
+  --wot-tag-info-color: var(--playnow-muted);
+  --wot-tag-info-light-bg: var(--playnow-bg);
+  --wot-tabs-nav-item-padding: 14px 8px;
+  --wot-tabs-nav-item-font-size: 14px;
+  --wot-tabs-nav-bg: var(--playnow-bg);
+  --wot-tabs-nav-color: var(--playnow-muted);
+  --wot-tabs-nav-line-height: 3px;
+  --wot-popup-radius: 20px;
+}
+@media (max-width: 359px) {
+  page, body { --playnow-gutter: 16px; }
+}

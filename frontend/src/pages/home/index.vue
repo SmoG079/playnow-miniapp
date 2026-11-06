@@ -107,12 +107,12 @@ onReachBottom(loadMore);
 </script>
 <template>
   <AppShell active="home">
-    <MainHeader title="首页" context @city-change="load()" />
+    <MainHeader title="一起上场" context @city-change="load()" />
     <view class="content">
-      <view class="square-heading"><text>约球广场</text><text class="square-caption">约球 · 比赛</text></view>
+      <view class="square-heading"><text>约球广场</text><text class="square-caption">找到合拍的球友</text></view>
       <view class="discovery-filters">
         <view class="filter-line filter-primary">
-          <ChoicePicker title="排序方式" :range="sortOptions" :value="sort" @change="sortChange"><view class="filter-control"><text>筛选 · {{ sortOptions[sort].replace('按','') }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
+          <ChoicePicker title="排序方式" :range="sortOptions" :value="sort" @change="sortChange"><view class="filter-control"><text>{{ sortOptions[sort].replace('按','') }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
           <ChoicePicker title="活动类型" :range="types" :value="mode" @change="typeChange"><view class="filter-control" :class="{'filter-selected':mode!==0}"><text>{{ types[mode] }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
           <picker mode="date" :value="date" @change="dateChange"><view class="filter-control" :class="{'filter-selected':!!date}"><text>{{ date || '日期' }}</text><wd-icon v-if="date" name="close" size="12px" @click.stop="clearDate" /><wd-icon v-else name="arrow-down" size="12px" /></view></picker>
         </view>
@@ -124,15 +124,33 @@ onReachBottom(loadMore);
       </view>
       <ActivityCard v-for="item in visibleItems" :key="item.kind+'-'+item.id" :item="item" :kind="item.kind" @open="openPage('/pages/common/'+(item.kind==='tournament'?'tournament-detail':'post-detail')+'?id='+item.id)" />
       <view v-if="queryError" class="query-error"><text>{{ queryError }}</text><button @click="retryQuery">重试</button></view>
-      <wd-empty v-else-if="!loading && !visibleItems.length" tip="暂无符合筛选的活动" />
-      <wd-loading v-if="loading" />
+      <wd-empty v-else-if="!loading && !visibleItems.length" :tip="location.city ? '暂无符合筛选的活动' : '选择城市，看看附近的球局'" />
+      <view v-if="loading" class="loading-state"><wd-loading /><text class="muted small">正在寻找附近活动</text></view>
     </view>
   </AppShell>
 </template>
 <style scoped>
-.query-error{display:flex;align-items:center;justify-content:center;gap:8px;padding:20px 8px;color:#7b8c81;font-size:12px}.query-error button{margin:0;padding:4px 10px;line-height:20px;font-size:12px;background:#e9f1eb;color:#286a36;border-radius:8px}.query-error button::after{border:0}
-.square-heading{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;font-size:18px;font-weight:700;color:#203c2b}.square-caption{font-size:11px;font-weight:400;color:#7e8e82}
-.discovery-filters{margin-bottom:18px;display:flex;flex-direction:column;gap:8px}.filter-line{display:grid;gap:6px;min-width:0}.filter-primary{grid-template-columns:minmax(0,1.18fr) minmax(0,1fr) minmax(0,1.07fr)}.filter-secondary{grid-template-columns:1fr 1.35fr 1.08fr}.filter-line :deep(.choice-select){min-width:0}
-.filter-control{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;box-sizing:border-box;width:100%;height:42px;padding:0 8px;margin:0;border:1px solid #e0e7e2;border-radius:13px;background:linear-gradient(180deg,#fff,#fafcfb);box-shadow:0 2px 5px rgba(33,65,44,.045),inset 0 1px 0 rgba(255,255,255,.8);font-size:12px;font-weight:500;line-height:18px;white-space:nowrap;color:#3d5648}.filter-control text{min-width:0;overflow:hidden;text-overflow:ellipsis}.filter-control::after{border:0}.filter-selected{background:#edf4ee;border-color:#bcd3c1;color:#1d6539;box-shadow:inset 0 0 0 1px rgba(31,102,57,.04)}.my-level{background:linear-gradient(180deg,#eaf3e9,#e1eee2);color:#286a36;border-color:#d3e4d4}.view-tournaments{background:linear-gradient(180deg,#edf7fd,#e1eff9);color:#087fc0;border-color:#ccdfed}.view-tournaments.selected{background:linear-gradient(180deg,#1194d4,#087fba);color:#fff;border-color:#087fba;box-shadow:0 2px 5px rgba(0,117,186,.15)}
-@media(max-width:350px){.filter-control{font-size:11px;padding:0 4px;gap:3px;}}
+
+.query-error { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:8px; padding:24px 8px; color:var(--playnow-muted); font-size:14px; }
+.query-error button { min-height:44px; padding:10px 16px; color:var(--playnow-brand); background:var(--playnow-brand-soft); border-radius:10px; }
+.square-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; margin-bottom:10px; font-size:18px; font-weight:600; color:var(--playnow-text); }
+.square-caption { font-size:13px; font-weight:400; color:var(--playnow-muted); }
+.discovery-filters { margin-bottom:16px; display:flex; flex-direction:column; gap:0; }
+.filter-line { display:grid; gap:8px; min-width:0; }
+.filter-primary { grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr); }
+.filter-secondary { grid-template-columns:1fr 1.3fr 1fr; }
+.filter-line :deep(.choice-select) { min-width:0; }
+.filter-control { position:relative; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; width:100%; min-height:44px; padding:6px; margin:0; border:0; background:transparent; font-size:13px; font-weight:400; line-height:20px; color:var(--playnow-muted); }
+/* Compact 32px visible frame inside a 44px touch target. */
+.filter-control::before { content:""; position:absolute; inset:6px 0; border:1px solid var(--playnow-card-border); border-radius:6px; background:var(--playnow-surface); pointer-events:none; }
+.filter-control > text, .filter-control :deep(.wd-icon) { position:relative; }
+.filter-control text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.filter-control::after { border:0; }
+.filter-selected { color:var(--playnow-brand); }
+.filter-selected::before { background:var(--playnow-brand-soft); border-color:var(--playnow-brand); }
+.my-level, .view-tournaments { color:var(--playnow-brand); }
+.my-level::before, .view-tournaments::before { display:none; }
+.view-tournaments.selected { font-weight:600; }
+@media(max-width:359px) { .filter-control { font-size:12px; padding:6px 4px; } .filter-line { gap:6px; } }
+
 </style>

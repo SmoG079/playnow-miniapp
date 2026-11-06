@@ -47,5 +47,5 @@ watch(() => props.basePrice, invalidatePreview);
   </view>
 </template>
 <style scoped>
-.pricing-editor {display:flex;flex-direction:column;gap:12px;margin:20px 0;} .rule-card {border:1px solid #e5e8e5;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;} .rule-card .row {flex-wrap:wrap;gap:6px;} .preview-section {display:flex;flex-direction:column;gap:12px;margin-top:16px;}
+.pricing-editor {display:flex;flex-direction:column;gap:12px;margin:20px 0;} .rule-card {border:1px solid var(--playnow-card-border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;} .rule-card .row {flex-wrap:wrap;gap:6px;} .preview-section {display:flex;flex-direction:column;gap:12px;margin-top:16px;}
 </style>

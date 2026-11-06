@@ -4,7 +4,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { openPage, returnToActivityForm } from "../src/utils/navigation";
 import { TAB_PAGES } from "../src/config";
-import { activitySchedule, freshActivitySchedule, businessDate } from "../src/utils/date";
+import { activitySchedule, freshActivitySchedule } from "../src/utils/date";
 
 const pages = JSON.parse(fs.readFileSync(new URL("../src/pages.json", import.meta.url), "utf8"));
 const tabModule = { exports: [] as any[] };
@@ -82,10 +82,11 @@ describe("WeChat raised publish tab", () => {
 const formSource = fs.readFileSync(new URL("../src/pages/publish/post-create.vue", import.meta.url), "utf8")
   .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)![1]
   .replace(/^import[\s\S]*?;\s*/gm, "");
-async function restorePostForm(booking: any = null) {
+async function restorePostForm(booking: any = null, now = Date.parse("2026-11-05T10:00:00+08:00")) {
   let show: () => Promise<void> = async () => {};
   const uni = { getStorageSync: () => booking, removeStorageSync: vi.fn() };
   const context: any = {
+    Date: class extends Date { static now() { return now; } },
     ref: (value: any) => ({ value }), reactive: (value: any) => value, watch: () => {},
     onShow: (fn: any) => { show = fn; }, onHide: () => {}, onUnload: () => {},
     useSession: () => ({ user: { id: "alice" }, requireLogin: () => true, fetchUser: async () => {} }),
@@ -103,8 +104,13 @@ async function restorePostForm(booking: any = null) {
 it("keeps the saved draft when entering the separate post form", async () => {
   const { context } = await restorePostForm();
   expect(context.reviewForm.title).toBe("已保存的约球");
-  expect(context.reviewForm.preferred_date).toBe(businessDate());
+  expect(context.reviewForm.preferred_date).toBe("2026-11-05");
   expect(context.reviewReady.value).toBe(true);
+});
+it("moves an expired draft to tomorrow when no playable time remains tonight", async () => {
+  const { context } = await restorePostForm(null, Date.parse("2026-11-05T23:30:00+08:00"));
+  expect(context.reviewForm.title).toBe("已保存的约球");
+  expect(context.reviewForm.preferred_date).toBe("2026-11-06");
 });
 it("applies the booking return to that form and consumes it once", async () => {
   const { context, uni } = await restorePostForm({ club_id: 1, booking_id: 7, venue_id: 2, slot_date: "2026-10-15", slot_start: "10:00:00", slot_end: "11:00:00" });

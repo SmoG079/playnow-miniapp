@@ -10,7 +10,7 @@ const emit = defineEmits<{ (e: "cityChange"): void }>();
 const location = useDiscovery();
 const weather = useWeather();
 const statusTop = Number(uni.getSystemInfoSync().statusBarHeight || 0);
-let navTop = statusTop + 8, navHeight = 32, cityWidth = 180;
+let navTop = statusTop + 8, navHeight = 32, cityWidth = Math.max(180, Number(uni.getSystemInfoSync().windowWidth || 390) - 40);
 try {
   const capsule = uni.getMenuButtonBoundingClientRect();
   if (capsule?.height > 0 && capsule.top >= statusTop) {
@@ -32,10 +32,10 @@ function goBack() {
 </script>
 <template>
   <view class="home-header main-header" :class="{ 'main-header-back': back, 'main-header-simple': !context }" :style="{ paddingTop: navTop + 'px' }">
-    <view v-if="context" class="header-nav" :style="{ height: navHeight + 'px', maxWidth: cityWidth + 'px' }">
+    <view v-if="context" class="header-nav" :style="{ height: Math.max(44, navHeight) + 'px', maxWidth: cityWidth + 'px' }">
       <DiscoveryCityButton @change="emit('cityChange')" />
     </view>
-    <view class="header-heading" :style="!context ? { minHeight: navHeight + 'px', maxWidth: cityWidth + 'px' } : {}">
+    <view class="header-heading" :style="!context ? { minHeight: Math.max(44, navHeight) + 'px', maxWidth: cityWidth + 'px' } : {}">
       <button v-if="back" class="header-back" aria-label="返回" @click="goBack"><wd-icon name="arrow-left" size="23px" /></button>
       <text class="page-title">{{ title }}</text>
     </view>

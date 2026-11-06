@@ -245,8 +245,9 @@ function returnToPublish() {
           <view class="image-grid"><Photo v-for="(img,i) in images" :key="img" width="72px" height="72px" :src="img" @click="images.splice(i,1)" /><button class="upload-box" @click="pickImages"><wd-icon name="plus" /></button></view>
         </view>
         <view class="publish-action">
-          <view class="creation-label"><wd-button block variant="plain" :disabled="loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button><FieldHelp title="保存草稿" content="草稿保存在当前设备，退出后可继续填写。" /></view>
+          <wd-button block variant="plain" :disabled="loading || coverUploading || locationSelecting" @click="saveDraft">保存草稿</wd-button>
           <wd-button block :loading="loading || coverUploading || locationSelecting" @click="submit">发布约球</wd-button>
+          <text class="draft-note">草稿保存在当前设备，退出后可继续填写</text>
         </view>
       </view>
     </view>
@@ -255,7 +256,7 @@ function returnToPublish() {
 
 <style scoped>
 .venue-empty { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px 0; }
-.selected-address { display:block; font-size:14px; line-height:1.6; color:#304238; margin-bottom:12px; }
+.selected-address { display:block; font-size:14px; line-height:1.6; color:var(--playnow-text); margin-bottom:12px; }
 .linked-location { display:flex; align-items:center; gap:10px; padding:14px; border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); background:#fff; }
 .linked-location > view { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; font-size:14px; }
 .venue-association {

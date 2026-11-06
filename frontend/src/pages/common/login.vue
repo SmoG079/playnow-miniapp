@@ -73,7 +73,7 @@ async function login() {
 <template>
   <AppShell back title="登录" simple-header
     ><view class="login-page"
-      ><text class="muted">微信快捷登录，保存你的预约与活动记录</text
+      ><view class="login-brand">PlayNow</view><text class="page-title">下一场球，从这里开始</text><text class="body-copy">登录后加入球局、报名比赛，与球友保持联系。</text
       ><label class="agreement" @click="agreed = !agreed"
         ><checkbox :checked="agreed" color="#147553" /><text
           >我已阅读并同意《用户协议》和《隐私政策》</text
@@ -84,3 +84,10 @@ async function login() {
     ></AppShell
   >
 </template>
+<style scoped>
+.login-brand { font-size:32px; font-weight:700; color:var(--playnow-brand); letter-spacing:-1px; margin:24px 0 8px; }
+.login-page { min-height:0; padding:24px var(--playnow-gutter) 48px; }
+.login-page .page-title { font-size:24px; margin:0; }
+.agreement { margin-top:48px; align-items:flex-start; line-height:1.8; color:var(--playnow-muted); }
+.agreement checkbox { flex:none; }
+</style>

@@ -198,21 +198,21 @@ function mine(id?: number | null) {
 }
 .my-position {
   padding: 12px;
-  background: #edf6ef;
-  border: 1px solid #dce8df;
-  color: #00633c;
+  background: var(--playnow-brand-soft);
+  border: 1px solid var(--playnow-card-border);
+  color: var(--playnow-brand);
   border-radius: 10px;
   font-size: 13px;
 }
 .group-section {
   padding: 20px 0;
-  border-bottom: 1px solid #dce8df;
+  border-bottom: 1px solid var(--playnow-card-border);
 }
 .group-badge {
   display: inline-block;
   padding: 6px 12px;
   margin-bottom: 20px;
-  background: #00633c;
+  background: var(--playnow-brand);
   color: #fff;
   border-radius: 8px;
   font-size: 13px;
@@ -244,24 +244,24 @@ function mine(id?: number | null) {
   box-sizing: border-box;
   width: 210px;
   height: 132px;
-  border: 1px solid var(--playnow-card-border, #dce8df);
+  border: 1px solid var(--playnow-card-border, var(--playnow-card-border));
   border-radius: var(--playnow-card-radius, 14px);
   background: #fff;
-  color: #203c2b;
+  color: var(--playnow-text);
   box-shadow: 0 2px 6px rgba(18,62,41,.035);
   overflow: hidden;
   z-index: 1;
 }
 .match-card.mine {
-  border: 2px solid #147553;
+  border: 2px solid var(--playnow-brand);
   background: #f0f8f3;
 }
 .match-label {
   display: block;
   padding: 4px 10px;
-  color: #718579;
+  color: var(--playnow-muted);
   background: #f2f7f4;
-  font-size: 11px;
+  font-size:12px;
   line-height: 16px;
 }
 .entrant {
@@ -276,22 +276,22 @@ function mine(id?: number | null) {
   text-overflow: ellipsis;
 }
 .winner {
-  color: #00633c;
+  color: var(--playnow-brand);
   font-weight: 700;
 }
 .source {
-  font-size: 10px;
-  color: #718579;
+  font-size:12px;
+  color: var(--playnow-muted);
 }
 .match-footer {
   display: block;
-  font-size: 11px;
+  font-size:12px;
   line-height: 16px;
-  color: #147553;
+  color: var(--playnow-brand);
   font-weight: 600;
   padding: 2px 10px;
 }
-.match-time { display: block; font-size: 10px; line-height: 14px; color: #718579; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-time { display: block; font-size:12px; line-height: 14px; color: var(--playnow-muted); padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line {
   position: absolute;
   background: #c6dace;
@@ -305,6 +305,6 @@ function mine(id?: number | null) {
 .muted {
   display: block;
   font-size: 12px;
-  color: #718579;
+  color: var(--playnow-muted);
 }
 </style>

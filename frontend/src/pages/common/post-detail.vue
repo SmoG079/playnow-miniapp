@@ -317,17 +317,18 @@ function remove(c: any) {
 </template>
 
 <style scoped>
+.detail-content { padding-bottom: calc(140px + env(safe-area-inset-bottom)); }
 .payment-notice{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:13px;color:#69756c;line-height:22px}
 
-.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:12px;flex:none}
+.fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 
 .detail-facts .fact > .fact-icon { flex:0 0 22px; width:22px; align-items:center; }
 </style>
 
 <style scoped>
-.activity-description { background:#fff; border:1px solid #e5e8e5; border-radius:16px; padding:20px; margin-bottom:24px; }
+.activity-description { background:#fff; border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); padding:20px 16px; margin-bottom:24px; }
 .activity-description .body-copy { white-space:pre-wrap; }
-.participant-entry{display:flex;align-items:center;gap:4px;color:#159660;font-size:14px;min-height:40px}
+.participant-entry{display:flex;align-items:center;gap:4px;color:var(--playnow-brand);font-size:14px;min-height:44px}
 .participant-preview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 26px}
 .participant-thumb{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
 .participant-nickname{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:13px;color:#78867f;line-height:20px}
@@ -337,6 +338,6 @@ function remove(c: any) {
 .participant-row{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #eef1ef}
 .participant-row:last-child{border-bottom:0}
 .participant-fullname{flex:1;min-width:0;font-size:15px;line-height:1.5;overflow-wrap:anywhere;white-space:normal}
-.participant-status{flex-shrink:0;font-size:12px;color:#839087}
-.participant-status.is-organizer{color:#159660;background:#edf8f1;padding:3px 8px;border-radius:12px}
+.participant-status{flex-shrink:0;font-size:12px;color:var(--playnow-muted)}
+.participant-status.is-organizer{color:var(--playnow-brand);background:#edf8f1;padding:3px 8px;border-radius:12px}
 </style>

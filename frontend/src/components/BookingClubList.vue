@@ -23,7 +23,8 @@ const clubs = ref<any[]>([]),
   sort = ref("default"),
   page = ref(1),
   more = ref(true),
-  loading = ref(false);
+  loading = ref(false),
+  queryError = ref("");
 async function load(append = false) {
   if (append && loading.value) return;
   const version = ++loadVersion;
@@ -31,6 +32,7 @@ async function load(append = false) {
   if (!append) { clubs.value = []; cachedSignature = ""; loadedAt = 0; }
   if (!location.city) { loading.value = false; return; }
   loading.value = true;
+  queryError.value = "";
   try {
     const p = append ? page.value + 1 : 1;
     let url = `/clubs?community=true&page=${p}&page_size=20&city=${encodeURIComponent(location.city)}`;
@@ -44,7 +46,7 @@ async function load(append = false) {
     more.value = r.items.length === 20;
     if (!append) { cachedSignature = signature; loadedAt = Date.now(); }
   } catch (e: any) {
-    if (version === loadVersion) uni.showToast({ title: e.message, icon: "none" });
+    if (version === loadVersion) queryError.value = "俱乐部暂时无法加载，请稍后重试";
   } finally {
     if (version === loadVersion) loading.value = false;
   }
@@ -93,7 +95,7 @@ onReachBottom(() => more.value && load(true));
       ><view
         v-for="c in clubs"
         :key="c.id"
-        class="venue-card"
+        class="venue-card" role="button" :aria-label="'查看' + c.name" hover-class="venue-pressed"
         @click="openPage('/pages/common/club-detail?id=' + c.id + (props.selection ? '&return_mode=' + returnMode : ''))"
         ><view class="venue-photo"
           ><Photo
@@ -107,10 +109,10 @@ onReachBottom(() => more.value && load(true));
           ></view
         ><view class="venue-card-body"
           ><text class="section-title">{{ c.name }}</text
-          ><text class="muted">{{ c.description ? c.description + " · " : "" }}{{ c.city || "城市待补充" }}</text
+          ><text class="muted club-description">{{ c.description ? c.description + " · " : "" }}{{ c.city || "城市待补充" }}</text
           ><view><text class="tag">网球社群</text><text class="muted small">{{ c.member_count || 0 }} 位球友</text></view></view
         ></view
-      ><wd-empty v-if="!loading && !clubs.length" :tip="location.city ? '当前城市暂无俱乐部' : '请先选择城市'"
+      ><view v-if="queryError" class="empty-state"><text class="muted">{{ queryError }}</text><wd-button variant="plain" @click="load()">重试</wd-button></view><view v-else-if="loading && !clubs.length" class="loading-state"><wd-loading /><text class="muted small">正在加载俱乐部</text></view><wd-empty v-else-if="!loading && !clubs.length" :tip="location.city ? '当前城市暂无俱乐部' : '请先选择城市'"
         ><wd-button size="small" @click="openPage('/pages/publish/club-create')"
           >创建俱乐部</wd-button
         ></wd-empty
@@ -119,3 +121,8 @@ onReachBottom(() => more.value && load(true));
         :state="loading ? 'loading' : more ? 'default' : 'finished'" /></view
   ></AppShell>
 </template>
+
+<style scoped>
+.club-description { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.venue-pressed { opacity:.85; }
+</style>

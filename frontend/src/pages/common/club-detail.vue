@@ -27,19 +27,30 @@ function confirmRemove(member: any) {
 </script>
 <template>
   <AppShell back title="俱乐部">
-    <view class="content" v-if="club && community">
-      <Photo v-if="club.cover_image" :src="club.cover_image" width="100%" height="180px" />
+    <view class="content club-content" v-if="club && community">
+      <view class="club-cover" v-if="club.cover_image">
+      <Photo :src="club.cover_image" width="100%" height="180px" /></view>
+      <view class="club-identity">
       <Photo v-if="club.logo_image" :src="club.logo_image" round width="64px" height="64px" /><text class="page-title">{{ club.name }}</text>
-      <text class="muted">{{ club.city }} · {{ community.count }} 位球友</text>
+      <text class="muted">{{ club.city }} · {{ community.count }} 位球友</text></view>
       <view class="community-card"><text class="section-title">社群介绍</text><text class="description">{{ club.description || '欢迎一起打球' }}</text></view>
       <view class="community-card" v-if="club.address"><text>{{ club.address }}</text></view>
       <wd-button v-if="club.contact_phone" variant="plain" block @click="uni.makePhoneCall({phoneNumber: club.contact_phone})">联系组织者</wd-button>
       <view class="community-card">
         <wd-button v-if="!community.owner" block :loading="busy" @click="change()">{{ community.joined ? '退出俱乐部' : '加入俱乐部' }}</wd-button>
-        <template v-else><text class="section-title">成员管理</text><view v-for="member in community.members" :key="member.id" class="row between"><text>{{ member.name }}</text><wd-button size="small" variant="text" :disabled="busy" @click="confirmRemove(member)">移除</wd-button></view></template>
+        <template v-else><text class="section-title">成员管理</text><view v-for="member in community.members" :key="member.id" class="row between member-row"><text>{{ member.name }}</text><wd-button size="small" variant="text" :disabled="busy" @click="confirmRemove(member)">移除</wd-button></view></template>
       </view>
     </view>
-    <view v-else class="content"><text>{{ failed ? '加载失败，请重试' : '正在加载…' }}</text><wd-button v-if="failed" @click="load">重试</wd-button></view>
+    <view v-else class="content loading-state"><wd-loading v-if="!failed" /><text class="muted">{{ failed ? '俱乐部信息加载失败' : '正在加载俱乐部…' }}</text><wd-button v-if="failed" variant="plain" @click="load">重新加载</wd-button></view>
   </AppShell>
 </template>
-<style scoped>.community-card{margin:20px 0;padding:20px;background:white;border-radius:18px}.description{display:block;margin-top:12px;white-space:pre-wrap;line-height:1.7}</style>
+<style scoped>
+.club-cover { overflow:hidden; border-radius:var(--playnow-card-radius); margin-bottom:24px; }
+.club-identity { display:flex; flex-direction:column; align-items:flex-start; gap:12px; }
+.club-identity .page-title { margin:0; }
+.community-card { margin:24px 0; padding:20px 16px; background:var(--playnow-surface); border:1px solid var(--playnow-card-border); border-radius:var(--playnow-card-radius); }
+.description { display:block; margin-top:12px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.8; color:var(--playnow-muted); }
+.member-row { min-height:60px; padding:12px 0; gap:12px; border-bottom:1px solid var(--playnow-card-border); }
+.member-row:last-child { border-bottom:0; }
+.member-row > text { flex:1; min-width:0; overflow-wrap:anywhere; }
+</style>
