@@ -216,11 +216,13 @@ async def test_create_booking_rejects_today_past_time(user, venue, club, setting
 
 
 @pytest.mark.asyncio
-async def test_create_booking_accepts_today_future_time(user, venue, club, settings_mock):
+@pytest.mark.parametrize("current_hour", [0, 10, 19])
+async def test_create_booking_accepts_today_future_time(user, venue, club, settings_mock, current_hour):
     """P1-2: accept a slot from today whose start time is still in the future."""
     tz = ZoneInfo("Asia/Shanghai")
-    today = datetime.now(tz).date()
-    future_time = time(20, 0)  # near end of day, almost always in the future
+    now = datetime(2026, 11, 6, current_hour, 0, tzinfo=tz)
+    today = now.date()
+    future_time = time(20, 0)
 
     slot = VenueTimeSlot(
         id=1,
@@ -240,10 +242,14 @@ async def test_create_booking_accepts_today_future_time(user, venue, club, setti
     req = BookingCreateRequest(slot_ids=[1, 2])
     session.rows_map["VenueTimeSlot"] = _booking_pair(slot)
 
-    with patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
+    with patch("app.api.v1.bookings.datetime", wraps=datetime) as clock, \
+         patch("app.services.slots.datetime", clock), \
+         patch("app.api.v1.bookings.get_settings", return_value=settings_mock), \
          patch("app.api.v1.bookings.acquire_lock", new=AsyncMock(return_value=True)), \
          patch("app.api.v1.bookings.check_rate_limit", new=AsyncMock()), \
          patch("app.api.v1.bookings.expire_slot_orders", new=AsyncMock()):
+        clock.now.return_value = now
+        clock.utcnow.return_value = now.astimezone(timezone.utc).replace(tzinfo=None)
         result = await create_booking(req, current_user=user, db=session)
 
     assert result.status == "pending"
