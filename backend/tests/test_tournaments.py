@@ -88,6 +88,51 @@ async def register(db, tid, uid, **kwargs):
 
 
 @pytest.mark.asyncio
+async def test_update_after_signup_resizes_teams_without_moving_registrations(db):
+    config = TournamentConfig(discipline="doubles", pairing="fixed")
+    tid, owner = await event(db, 12, config)
+    t = await db.get(Tournament, tid)
+    teams = (await api.get_tournament(tid, owner, db))["entry_teams"]
+    for uid, team, seat in ((2, teams[1], 1), (3, teams[1], 2), (4, teams[-1], 1), (5, teams[-1], 2)):
+        await register(db, tid, uid, entry_team_id=team["id"], entry_seat=seat)
+    request = dict(club_id=t.club_id, title=t.title, address=t.address,
+                   start_time=t.start_time, end_time=t.end_time)
+    with pytest.raises(HTTPException) as error:
+        await api.update_tournament(tid, TournamentCreate(**request, max_participants=4, config=config), owner, db)
+    assert error.value.status_code == 409
+    await api.close_registration(tid, owner, db)
+    await api.update_tournament(tid, TournamentCreate(**request, max_participants=6,
+        config=TournamentConfig(format="round_robin", discipline="doubles", pairing="fixed", match_minutes=30)), owner, db)
+    detail = await api.get_tournament(tid, owner, db)
+    assert detail["roster_frozen"] and detail["registration_count"] == 4
+    assert detail["config"]["format"] == "round_robin"
+    assert [row["position"] for row in detail["entry_teams"]] == [1, 2, 3]
+    assert {row["entry_team_id"] for row in detail["registrations"]} == {teams[1]["id"], teams[-1]["id"]}
+    assert {row["user_id"]: row["partner_user_id"] for row in detail["registrations"]} == {"2": "3", "3": "2", "4": "5", "5": "4"}
+
+
+@pytest.mark.asyncio
+async def test_group_results_produce_shared_overall_places_only_after_completion(db):
+    tid, owner = await event(db, 4, TournamentConfig(format="round_robin", group_count=2))
+    for uid, group in ((2, 1), (3, 1), (4, 2), (5, 2)):
+        await register(db, tid, uid, requested_group=group)
+    await api.close_registration(tid, owner, db)
+    await api.create_draw(tid, DrawCommand(idempotency_key="shared-places", publish=True), owner, db)
+    detail = await api.get_tournament(tid, None, db)
+    assert detail["overall_rankings"] == []
+    first = detail["matches"][0]
+    with pytest.raises(HTTPException) as error:
+        await api.record_result(tid, first["id"], ResultCommand(expected_version=1,
+            winner_id=first["team_a_id"], score="随便填"), owner, db)
+    assert error.value.status_code == 422
+    for match in detail["matches"]:
+        await api.record_result(tid, match["id"], ResultCommand(expected_version=1,
+            winner_id=match["team_a_id"], score="6:4 6:3"), owner, db)
+    detail = await api.get_tournament(tid, None, db)
+    assert [row["rank"] for row in detail["overall_rankings"]] == [1, 1, 2, 2]
+
+
+@pytest.mark.asyncio
 async def test_six_player_bracket_privacy_idempotence_progression(db):
     tid, admin = await event(db, 6)
     for uid in range(2, 8):
@@ -122,6 +167,7 @@ async def test_six_player_bracket_privacy_idempotence_progression(db):
     detail = await api.get_tournament(tid, None, db)
     assert detail["status"] == "finished"
     assert sorted(r["rank"] for r in detail["rankings"]) == [1, 2, 3, 3, 5, 5]
+    assert [r["rank"] for r in detail["overall_rankings"]] == [1, 2, 3, 3, 5, 5]
 
 
 @pytest.mark.asyncio
@@ -314,7 +360,21 @@ async def test_combination_stage_redraw_and_history(db):
         admin,
         db,
     )
-    assert len((await api.get_draw(tid, 1, admin, db))["matches"]) == 12
+    group_history = await api.get_draw(tid, 1, admin, db)
+    assert len(group_history["matches"]) == 12
+    assert group_history["overall_rankings"] == []
+    await api.publish_draw(tid, VersionCommand(expected_version=3), admin, db)
+    current = await api.get_draw(tid, 3, admin, db)
+    for match in current["matches"]:
+        latest = await api.get_draw(tid, 3, admin, db)
+        side_a = next(row["team_a_id"] for row in latest["matches"] if row["id"] == match["id"])
+        await api.record_result(tid, match["id"], ResultCommand(expected_version=3,
+            winner_id=side_a, score="6:4"), admin, db)
+    final = await api.get_draw(tid, 3, None, db)
+    ranks = final["overall_rankings"]
+    assert [row["rank"] for row in ranks] == [1, 2, 3, 4]
+    bronze = next(row for row in final["matches"] if row["kind"] == "third_place")
+    assert ranks[2]["team_id"] == bronze["winner_id"]
 
 
 @pytest.mark.asyncio

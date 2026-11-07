@@ -6,8 +6,8 @@ import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 import { assertWeChatAppId } from "../../services/wechat-login";
-const agreed = ref(false),
-  loading = ref(false),
+declare const wx: Pick<typeof uni, "requirePrivacyAuthorize">;
+const loading = ref(false),
   redirect = ref("");
 const s = useSession();
 onLoad((q) => {
@@ -37,12 +37,18 @@ function getWeChatCode() {
 
 async function login() {
   if (loading.value) return;
-  if (!agreed.value)
-    return uni.showToast({ title: "请先同意用户协议", icon: "none" });
   loading.value = true;
   try {
     // #ifdef MP-WEIXIN
     assertWeChatAppId(uni.getAccountInfoSync().miniProgram.appId);
+    if (typeof wx.requirePrivacyAuthorize !== "function")
+      throw new Error("请升级微信后再登录");
+    await new Promise<void>((resolve, reject) => {
+      wx.requirePrivacyAuthorize({
+        success: () => resolve(),
+        fail: () => reject(new Error("请先阅读并同意隐私保护指引")),
+      });
+    });
     // #endif
     const code = await getWeChatCode();
     const tokens: any = await request("/auth/login", {
@@ -74,13 +80,9 @@ async function login() {
   <AppShell back title="登录" simple-header
     ><view class="login-page"
       ><view class="login-brand">PlayNow</view><text class="page-title">下一场球，从这里开始</text><text class="body-copy">登录后加入球局、报名比赛，与球友保持联系。</text
-      ><label class="agreement" @click="agreed = !agreed"
-        ><checkbox :checked="agreed" color="#147553" /><text
-          >我已阅读并同意《用户协议》和《隐私政策》</text
-        ></label
-      ><wd-button block :loading="loading" @click="login"
+      ><view class="login-action"><wd-button block :loading="loading" @click="login"
         >微信登录</wd-button
-      ></view
+      ></view></view
     ></AppShell
   >
 </template>
@@ -88,6 +90,5 @@ async function login() {
 .login-brand { font-size:32px; font-weight:700; color:var(--playnow-brand); letter-spacing:-1px; margin:24px 0 8px; }
 .login-page { min-height:0; padding:24px var(--playnow-gutter) 48px; }
 .login-page .page-title { font-size:24px; margin:0; }
-.agreement { margin-top:48px; align-items:flex-start; line-height:1.8; color:var(--playnow-muted); }
-.agreement checkbox { flex:none; }
+.login-action { margin-top:24px; }
 </style>

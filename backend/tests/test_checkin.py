@@ -3,7 +3,7 @@ import pytest
 from fastapi import HTTPException
 from app.api.v1 import tournaments as api
 from app.models.models import User, Tournament, TournamentRegistration
-from app.schemas.tournament import RegistrationCommand, DrawCommand
+from app.schemas.tournament import RegistrationCommand, DrawCommand, DrawAdjustCommand
 from app.services import tournament_lifecycle as life
 from tests.test_tournaments import db, event
 
@@ -29,10 +29,18 @@ async def test_checkin_permissions_window_idempotency_and_draw_gate(db, monkeypa
     first = await api.check_in(tid,regs[0].id,await db.get(User,'2'),db)
     assert await api.check_in(tid,regs[0].id,owner,db) == first
     assert regs[0].checked_in_by == '2'
+    monkeypatch.setattr(life, 'now', lambda: t.end_time + timedelta(minutes=1))
     await api.check_in(tid,regs[1].id,owner,db)
     assert regs[1].checked_in_by == owner.id
     assert (await api.get_tournament(tid,owner,db))['unchecked_count'] == 0
-    assert (await api.create_draw(tid,DrawCommand(idempotency_key='attendance-gate'),owner,db))['version']==1
+    result = await api.create_draw(tid, DrawCommand(idempotency_key='attendance-gate'), owner, db)
+    assert result['version'] == 1 and result['overflows']
+    detail = await api.get_tournament(tid, owner, db)
+    positions = detail['draw_positions']
+    positions[0]['team_id'], positions[1]['team_id'] = positions[1]['team_id'], positions[0]['team_id']
+    adjusted = await api.adjust_draw(tid, DrawAdjustCommand(expected_version=1,
+        idempotency_key='late-adjustment', reason='晚到签到后调位', positions=positions), owner, db)
+    assert adjusted['version'] == 2
     t.status='finished'
     with pytest.raises(HTTPException): await api.check_in(tid,regs[0].id,owner,db)
 

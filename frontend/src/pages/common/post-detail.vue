@@ -217,7 +217,10 @@ function remove(c: any) {
             >NTRP {{ post.level_required }}</text
           ></view
         ><text class="page-title">{{ post.title }}</text
-        ><text class="muted small">人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= (post.min_players) ? "已成团" : "待成团" }}</text><view class="payment-notice"><text>付款方式：{{ paymentLabel(post.price, post.payment_method) }}</text><text v-if="Number(post.price) > 0 && post.payment_method !== 'online'">报名费 ¥{{ Number(post.price).toFixed(2) }}/人，由组织者线下收取</text></view>
+        ><view class="activity-meta">
+          <text class="activity-meta-id">活动编号 #{{ post.id }}</text>
+          <text>人数 {{ post.min_players }}–{{ post.max_players }} 人 · {{ (post.registration_count || 0) + 1 >= post.min_players ? "已成团" : "待成团" }}</text>
+        </view><view class="payment-notice"><text>付款方式：{{ paymentLabel(post.price, post.payment_method) }}</text><text v-if="Number(post.price) > 0 && post.payment_method !== 'online'">报名费 ¥{{ Number(post.price).toFixed(2) }}/人，由组织者线下收取</text></view>
         <ActivityFacts :schedule="cardSchedule(post,'post').dateLabel + ' ' + cardSchedule(post,'post').timeLabel" :name="location.title" :address="location.address" :can-navigate="location.latitude != null && location.longitude != null" @navigate="openMeetingLocation" /><view class="row between section-head"
           ><text class="section-title">一起上场的球友</text
           ><view class="participant-entry" role="button" aria-label="查看已报名列表" @click="showRegs = true"

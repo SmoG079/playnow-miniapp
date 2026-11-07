@@ -95,6 +95,7 @@ export interface Registration {
 export interface Tournament {
   checkin_open?: boolean;
   unchecked_count?: number;
+  registration_count?: number;
   organizer_nickname?: string | null;
   organizer_avatar?: string | null;
   club_avatar?: string | null;
@@ -167,6 +168,7 @@ export interface Tournament {
     points?: number;
     tie_unresolved: boolean;
   }[];
+  overall_rankings?: Tournament["rankings"];
   history: {
     version: number;
     stage: string;

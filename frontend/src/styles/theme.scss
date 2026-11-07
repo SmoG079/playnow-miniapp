@@ -128,6 +128,19 @@ image {
 .page-title.compact {
   font-size: 22px;
 }
+.activity-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--playnow-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.activity-meta-id {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .section-title {
   display: block;
   font-size: 18px;

@@ -1,7 +1,7 @@
 import { validateConfig, type TournamentConfig } from "../services/tournaments";
 export interface TournamentFieldIssue { field:string; panel:string; message:string }
 const blank = (v:unknown) => v == null || String(v).trim() === "";
-export function tournamentFieldIssues(form:any, config:TournamentConfig, linked:any, previewOnly=false): TournamentFieldIssue[] {
+export function tournamentFieldIssues(form:any, config:TournamentConfig, linked:any, previewOnly=false, originalLocation?: { city: string; address: string }): TournamentFieldIssue[] {
   const issues:TournamentFieldIssue[]=[];
   const add=(field:string,panel:string,message:string)=>issues.push({field,panel,message});
   if (config.discipline !== "singles" && !config.pairing) add("pairing","settings","请选择搭档方式");
@@ -15,7 +15,10 @@ export function tournamentFieldIssues(form:any, config:TournamentConfig, linked:
     if (blank(form[field])) add(field,"basic",`请选择${label}`);
   const start=new Date(`${form.start_date}T${form.start}:00+08:00`),end=new Date(`${form.end_date}T${form.end}:00+08:00`);
   if (![form.start_date,form.start,form.end_date,form.end].some(blank) && (!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start)) add("end_date","basic","结束日期与时间必须晚于开始时间");
-  if (!previewOnly && (!form.city || (!linked?.venue_id && (!form.address?.trim() || form.latitude == null || form.longitude == null)))) add("address","basic","请在地图中选择比赛地点或关联已预订场地");
+  const existingAddress = originalLocation?.address && originalLocation.address === form.address
+    && originalLocation.city === form.city;
+  if (!previewOnly && (!form.city || (!linked?.venue_id && !existingAddress
+    && (!form.address?.trim() || form.latitude == null || form.longitude == null)))) add("address","basic","请在地图中选择比赛地点或关联已预订场地");
   const requirements:[string,unknown,string,string,number,number,boolean][]=[
     ["max_participants",form.max_participants,"人数上限","settings",2,128,true],
     ["group_count",config.group_count,"分组数量","settings",1,16,true],

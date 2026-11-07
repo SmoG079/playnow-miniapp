@@ -104,7 +104,6 @@ const registration = reactive({
 });
 const form = reactive({
   winner: 0,
-  score: "",
   reason: "",
   is_draw: false,
   walkover: false,
@@ -114,6 +113,12 @@ const form = reactive({
   group: "1",
   order: "",
 });
+const scoreSets = ref([{ a: "", b: "" }]);
+const scoreError = ref("");
+function readScore(score?: string) {
+  const sets = (score || "").trim().split(/\s+/).map(part => /^(\d{1,3}):([0-9]{1,3})$/.exec(part));
+  return sets.every(Boolean) ? sets.map(part => ({ a: part![1], b: part![2] })) : [{ a: "", b: "" }];
+}
 const mine = computed(() => t.value?.my_registration),
   cfg = computed(() => t.value?.config);
 const stateNames: Record<string, string> = {
@@ -139,6 +144,11 @@ const stateNames: Record<string, string> = {
   closed: "退款关闭",
 };
 const viewData = computed(() => history.value || t.value);
+const overallRanks = computed<Tournament["rankings"]>(() => viewData.value?.overall_rankings || []);
+function placeLabel(rank: number | null) {
+  const label = rank === 1 ? "冠军" : rank === 2 ? "亚军" : rank === 3 ? "季军" : `第 ${rank} 名`;
+  return overallRanks.value.filter(row => row.rank === rank).length > 1 ? "并列" + label : label;
+}
 const shownMatches = computed(() => {
   const ms: Match[] = viewData.value?.matches?.length
     ? viewData.value.matches
@@ -441,9 +451,10 @@ async function publish() {
 function openEdit(m: Match, mode: "result" | "schedule") {
   selected.value = m;
   edit.value = mode;
+  scoreSets.value = readScore(m.score);
+  scoreError.value = "";
   Object.assign(form, {
-    winner: m.winner_id || m.team_a_id || 0,
-    score: m.score || "",
+    winner: m.winner_id || 0,
     reason: "",
     is_draw: m.is_draw || false,
     walkover: m.walkover || false,
@@ -464,19 +475,29 @@ async function submitEdit() {
         .map(Number),
       reason: form.reason,
     });
-  else if (edit.value === "result")
-    await run(
+  else if (edit.value === "result") {
+    scoreError.value = "";
+    if (!form.walkover && scoreSets.value.some(set => !/^[0-9]{1,3}$/.test(set.a) || !/^[0-9]{1,3}$/.test(set.b))) {
+      scoreError.value = "请填写每盘双方的数字比分";
+      return;
+    }
+    const score = form.walkover ? "" : scoreSets.value.map(set => `${Number(set.a)}:${Number(set.b)}`).join(" ");
+    try { await run(
       `matches/${selected.value?.id}/result`,
       {
         expected_version: t.value?.draw_version,
         winner_id: form.is_draw ? null : form.winner,
         is_draw: form.is_draw,
-        score: form.score,
+        score,
         walkover: form.walkover,
         reason: form.reason,
       },
       "PUT",
-    );
+    ); } catch (error: any) {
+      scoreError.value = error.message || "比分保存失败";
+      return;
+    }
+  }
   else
     await run(
       `matches/${selected.value?.id}/schedule`,
@@ -547,14 +568,17 @@ function tie() {
       />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
-        ><view class="tournament-tags"><text class="tag">{{ cardState(t, null, "tournament").label }}</text
+        ><view class="activity-meta">
+          <text class="activity-meta-id">活动编号 #{{ t.id }}</text>
+          <text>已报名 {{ t.current_participants }}/{{ t.max_participants }} 人</text>
+        </view
+        ><view class="tournament-tags"><text class="tag">{{ t.checkin_open && t.phase === "ended" ? "赛程处理中" : cardState(t, null, "tournament").label }}</text
         ><text class="tag">{{
           cfg
             ? formatNames[cfg.format] + " · " + disciplineNames[cfg.discipline]
             : "赛事"
         }}</text></view
         ><ActivityFacts :schedule="cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').dateLabel + ' ' + cardSchedule({start_time:t.start_time,end_time:t.end_time},'tournament').timeLabel" :name="t.location_name || '地点名称待补充'" :address="t.address" :can-navigate="t.latitude != null && t.longitude != null" @navigate="uni.openLocation({latitude:Number(t.latitude),longitude:Number(t.longitude),name:t.location_name,address:t.address})" />
-        <text class="muted small">已报名 {{ t.current_participants }}/{{ t.max_participants }} 人</text>
         <view v-if="myPosition" class="list-card"
           ><text class="strong"
             >我的比赛：第 {{ myPosition.team.group_no }} 组 ·
@@ -646,7 +670,13 @@ function tie() {
           ></wd-tab>
           <wd-tab title="排名" name="ranking"
             ><view class="pane"
-              ><text v-if="!viewData?.rankings?.length" class="muted"
+              ><view v-if="overallRanks.length" class="overall-ranking">
+                <text class="section-title">总排名</text>
+                <view v-for="r in overallRanks" :key="r.team_id" class="placing">
+                  <text class="placing-rank">{{ placeLabel(r.rank) }}</text>
+                  <text class="placing-name">{{ name(r.team_id) }}</text>
+                </view>
+              </view><template v-else><text v-if="!viewData?.rankings?.length" class="muted"
                 >比赛开始后生成排名</text
               ><view
                 v-for="r in viewData?.rankings || []"
@@ -659,7 +689,7 @@ function tie() {
                   >{{ r.points != null ? "积分 " + r.points : "" }}
                   {{ r.tie_unresolved ? "同分顺序待管理员确认" : "" }}</text
                 ></view
-              ></view
+              ></template></view
             ></wd-tab
           ></wd-tabs
         >
@@ -753,7 +783,7 @@ function tie() {
           ><text class="section-title">赛事管理</text>
           <view class="choices"
             ><wd-button
-              v-if="!t.roster_frozen && !t.draw_version"
+              v-if="!t.draw_version && !['finished', 'cancelled'].includes(t.status)"
               size="small"
               variant="plain"
               @click="
@@ -919,8 +949,27 @@ function tie() {
         }}</text>
         <template v-if="edit === 'result'"
           ><ChoiceSelect :model-value="form.winner || ''" title="胜者" :options="[selected?.team_a_id,selected?.team_b_id].filter(Boolean).map(teamId=>({value:teamId!,label:teamName(t?.teams || [],teamId,t?.registrations || [])}))" @update:model-value="form.winner=Number($event); form.is_draw=false" />
-          <text class="field-label">比分（自由文本）</text
-          ><wd-input v-model="form.score" placeholder="例如 6:4 6:3" /><view
+          <template v-if="!form.walkover">
+            <text class="field-label">比分</text>
+            <view class="score-row score-names">
+              <text>{{ teamName(t?.teams || [], selected?.team_a_id, t?.registrations || []) }}</text>
+              <text />
+              <text>{{ teamName(t?.teams || [], selected?.team_b_id, t?.registrations || []) }}</text>
+            </view>
+            <view v-for="(set, index) in scoreSets" :key="index" class="score-set">
+              <view class="score-row">
+                <wd-input v-model="set.a" type="number" :maxlength="3" :placeholder="'第 ' + (index + 1) + ' 盘'" />
+                <text aria-hidden="true">:</text>
+                <wd-input v-model="set.b" type="number" :maxlength="3" :placeholder="'第 ' + (index + 1) + ' 盘'" />
+              </view>
+            </view>
+            <view class="row between">
+              <wd-button size="small" variant="text" :disabled="scoreSets.length >= 16" @click="scoreSets.push({a:'',b:''})">添加一盘</wd-button>
+              <wd-button v-if="scoreSets.length > 1" size="small" variant="text" @click="scoreSets.pop()">移除末盘</wd-button>
+            </view>
+          </template>
+          <text v-if="scoreError" class="score-error">{{ scoreError }}</text>
+          <view
             v-if="selected?.kind === 'round_robin' && cfg?.allow_draw"
             class="switch-row"
             ><text>平局</text><wd-switch v-model="form.is_draw" /></view
@@ -977,6 +1026,15 @@ function tie() {
   </AppShell>
 </template>
 <style scoped>
+.score-row { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); align-items: center; gap: 8px; text-align: center; }
+.score-names { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.score-set { margin: 8px 0; }
+.score-set :deep(.wd-input) { border: 1px solid var(--playnow-card-border); border-radius: 8px; padding: 8px; }
+.score-error { display: block; color: #a12828; font-size: 13px; }
+.overall-ranking { background: var(--playnow-surface); border: 1px solid var(--playnow-card-border); border-radius: var(--playnow-card-radius); padding: 16px; }
+.placing { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--playnow-card-border); }
+.placing-rank { color: var(--playnow-brand); font-size: 14px; font-weight: 650; }
+.placing-name { overflow-wrap: anywhere; }
 .tournament-tags { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .organizer-profile{display:flex;align-items:center;gap:10px;min-width:0}.organizer-copy{display:flex;flex-direction:column;gap:5px;min-width:0}.organizer-name{font-size:16px;line-height:24px;font-weight:600;overflow-wrap:anywhere}.organizer-type{font-size:12px;line-height:18px;color:var(--playnow-muted)}
 

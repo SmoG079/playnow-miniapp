@@ -4,7 +4,7 @@ from sqlalchemy import select, func, case, literal, text, cast, String
 from app.models.models import (MatchPost, Tournament, Venue, User, MatchRegistration,
     RegistrationStatus, TournamentRegistration, TournamentRegStatus)
 from app.services.discovery import city_name, ordered
-from app.services.activity_visibility import public_listing_condition
+from app.services.activity_visibility import public_listing_condition, tournament_phase_condition
 from app.api.v1 import posts, tournaments
 
 
@@ -39,9 +39,11 @@ async def load_card_participants(db, cards):
                 user_id=str(row['user_id']), user_nickname=row['user_nickname'], user_avatar=row['user_avatar']))
 
 async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_date=None,
-                          sort_by='date_asc', lat=None, lng=None, page=1, page_size=20, status=None):
+                          sort_by='date_asc', lat=None, lng=None, page=1, page_size=20, status=None,
+                          *, club_id=None, club_phase=None):
     branches=[]
     selected_city=city_name(city)
+    now = datetime.utcnow()
     for kind, model, factory in [('post',MatchPost,posts.discovery_query),('tournament',Tournament,tournaments.discovery_query)]:
         if kind=='tournament' and activity_type in ('post','free','venue') or kind=='post' and activity_type=='tournament':
             continue
@@ -49,13 +51,33 @@ async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_da
         latitude=case((model.venue_id.is_not(None),Venue.latitude),else_=model.latitude)
         longitude=case((model.venue_id.is_not(None),Venue.longitude),else_=model.longitude)
         if kind=='post':
-            if db.bind.dialect.name=='sqlite':
-                stamp=func.datetime(cast(model.preferred_date,String) + literal(' ') + func.strftime('%H:%M:%S',model.preferred_start),'-8 hours')
+            def post_stamp(time_column):
+                if db.bind.dialect.name == 'sqlite':
+                    return func.datetime(cast(model.preferred_date, String) + literal(' ')
+                                         + func.strftime('%H:%M:%S', time_column), '-8 hours')
+                return func.timestamp(model.preferred_date, time_column) - text('INTERVAL 8 HOUR')
+
+            stamp = post_stamp(model.preferred_start)
+            end = func.coalesce(post_stamp(model.preferred_end), stamp)
+            phase = case((model.status == 'closed', 'ended'), (end <= now, 'ended'),
+                         (stamp <= now, 'ongoing'), else_='open')
+        else:
+            stamp = model.start_time
+            phase = tournament_phase_condition(now)
+        q = factory()
+        if club_id is None:
+            q = q.where(public_listing_condition(kind, now))
+            q = q.where(city_column == selected_city) if selected_city else q.where(False)
+        else:
+            q = q.where(model.club_id == club_id)
+            if kind == 'post':
+                q = q.where(model.preferred_date.is_not(None), model.preferred_start.is_not(None))
             else:
-                stamp=func.timestamp(model.preferred_date,model.preferred_start)-text('INTERVAL 8 HOUR')
-        else: stamp=model.start_time
-        q=factory().where(public_listing_condition(kind,datetime.utcnow()))
-        q=q.where(city_column==selected_city) if selected_city else q.where(False)
+                q = q.where(model.status.in_(['open', 'ongoing', 'finished']))
+            if club_phase == 'upcoming':
+                q = q.where(phase.in_(['open', 'registration_closed']))
+            elif club_phase:
+                q = q.where(phase == club_phase)
         if kind=='post' and activity_type in ('free','venue'):
             q=q.where(model.venue_id.is_(None) if activity_type=='free' else model.venue_id.is_not(None))
         if status:q=q.where(model.status==status)
@@ -68,14 +90,14 @@ async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_da
             values=(await db.execute(q.with_only_columns(model.level_required).distinct())).scalars().all()
             matched=[v for v in values if posts._level_matches(ntrp_levels.split(','),v)]
             q=q.where(model.level_required.in_(matched))
-        branches.append(q.with_only_columns(model.id.label('id'),literal(kind).label('kind'),stamp.label('starts'),latitude.label('lat'),longitude.label('lng')).distinct())
+        branches.append(q.with_only_columns(model.id.label('id'),literal(kind).label('kind'),stamp.label('starts'),latitude.label('lat'),longitude.label('lng'),phase.label('phase')).distinct())
     union=branches[0].union_all(*branches[1:]).subquery() if len(branches)>1 else branches[0].subquery()
     total=await db.scalar(select(func.count()).select_from(union)) or 0
-    query=ordered(select(union.c.id,union.c.kind),sort_by,union.c.starts,union.c.id,lat,lng,union.c.lat,union.c.lng)
+    query=ordered(select(union.c.id,union.c.kind,union.c.phase),sort_by,union.c.starts,union.c.id,lat,lng,union.c.lat,union.c.lng)
     seats=(await db.execute(query.offset((page-1)*page_size).limit(page_size))).all()
     cards={}
     for kind,model,factory,serializer in [('post',MatchPost,posts.discovery_query,posts.discovery_items),('tournament',Tournament,tournaments.discovery_query,tournaments.discovery_items)]:
-        ids=[ident for ident,k in seats if k==kind]
+        ids=[ident for ident,k,_ in seats if k==kind]
         if not ids:continue
         rows=(await db.execute(factory().where(model.id.in_(ids)))).all()
         items=serializer(rows,lat,lng) if kind=='post' else await serializer(db,rows,lat,lng)
@@ -83,4 +105,11 @@ async def list_activities(db, city, activity_type='all', ntrp_levels=None, on_da
             data=item.model_dump() if kind=='post' else item
             cards[(kind,data['id'])]=dict(**data,kind=kind)
     await load_card_participants(db, cards)
-    return dict(items=[cards[(kind,ident)] for ident,kind in seats],total=total,page=page,page_size=page_size)
+    items = []
+    for ident, kind, phase in seats:
+        card = cards.get((kind, ident))
+        if card is not None:
+            if club_id is not None:
+                card["phase"] = phase
+            items.append(card)
+    return dict(items=items,total=total,page=page,page_size=page_size)

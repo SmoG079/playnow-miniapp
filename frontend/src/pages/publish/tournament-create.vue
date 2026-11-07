@@ -100,8 +100,25 @@ const form = reactive({
   courts: "1号场地",
 });
 const fieldIssues = ref<TournamentFieldIssue[]>([]);
+const registrationCount = ref(0), previousCapacity = ref(0);
+let originalLocation: { city: string; address: string } | undefined;
+const lockDiscipline = ref(false), lockFee = ref(false);
+const teamSize = computed(() => cfg.discipline === "singles" ? 1 : 2);
+const teamCount = computed({
+  get: () => String(form.max_participants / teamSize.value || ""),
+  set: value => { form.max_participants = Number(value) * teamSize.value; },
+});
 let validatedPreviewOnly = false;
-watch([form,cfg,linked], () => { if (fieldIssues.value.length) fieldIssues.value = tournamentFieldIssues(form,cfg,linked.value,validatedPreviewOnly); }, {deep:true});
+function validateFields(previewOnly: boolean) {
+  const issues = tournamentFieldIssues(form, cfg, linked.value, previewOnly, originalLocation);
+  if (registrationCount.value && form.max_participants !== previousCapacity.value
+    && form.max_participants <= registrationCount.value) {
+    issues.push({ field: "max_participants", panel: "settings",
+      message: `人数上限必须大于当前报名人数（${registrationCount.value}人）` });
+  }
+  return issues;
+}
+watch([form,cfg,linked], () => { if (fieldIssues.value.length) fieldIssues.value = validateFields(validatedPreviewOnly); }, {deep:true});
 async function locateIssue(issue:TournamentFieldIssue) {
   if (["advanced","rules"].includes(issue.panel)) panels.value=[...new Set([...panels.value,issue.panel])];
   await nextTick();
@@ -122,9 +139,25 @@ onLoad(async (q) => {
   await session.fetchUser();
   editId.value = Number(q?.id || 0);
   draftOwner = session.user?.id || "";
+  const existing = editId.value ? await getTournament(editId.value) : null;
+  if (existing) {
+    originalLocation = { city: existing.city || "", address: existing.address || "" };
+    registrationCount.value = existing.registration_count || 0;
+    previousCapacity.value = existing.max_participants;
+    lockDiscipline.value = registrationCount.value > 0 && !!existing.config;
+    lockFee.value = existing.registrations.length > 0;
+  }
   const draft = readTournamentDraft(draftOwner, editId.value);
   if (draft) {
     Object.assign(form, draft.form); Object.assign(cfg, draft.config);
+    if (lockDiscipline.value && existing?.config) {
+      cfg.discipline = existing.config.discipline;
+      cfg.pairing = existing.config.pairing;
+    }
+    if (lockFee.value && existing) {
+      form.entry_fee = String(existing.entry_fee);
+      form.payment_method = existing.payment_method || "online";
+    }
     if (!editId.value) Object.assign(form, freshActivitySchedule(form));
     images.value = draft.images || []; linked.value = draft.linked || null; panels.value = draft.panels || [];
     if (draft.club) { clubs.value = [draft.club]; clubIndex.value = 0; }
@@ -143,8 +176,8 @@ onLoad(async (q) => {
   }
   Object.assign(form, activitySchedule());
   editId.value = Number(q?.id || 0);
-  if (editId.value) {
-    const t = await getTournament(editId.value);
+  if (existing) {
+    const t = existing;
     if (t.club_id) {
       const club = await request<any>(`/clubs/${t.club_id}`);
       clubs.value = [club]; clubIndex.value = 0;
@@ -225,7 +258,7 @@ function payload(previewOnly = false) {
   const prizes=normalizedPrizes(form.prizes);
   if(prizes.some(p=>!p.name)) { panels.value=[...new Set([...panels.value,"prizes"])];uni.showToast({title:"请填写奖项名称",icon:"none"});return; }
   validatedPreviewOnly = previewOnly;
-  fieldIssues.value = tournamentFieldIssues(form,cfg,linked.value,previewOnly);
+  fieldIssues.value = validateFields(previewOnly);
   if (fieldIssues.value.length) {
     panels.value = [...new Set([...panels.value,...fieldIssues.value.map(issue=>issue.panel).filter(panel=>["advanced","rules"].includes(panel))])];
     const first = fieldIssues.value[0];
@@ -417,23 +450,25 @@ async function save() {
         {value:'round_robin',label:formatNames.round_robin,description:'组内队伍循环交手，按成绩排名。'},
         {value:'groups_knockout',label:formatNames.groups_knockout,description:'先进行小组循环赛，再由晋级队伍参加淘汰赛。'}
       ]" @update:model-value="cfg.format = $event as typeof cfg.format; cfg.allow_draw = false" />
-      <ChoiceSelect :model-value="cfg.discipline" title="比赛项目" label="比赛项目 *" :options="[
+      <ChoiceSelect :model-value="cfg.discipline" :disabled="lockDiscipline" title="比赛项目" label="比赛项目 *" :options="[
         {value:'singles',label:disciplineNames.singles,description:'每队一人参加比赛。'},
         {value:'doubles',label:disciplineNames.doubles,description:'每队两人，选择固定或随机搭档。'},
         {value:'mixed',label:disciplineNames.mixed,description:'每队一男一女，选择固定或随机搭档。'}
       ]" @update:model-value="cfg.discipline = $event as typeof cfg.discipline; cfg.pairing = null" />
       <view v-if="cfg.discipline !== 'singles'" id="required-pairing">
-        <ChoiceSelect :model-value="cfg.pairing || ''" title="搭档方式" label="搭档方式 *" :options="[
+        <ChoiceSelect :model-value="cfg.pairing || ''" :disabled="lockDiscipline" title="搭档方式" label="搭档方式 *" :options="[
           {value:'fixed',label:'固定搭档',description:'参与者选择队伍空位，自行与球友组队。'},
           {value:'random',label:'随机搭档',description:'报名后由系统安排队伍。'}
         ]" @update:model-value="cfg.pairing = $event as typeof cfg.pairing" />
       </view>
         <view class="field-label" id="required-level_required">NTRP 等级（选填）</view>
         <wd-input v-model="form.level_required" :maxlength="32" placeholder="不限，或填写3.0、3.0-4.0" clearable />
-      <view class="field-label" id="required-max_participants">人数上限（个人） *</view><wd-input v-model="form.max_participants" type="number" />
-      <ActivityPaymentSelect v-model="form.payment_method" :fee="Number(form.entry_fee)" />
+      <view class="field-label" id="required-max_participants">队伍数量 *</view><wd-input v-model="teamCount" type="number" />
+      <text class="muted small">每队 {{ teamSize }} 人，共 {{ form.max_participants }} 个名额{{ registrationCount ? '，已有 ' + registrationCount + ' 人报名' : '' }}</text>
+      <ActivityPaymentSelect v-if="!lockFee" v-model="form.payment_method" :fee="Number(form.entry_fee)" />
+      <text v-else class="muted small">已有报名记录，报名费及付款方式已锁定。</text>
       <view class="field-label"
-         id="required-entry_fee">报名费（每人） *<FieldHelp title="报名费用" content="免费比赛无需付款；付费比赛按每位参赛者收取，可选择组织者线下收款或微信线上支付。" /></view><wd-input v-model="form.entry_fee" type="digit" />
+         id="required-entry_fee">报名费（每人） *<FieldHelp title="报名费用" content="免费比赛无需付款；付费比赛按每位参赛者收取，可选择组织者线下收款或微信线上支付。" /></view><wd-input v-model="form.entry_fee" type="digit" :disabled="lockFee" />
       <view class="field-label" id="required-group_count">分组数量 *</view><wd-input v-model="cfg.group_count" type="number" /><view
         class="field-label"
          id="required-courts">场地名称（每行一个） *</view><wd-textarea v-model="form.courts" /><view class="field-label"

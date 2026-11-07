@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, date as Date
 import secrets
 import random
+import re
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -247,6 +248,19 @@ async def rankings(db, d, matches):
     return result
 
 
+def overall_rankings(t, draw, matches, ranks):
+    if not draw or not draw.published_at or not matches:
+        return []
+    cfg = (draw.snapshot or {}).get("config") or t.config or {}
+    if cfg.get("format") == "groups_knockout" and draw.stage != "knockout":
+        return []
+    if any(m.status not in ("completed", "bye") for m in matches):
+        return []
+    if any(r["tie_unresolved"] or r["rank"] is None for r in ranks):
+        return []
+    return sorted(ranks, key=lambda r: (r["rank"], r["group_no"], r["team_id"]))
+
+
 def discovery_query():
     venue_lat=case((Tournament.venue_id.is_not(None),Venue.latitude),else_=Tournament.latitude)
     venue_lng=case((Tournament.venue_id.is_not(None),Venue.longitude),else_=Tournament.longitude)
@@ -398,24 +412,35 @@ async def update_tournament(
     await admin(db, t, user)
     if req.club_id != t.club_id:
         raise HTTPException(422, "不可变更主办俱乐部")
+    if t.draw_version or _v(t.status) in ("cancelled", "finished"):
+        raise HTTPException(409, "已抽签、取消或结束的赛事不能修改配置")
     regs = await life.registrations(db, t)
-    if t.roster_frozen or t.draw_version:
-        raise HTTPException(409, "名单冻结后不能修改赛事配置")
-    if regs and (
-        t.entry_fee != req.entry_fee
-        or t.payment_method != req.payment_method
-        or (
-            t.config is not None
-            and t.config != (req.config.model_dump() if req.config else None)
-        )
-        or req.max_participants != t.max_participants
-    ):
-        raise HTTPException(409, "已有报名时不能修改费用、赛制或队伍数量")
+    current = [r for r in regs if _v(r.status) != "cancelled"
+               and r.admission not in ("cancelled", "expired", "rejected")]
+    if regs and (t.entry_fee != req.entry_fee or t.payment_method != req.payment_method):
+        raise HTTPException(409, "已有报名记录时不能修改费用或付款方式")
+    if current:
+        if req.max_participants != t.max_participants:
+            if req.max_participants <= len(current):
+                raise HTTPException(409, f"人数上限必须大于当前报名人数（{len(current)}人）")
+            occupied = {r.entry_team_id for r in current if r.entry_team_id is not None}
+            team_size = 1 if req.config.discipline == "singles" else 2
+            if req.max_participants // team_size <= len(occupied):
+                raise HTTPException(409, f"队伍数量必须大于当前已占位队伍数（{len(occupied)}队）")
+        if t.config:
+            cfg = life.config(t)
+            if (cfg.discipline, cfg.pairing) != (req.config.discipline, req.config.pairing):
+                raise HTTPException(409, "已有报名时不能变更单打、双打或搭档方式")
     if t.venue_id and req.venue_id != t.venue_id:
         raise HTTPException(409, "已关联球场的比赛不能变更地点")
+    resize = (not t.config or req.max_participants != t.max_participants
+              or life.config(t).group_count != req.config.group_count)
+    if current and resize:
+        await entries.resize(db, t, req.config, req.max_participants, regs)
     await apply_request(db, t, req)
-    if not regs:
+    if not current:
         await entries.rebuild(db, t)
+    await life.refresh_admissions(db, t)
     life.audit(db, t, user, "updated", {})
     await db.flush()
     return brief(t)
@@ -511,6 +536,10 @@ async def get_tournament(
             data.update(city=venue.city, address=venue.address, location_name=venue.name, latitude=venue.latitude, longitude=venue.longitude)
     data.update((await organizer_profiles(db, [t.id])).get(t.id, {}))
     data["checkin_open"] = checkin_open(t)
+    data["registration_count"] = sum(
+        _v(r.status) != "cancelled" and r.admission not in ("cancelled", "expired", "rejected")
+        for r, *_ in rows
+    )
     data["unchecked_count"] = sum(life.eligible(r) and not r.checked_in_at for r, *_ in rows)
     data["auto_title"] = t.auto_title
     data["organizer_user_id"] = t.user_id
@@ -548,6 +577,7 @@ async def get_tournament(
         rankings=await rankings(db, d, matches),
         prepay_enabled=get_settings().WX_PAY_ENABLED,
     )
+    data["overall_rankings"] = overall_rankings(t, d, matches, data["rankings"])
     entry_teams = await entries.teams(db, t)
     data["entry_teams"] = []
     for team in entry_teams:
@@ -674,18 +704,20 @@ async def get_draw(
     if not d or (not d.published_at and not await is_admin(db, t, user)):
         raise HTTPException(404, "签表未发布")
     ms = await matches_for(db, d)
+    ranks = await rankings(db, d, ms)
     return dict(
         version=d.version,
         stage=d.stage,
         teams=await teams_for(db, d),
         matches=[match_dict(m) for m in ms],
-        rankings=await rankings(db, d, ms),
+        rankings=ranks,
+        overall_rankings=overall_rankings(t, d, ms, ranks),
     )
 
 
 def checkin_open(t):
-    return (_v(t.status) not in ("finished", "cancelled")
-            and t.start_time - timedelta(minutes=30) <= life.now() < t.end_time)
+    return (_v(t.status) in ("open", "ongoing")
+            and t.start_time - timedelta(minutes=30) <= life.now())
 
 
 @router.get("/{ident}/registration-conflicts")
@@ -711,12 +743,12 @@ async def check_in(ident: int, registration_id: int, user: User = Depends(get_cu
         raise HTTPException(404, "报名不存在")
     if r.user_id != user.id:
         await admin(db, t, user)
-    if not life.eligible(r) or _v(t.status) in ("finished", "cancelled"):
+    if not life.eligible(r) or _v(t.status) not in ("open", "ongoing"):
         raise HTTPException(409, "仅有效已确认报名可以签到")
     if r.checked_in_at:
         return dict(checked_in_at=r.checked_in_at)
     if not checkin_open(t):
-        raise HTTPException(409, "签到时间为开赛前30分钟至赛事结束")
+        raise HTTPException(409, "签到于计划开赛前30分钟开放")
     r.checked_in_at = life.now()
     r.checked_in_by = user.id
     life.audit(db, t, user, "checked_in", {"registration_id":r.id})
@@ -1234,6 +1266,7 @@ async def create_draw(
         if req.stage == "knockout"
         else t.start_time
     )
+    start = max(start, life.now())
     engine.schedule(rows, cfg, start)
     overflow = any(m.get("scheduled_end", start) > t.end_time for m in rows)
     if overflow:
@@ -1351,8 +1384,11 @@ async def record_result(
             raise HTTPException(422, "此比赛不能录入平局")
     elif req.winner_id not in (m.team_a_id, m.team_b_id):
         raise HTTPException(422, "请选择对阵中的胜者")
+    score = req.score.strip()
+    if not req.walkover and not re.fullmatch(r"[0-9]{1,3}:[0-9]{1,3}( [0-9]{1,3}:[0-9]{1,3})*", score):
+        raise HTTPException(422, "请填写双方数字比分，如 6:4 6:3")
     m.winner_id = req.winner_id
-    m.score = req.score
+    m.score = "" if req.walkover else score
     m.is_draw = req.is_draw
     m.walkover = req.walkover
     m.status = "completed"
@@ -1367,7 +1403,7 @@ async def record_result(
         {
             "match_id": m.id,
             "winner_id": req.winner_id,
-            "score": req.score,
+            "score": m.score,
             "reason": req.reason,
         },
     )
@@ -1626,7 +1662,7 @@ async def adjust_draw(ident: int, req: DrawAdjustCommand,
     rebuilt=adjustment.rebuild(rows, positions, mapping, knockout)
     cfg=life.config(t)
     # Keep the current stage's starting point, including completed prior stages.
-    start=max(t.start_time,min((m["scheduled_at"] for m in rows if m.get("scheduled_at")),default=t.start_time))
+    start=max(t.start_time, life.now(), min((m["scheduled_at"] for m in rows if m.get("scheduled_at")),default=t.start_time))
     if d.stage == "knockout" and snapshot.get("source_version"):
         source=await draw_for(db,t,snapshot["source_version"])
         previous=await matches_for(db,source)

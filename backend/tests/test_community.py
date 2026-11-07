@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.api.v1 import clubs
 from app.api.deps import get_club_admin
 from app.models.models import Club, User, ClubMember, CommunityMember
-from tests.test_tournaments import db
+from tests.test_tournaments import db, event
 
 @pytest.mark.asyncio
 async def test_membership_is_idempotent_and_never_grants_management(db):
@@ -51,3 +51,20 @@ async def test_member_count_matches_state_in_detail_and_listing(db):
     for community in (False, True):
         result = await clubs.list_clubs(community=community, city=None, lat=None, lng=None, sport=None, keyword=None, page=1, page_size=20, db=db)
         assert next(c for c in result.items if c.id == 1).member_count == 1
+
+
+@pytest.mark.asyncio
+async def test_club_activity_history_is_scoped_and_filters_finished_events(db):
+    from app.models.models import Tournament
+
+    upcoming, _ = await event(db)
+    ended, _ = await event(db)
+    unrelated, _ = await event(db)
+    (await db.get(Tournament, ended)).status = "finished"
+    (await db.get(Tournament, unrelated)).club_id = 2
+    await db.flush()
+    all_activities = await clubs.club_activities(1, page=1, page_size=20, db=db)
+    assert all_activities["total"] == 2
+    assert {row["id"] for row in all_activities["items"]} == {upcoming, ended}
+    history = await clubs.club_activities(1, "ended", page=1, page_size=20, db=db)
+    assert [(row["id"], row["phase"]) for row in history["items"]] == [(ended, "ended")]

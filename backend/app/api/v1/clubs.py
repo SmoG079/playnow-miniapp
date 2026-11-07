@@ -1,6 +1,6 @@
 from datetime import date, time, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
@@ -536,6 +536,23 @@ async def community_state(club_id: int, db: AsyncSession = Depends(get_db), user
     owner_id = await _community_owner(db, club)
     members = (await db.execute(select(User.public_id, User.nickname).join(CommunityMember, CommunityMember.user_id == User.id).where(CommunityMember.club_id == club_id))).all()
     return {"count": len(members), "joined": bool(user and await db.scalar(select(CommunityMember.id).where(CommunityMember.club_id == club_id, CommunityMember.user_id == user.id))), "owner": bool(user and owner_id == user.id), "members": [{"id": r.public_id, "name": r.nickname or "球友"} for r in members] if user and owner_id == user.id else []}
+
+
+@router.get("/{club_id}/activities")
+async def club_activities(
+    club_id: int,
+    phase: Literal["upcoming", "ongoing", "ended"] | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.activity_discovery import list_activities
+
+    club = await db.get(Club, club_id)
+    if not club or club.approval_status != "approved" or _v(club.status) != "active":
+        raise HTTPException(404, "Club not found")
+    return await list_activities(db, None, sort_by="date_desc", page=page, page_size=page_size,
+                                 club_id=club_id, club_phase=phase)
 
 
 @router.post("/{club_id}/community")

@@ -14,6 +14,11 @@ def size(t):
     return 1 if TournamentConfig.model_validate(t.config).discipline == "singles" else 2
 
 
+def capacities(count, group_count):
+    return {group: count // group_count + int(group <= count % group_count)
+            for group in range(1, group_count + 1)}
+
+
 async def teams(db, t):
     return list((await db.scalars(select(TournamentEntryTeam).where(
         TournamentEntryTeam.tournament_id == t.id).order_by(
@@ -25,8 +30,7 @@ async def create(db, t):
         return
     cfg = TournamentConfig.model_validate(t.config)
     count = t.max_participants // size(t)
-    for group in range(1, cfg.group_count + 1):
-        capacity = count // cfg.group_count + int(group <= count % cfg.group_count)
+    for group, capacity in capacities(count, cfg.group_count).items():
         for position in range(1, capacity + 1):
             db.add(TournamentEntryTeam(tournament_id=t.id, group_no=group, position=position))
     await db.flush()
@@ -35,6 +39,38 @@ async def create(db, t):
 async def rebuild(db, t):
     await db.execute(delete(TournamentEntryTeam).where(TournamentEntryTeam.tournament_id == t.id))
     await create(db, t)
+
+
+async def resize(db, t, cfg, count, regs):
+    """Resize empty seats under the event lock; keep every occupied team's ID."""
+    team_size = 1 if cfg.discipline == "singles" else 2
+    limits = capacities(count // team_size, cfg.group_count)
+    occupied = {r.entry_team_id for r in regs if r.entry_team_id is not None}
+    existing = await teams(db, t)
+    groups = {team.group_no for team in existing} | set(limits)
+    groups |= {r.requested_group for r in regs if r.requested_group}
+    for group in sorted(groups):
+        group_teams = [team for team in existing if team.group_no == group]
+        reserved = [team for team in group_teams if team.id in occupied]
+        limit = limits.get(group, 0)
+        if len(reserved) > limit:
+            raise HTTPException(409, f"第{group}组已有{len(reserved)}支队伍报名，无法缩至{limit}队")
+        waiting = [r for r in regs if r.admission in ("active", "review", "waitlisted")
+                   and r.requested_group == group]
+        if (waiting and not limit) or sum(r.admission == "active" for r in waiting) > limit * team_size:
+            raise HTTPException(409, f"第{group}组的名额不足以保留现有报名")
+        vacant = [team for team in group_teams if team.id not in occupied]
+        keep = sorted(reserved + vacant[:limit - len(reserved)], key=lambda team: team.position)
+        for team in vacant[limit - len(reserved):]:
+            await db.delete(team)
+        await db.flush()
+        for position, team in enumerate(keep, 1):
+            if team.position != position:
+                team.position = position
+                await db.flush()
+        for position in range(len(keep) + 1, limit + 1):
+            db.add(TournamentEntryTeam(tournament_id=t.id, group_no=group, position=position))
+    await db.flush()
 
 
 async def clear_partner(db, t, r):

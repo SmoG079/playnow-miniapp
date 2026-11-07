@@ -17,6 +17,13 @@ describe("actionable tournament form validation",()=>{
   expect(tournamentFieldIssues(form,defaultConfig(),{venue_id:1})).toEqual([]);
   expect(tournamentFieldIssues({...form,auto_title:false},defaultConfig(),null,true)).toEqual([]);
  });
+ it("preserves an older address without coordinates when editing another field",()=>{
+  const form={...valid(),latitude:null,longitude:null};
+  const original={city:form.city,address:form.address};
+  expect(tournamentFieldIssues(form,defaultConfig(),null,false,original)).toEqual([]);
+  expect(tournamentFieldIssues({...form,address:"新地点"},defaultConfig(),null,false,original)
+    .some(i=>i.field==="address")).toBe(true);
+ });
  it("rejects invalid duration, dates, double numbers and missing qualifiers",()=>{
   const cfg={...defaultConfig(),format:"groups_knockout" as const,group_count:2,qualifiers_per_group:"" as any,match_minutes:1};
   const issues=tournamentFieldIssues({...valid(),end:"08:00"},cfg,null);
