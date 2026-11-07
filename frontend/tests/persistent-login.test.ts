@@ -27,6 +27,18 @@ describe("persistent WeChat login", () => {
       ? { statusCode: 200, data: '{"url":"https://media.example/avatar.jpg"}' }
       : { statusCode: 401, data: '{"detail":"expired"}' }));
   }
+  it("keeps the stored login namespace while sending requests to the standard HTTPS port", async () => {
+    expect(storage.get("session_context")).toBe(
+      "account-v2:wxe6fd99528373b676:https://www.tennisplaynow.site:8443/api/v1",
+    );
+    (uni as any).request = vi.fn((o: any) => o.success({ statusCode: 200, data: { id: "wx-current" } }));
+    const { request } = await import("../src/services/api");
+    await request("/users/me");
+    expect(uni.request).toHaveBeenCalledWith(expect.objectContaining({
+      url: "https://www.tennisplaynow.site/api/v1/users/me",
+      header: expect.objectContaining({ Authorization: "Bearer expired" }),
+    }));
+  });
   it("requests and uploads share one silent login after 30 days of inactivity", async () => {
     backend();
     let codeResponse: any;

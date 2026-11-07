@@ -21,6 +21,15 @@ import urllib.request
 PROJECT = Path("/home/ubuntu/playnow-miniapp")
 BACKUP_ROOT = Path("/var/backups/playnow")
 APP_CONTAINERS = ["club-celery-beat", "club-api", "club-celery-worker"]
+PUBLIC_ORIGIN = "https://www.tennisplaynow.site"
+
+
+def update_public_origin(content):
+    return re.sub(
+        rf"(?m)^PUBLIC_BASE_URL=(['\"]?){re.escape(PUBLIC_ORIGIN)}:8443\1$",
+        f"PUBLIC_BASE_URL='{PUBLIC_ORIGIN}'",
+        content,
+    )
 
 
 def replace_image(content, reference):
@@ -68,7 +77,7 @@ def main():
         private_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         candidate = release / ".env.candidate"
         source_env = PROJECT / (".env.production.next" if args.bootstrap else ".env.production")
-        candidate.write_text(replace_image(source_env.read_text(), reference))
+        candidate.write_text(replace_image(update_public_origin(source_env.read_text()), reference))
         candidate.chmod(0o600)
         config = release / "compose.production.yml"
         compose = ["docker", "compose", "--project-directory", str(PROJECT), "--env-file", str(candidate), "-f", str(config)]
@@ -176,13 +185,13 @@ def main():
             if args.bootstrap:
                 run(compose + ["up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "mysql", "redis"], "adopt-infrastructure")
             run(compose + ["up", "-d", "--no-build", "--no-deps", "--wait", "--wait-timeout", "180", "api", "celery_worker", "celery_beat"], "start-app")
-            external = run(["curl", "--fail", "--silent", "--show-error", "--max-time", "15", "https://www.tennisplaynow.site:8443/health"], "external-health")
+            external = run(["curl", "--fail", "--silent", "--show-error", "--max-time", "15", PUBLIC_ORIGIN + "/health"], "external-health")
             if json.loads(external).get("status") != "ok":
                 raise RuntimeError("External HTTPS response is not the expected API")
             uploads = sorted(p for p in (PROJECT / "backend/uploads").rglob("*") if p.is_file() and p.relative_to(PROJECT / "backend/uploads").parts[0] != "doc")
             if uploads:
                 sample = uploads[0]
-                url = "https://www.tennisplaynow.site:8443/uploads/" + quote(str(sample.relative_to(PROJECT / "backend/uploads")))
+                url = PUBLIC_ORIGIN + "/uploads/" + quote(str(sample.relative_to(PROJECT / "backend/uploads")))
                 with urllib.request.urlopen(url, timeout=15) as response:
                     if hashlib.sha256(response.read()).digest() != hashlib.sha256(sample.read_bytes()).digest():
                         raise RuntimeError("Public upload content differs from the persisted file")

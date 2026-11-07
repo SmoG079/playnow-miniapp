@@ -71,7 +71,7 @@ def main():
         for key, value in oldenv.items():
             if key not in platform_keys | changed_keys and env.get(key) != value:
                 raise RuntimeError(f"Existing application setting would change: {key}")
-        if env["PUBLIC_BASE_URL"] != "https://www.tennisplaynow.site:8443" or env["DEBUG"] != "false":
+        if env["PUBLIC_BASE_URL"] != "https://www.tennisplaynow.site" or env["DEBUG"] != "false":
             raise RuntimeError("Production public origin/debug setting is incorrect")
         for mount in services[service].get("volumes", []):
             # Compose 2.27 omits false values from the normalized JSON.

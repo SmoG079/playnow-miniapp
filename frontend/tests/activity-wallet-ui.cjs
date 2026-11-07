@@ -2,7 +2,7 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const base='http://127.0.0.1:5188',api='https://www.tennisplaynow.site:8443/api/v1';
+const base='http://127.0.0.1:5188',api='https://www.tennisplaynow.site/api/v1';
 (async()=>{
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
@@ -32,7 +32,7 @@ const base='http://127.0.0.1:5188',api='https://www.tennisplaynow.site:8443/api/
    if(url.startsWith(base+'/')||url.startsWith('data:')||url.startsWith('blob:'))return route.continue();
    return route.abort();
   });
-  await context.addInitScript(({api})=>{localStorage.setItem('access_token','isolated');localStorage.setItem('session_context','account-v2:web:'+api);localStorage.setItem('discovery_city_v1',JSON.stringify({type:'object',data:{city:'上海市',region:['上海市','上海市','浦东新区']}}));},{api});
+  await context.addInitScript(()=>{localStorage.setItem('access_token','isolated');localStorage.setItem('session_context','account-v2:web:https://www.tennisplaynow.site:8443/api/v1');localStorage.setItem('discovery_city_v1',JSON.stringify({type:'object',data:{city:'上海市',region:['上海市','上海市','浦东新区']}}));});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#/pages/profile/activity-wallet',{waitUntil:'networkidle'});
   await page.getByText('当前账户可提现',{exact:true}).waitFor();

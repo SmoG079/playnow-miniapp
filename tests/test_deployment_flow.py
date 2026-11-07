@@ -131,6 +131,15 @@ class DeploymentFlowTests(unittest.TestCase):
         self.assertEqual(content.count("API_IMAGE="), 1)
         with self.assertRaises(RuntimeError): deployment.replace_image("", "bad;echo injected")
 
+    def test_public_origin_migration_preserves_other_settings(self):
+        old = "https://www.tennisplaynow.site:8443"
+        other = f"KEEP='literal$dollar'\nWX_PAY_NOTIFY_URL={old}/api/v1/bookings/wx-notify\n"
+        for value in (old, f"'{old}'", f'"{old}"'):
+            with self.subTest(value=value):
+                candidate = deployment.update_public_origin(f"PUBLIC_BASE_URL={value}\n" + other)
+                self.assertEqual(candidate, "PUBLIC_BASE_URL='https://www.tennisplaynow.site'\n" + other)
+                self.assertEqual(deployment.update_public_origin(candidate), candidate)
+
 
 if __name__ == "__main__":
     unittest.main()

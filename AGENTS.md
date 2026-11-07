@@ -39,7 +39,7 @@ PlayNow 是面向网球俱乐部的微信小程序，提供场地预约、约球
 - `useToast`、`useDialog`、`useNotify` 的调用需配套页面中的组件实例；具体用法按 Skill 和 MCP 查询结果执行。
 - 请求和上传统一经 `frontend/src/services/api.ts`，保留 Bearer Token、401 刷新与并发共享的 `refreshPromise` 机制。
 - 会话与角色状态使用 `frontend/src/stores/session.ts`。角色包括 `user`、`club_admin`、`platform_admin`；前端入口控制不能替代后端鉴权。
-- API 地址在 `frontend/src/config.ts`，当前指向线上 `https://www.tennisplaynow.site:8443/api/v1`。本地写入联调前应切换到隔离后端，避免误操作线上数据；不要将临时地址提交为发布配置。
+- API 地址在 `frontend/src/config.ts`，当前指向线上 `https://www.tennisplaynow.site/api/v1`。8443 继续兼容历史版本与链接。本地写入联调前应切换到隔离后端，避免误操作线上数据；不要将临时地址提交为发布配置。
 - 微信开发者工具导入构建目录。发布前按实际请求、上传和下载链路核对公众平台合法域名配置，开发工具关闭域名校验不代表真机验收通过。
 
 ## 后端与业务约定

@@ -20,20 +20,17 @@ from sqlalchemy.engine import make_url
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services import storage
+from app.services.privacy import matches_public_origin
 
 
 def source_key(url, settings):
     parsed = urlsplit(url)
-    public = urlsplit(settings.PUBLIC_BASE_URL)
     cos_host = f"{settings.OSS_BUCKET_NAME}.cos.{settings.COS_REGION}.myqcloud.com"
     if parsed.query or parsed.fragment or parsed.username or parsed.password:
         raise ValueError("Certificate URL must be an unambiguous controlled source")
     if parsed.scheme == "https" and parsed.netloc == cos_host:
         backend, key = "cos", unquote(parsed.path.lstrip("/"))
-    elif (parsed.scheme, parsed.netloc) == (
-        public.scheme,
-        public.netloc,
-    ) and parsed.path.startswith("/uploads/"):
+    elif matches_public_origin(parsed, settings.PUBLIC_BASE_URL) and parsed.path.startswith("/uploads/"):
         backend, key = "local", unquote(parsed.path[len("/uploads/") :])
     else:
         raise ValueError("Certificate URL is outside controlled storage")
@@ -73,11 +70,7 @@ def build_plan(rows, settings):
         changed = []
         for item in previous:
             parsed = urlsplit(item["url"])
-            origin = urlsplit(settings.PUBLIC_BASE_URL)
-            if (parsed.scheme, parsed.netloc) == (
-                origin.scheme,
-                origin.netloc,
-            ) and parsed.path.startswith("/api/v1/media/doc/"):
+            if matches_public_origin(parsed, settings.PUBLIC_BASE_URL) and parsed.path.startswith("/api/v1/media/doc/"):
                 continue
             if not row["created_by"]:
                 raise ValueError(f"clubs:{row['id']}: certificate owner is unknown")

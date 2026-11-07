@@ -12,7 +12,7 @@
 - MySQL 与 Redis 固定到当前镜像的仓库 digest，保留现有密码；修改环境变量不会替已有 MySQL 数据库修改密码。
 - API/Worker/Beat 使用同一提交 SHA 或仓库 digest 对应的新镜像；不使用 `latest`。
 - uploads、各服务日志、支付公钥证书缓存和 Celery Beat 调度文件使用宿主机目录。私钥目录 `/app/certs` 只读，公钥缓存 `/app/pay-certs` 可写。
-- `PUBLIC_BASE_URL` 明确设为当前可用地址 `https://www.tennisplaynow.site:8443`。
+- `PUBLIC_BASE_URL` 使用 `https://www.tennisplaynow.site`。发布脚本在候选配置中将旧的 8443 地址更新为此地址，正式配置在验收通过后生效。Nginx 继续在 8443 服务旧版客户端和历史链接。
 - API 健康检查同时验证 HTTP、MySQL 查询和 Redis 认证连接。
 - `backend/.dockerignore` 排除真实环境变量、证书、上传文件、日志和虚拟环境，避免进入发布镜像。
 

@@ -17,7 +17,7 @@ fs.mkdirSync(output, { recursive: true });
     const fixture = await context.request.get(api + "/fixture-session");
     assert.equal(fixture.status(), 200);
     const { token } = await fixture.json();
-    const productionBase = "https://www.tennisplaynow.site:8443/api/v1";
+    const productionBase = "https://www.tennisplaynow.site/api/v1";
     const errors = [], requests = [];
     let failSave = false;
     await context.route("**/*", async route => {
@@ -37,12 +37,12 @@ fs.mkdirSync(output, { recursive: true });
       if (url.startsWith(base + "/") || url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
       return route.abort();
     });
-    await context.addInitScript(({ token, productionBase }) => {
+    await context.addInitScript(({ token }) => {
       // Do not overwrite stored drafts during reload; only seed local fixture credentials/preferences.
       localStorage.setItem("access_token", token);
-      localStorage.setItem("session_context", "account-v2:web:" + productionBase);
+      localStorage.setItem("session_context", "account-v2:web:https://www.tennisplaynow.site:8443/api/v1");
       localStorage.setItem("discovery_city_v1", JSON.stringify({ type: "object", data: { city: "扬州市", region: ["江苏省", "扬州市", "广陵区"] } }));
-    }, { token, productionBase });
+    }, { token });
     const page = await context.newPage();
     page.on("pageerror", error => errors.push(error.message));
     const visit = route => page.goto(base + "/#/pages/" + route, { waitUntil: "networkidle" });

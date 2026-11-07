@@ -102,7 +102,7 @@ class Settings(BaseSettings):
 
     # Public asset base URL — clients load uploaded images from this host.
     # MUST be https and the same origin/port nginx exposes for /uploads.
-    PUBLIC_BASE_URL: str = "https://www.tennisplaynow.site:8443"
+    PUBLIC_BASE_URL: str = "https://www.tennisplaynow.site"
     UPLOAD_MAX_MB: int = 5
     UPLOAD_ALLOWED_EXT: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 

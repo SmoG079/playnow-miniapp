@@ -98,7 +98,7 @@ def values_from_running_services(containers):
         "MYSQL_IMAGE": digest(mysql, "mysql"),
         "REDIS_IMAGE": digest(redis, "redis"),
         "APP_ENV_FILE": "./backend/.env",
-        "PUBLIC_BASE_URL": "https://www.tennisplaynow.site:8443",
+        "PUBLIC_BASE_URL": "https://www.tennisplaynow.site",
         "LOG_LEVEL": "INFO", "DATABASE_URL": appenv["DATABASE_URL"], "REDIS_URL": appenv["REDIS_URL"],
         "MYSQL_DATABASE": dbenv["MYSQL_DATABASE"], "MYSQL_USER": dbenv["MYSQL_USER"],
         "MYSQL_PASSWORD": dbenv["MYSQL_PASSWORD"], "MYSQL_ROOT_PASSWORD": dbenv["MYSQL_ROOT_PASSWORD"],
