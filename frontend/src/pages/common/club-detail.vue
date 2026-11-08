@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { onLoad, onShareAppMessage } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import ActivityCard from "../../components/ActivityCard.vue";
@@ -8,6 +8,14 @@ import { request, type PageResult } from "../../services/api";
 import { useSession } from "../../stores/session";
 
 type ClubActivity = ActivityCardData & { id: number; kind: ActivityKind };
+type ClubMember = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  joined_date: string;
+  activity_count: number;
+  is_owner: boolean;
+};
 const session = useSession();
 const id = ref(0), club = ref<any>(null), community = ref<any>(null), busy = ref(false), failed = ref(false);
 const panel = ref<"activities" | "members" | "intro">("activities");
@@ -20,6 +28,35 @@ const filters = [
 const phase = ref(""), activities = ref<ClubActivity[]>([]), activityCount = ref<number | null>(null);
 const page = ref(1), more = ref(false), activityLoading = ref(false), activityError = ref(false);
 let activityRequest = 0;
+const members = ref<ClubMember[]>([]), memberPage = ref(0), memberTotal = ref(0);
+const memberLoading = ref(false), memberError = ref(false);
+let memberRequest = 0;
+
+async function loadMembers(append = false) {
+  const version = ++memberRequest;
+  const nextPage = append ? memberPage.value + 1 : 1;
+  if (!append) {
+    members.value = [];
+    memberPage.value = 0;
+  }
+  memberLoading.value = true;
+  memberError.value = false;
+  try {
+    const result = await request<PageResult<ClubMember>>(`/clubs/${id.value}/members?page=${nextPage}`);
+    if (version !== memberRequest) return;
+    members.value = append ? members.value.concat(result.items) : result.items;
+    memberPage.value = nextPage;
+    memberTotal.value = result.total ?? members.value.length;
+  } catch {
+    if (version === memberRequest) memberError.value = true;
+  } finally {
+    if (version === memberRequest) memberLoading.value = false;
+  }
+}
+watch(panel, value => {
+  if (value === "members" && !memberPage.value && !memberLoading.value) void loadMembers();
+});
+
 async function loadActivities(append = false) {
   const version = ++activityRequest;
   const nextPage = append ? page.value + 1 : 1;
@@ -90,13 +127,14 @@ async function change(remove?: string) {
       method: remove || community.value.joined ? "DELETE" : "POST",
     });
     await load();
+    if (panel.value === "members" || memberPage.value || memberLoading.value) await loadMembers();
   } catch (e: any) {
     uni.showToast({ title: e.message || "操作失败", icon: "none" });
   } finally {
     busy.value = false;
   }
 }
-function confirmRemove(member: { id: string; name: string }) {
+function confirmRemove(member: ClubMember) {
   uni.showModal({
     title: "移除成员", content: "确定将" + member.name + "移出俱乐部？",
     success: result => { if (result.confirm) void change(member.id); },
@@ -168,13 +206,33 @@ function confirmRemove(member: { id: string; name: string }) {
           <wd-button v-else-if="more" block variant="plain" @click="loadActivities(true)">加载更多</wd-button>
           <text v-else-if="!activities.length" class="club-empty muted">暂无符合条件的活动</text>
         </template>
-        <view v-else-if="panel === 'members'" class="club-card">
-          <text class="section-title">{{ community.owner ? '成员管理' : '俱乐部成员' }}</text>
-          <text class="muted">{{ community.count }} 位球友</text>
-          <view v-for="member in community.members" :key="member.id" class="row between member-row">
-            <text>{{ member.name }}</text>
-            <wd-button size="small" variant="text" :disabled="busy" @click="confirmRemove(member)">移除</wd-button>
+        <view v-else-if="panel === 'members'" class="members-panel">
+          <view class="row between members-heading">
+            <text class="section-title">{{ community.owner ? '成员管理' : '俱乐部成员' }}</text>
+            <text class="muted">{{ memberPage ? memberTotal : community.count }} 位球友</text>
           </view>
+          <view v-for="member in members" :key="member.id" class="club-card member-row">
+            <view class="member-avatar">
+              <Photo :src="member.avatar_url || undefined" round width="48px" height="48px" />
+            </view>
+            <view class="member-details">
+              <text class="member-name">{{ member.name }}<text v-if="member.is_owner" class="member-role">群主</text></text>
+              <text class="member-id">ID {{ member.id }}</text>
+              <text class="member-meta">参与活动 {{ member.activity_count }} 次</text>
+              <text class="member-meta">加入时间 {{ member.joined_date }}</text>
+            </view>
+            <wd-button v-if="community.owner && !member.is_owner" size="small" variant="text"
+              :disabled="busy" @click="confirmRemove(member)">移除</wd-button>
+          </view>
+          <view v-if="memberLoading" class="loading-state">
+            <wd-loading /><text class="muted small">正在加载成员</text>
+          </view>
+          <view v-else-if="memberError" class="loading-state">
+            <text class="muted">成员加载失败</text>
+            <wd-button variant="plain" size="small" @click="loadMembers(memberPage > 0)">重试</wd-button>
+          </view>
+          <wd-button v-else-if="members.length < memberTotal" block variant="plain" @click="loadMembers(true)">加载更多</wd-button>
+          <text v-else-if="!members.length" class="club-empty muted">暂无成员</text>
         </view>
         <view v-else class="club-card">
           <text class="section-title">关于俱乐部</text>
@@ -232,6 +290,13 @@ function confirmRemove(member: { id: string; name: string }) {
 .club-filters button { min-height: 44px; padding: 0 10px; margin: 0; background: transparent; font-size: 13px; border-radius: 8px; }
 .club-filters .selected { background: var(--playnow-brand-soft); color: var(--playnow-brand); font-weight: 600; }
 .club-empty { display: block; text-align: center; padding: 22px 0; }
-.member-row { min-height: 60px; padding: 8px 0; gap: 12px; border-top: 1px solid var(--playnow-card-border); }
-.member-row > text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.members-panel { display: flex; flex-direction: column; gap: 10px; }
+.members-heading { padding: 2px 0; gap: 8px; }
+.member-row { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.member-avatar { flex: none; }
+.member-details { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.member-name { font-weight: 650; color: var(--playnow-text); overflow-wrap: anywhere; }
+.member-role { margin-left: 6px; color: var(--playnow-brand); font-size: 12px; }
+.member-id, .member-meta { color: var(--playnow-muted); font-size: 12px; line-height: 1.45; }
+.member-id { overflow-wrap: anywhere; }
 </style>

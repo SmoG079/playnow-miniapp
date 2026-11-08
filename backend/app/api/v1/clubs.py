@@ -17,6 +17,10 @@ from app.core.config import get_settings
 from app.api.deps import get_current_user, get_optional_user, get_club_admin, _v
 from app.models.models import User, Club, ClubMember, CommunityMember, Venue, BookingOrder, SettlementRecord, Notification, NotificationType
 from app.models.models import ClubMemberRole
+from app.models.models import (
+    MatchPost, MatchRegistration, RegistrationStatus,
+    Tournament, TournamentRegistration, TournamentRegStatus, TournamentStatus,
+)
 from app.utils.geo import haversine
 from app.schemas.schemas import (
     ClubCreate, ClubUpdate, ClubBrief, ClubDetail, PaginatedResponse,
@@ -553,6 +557,66 @@ async def club_activities(
         raise HTTPException(404, "Club not found")
     return await list_activities(db, None, sort_by="date_desc", page=page, page_size=page_size,
                                  club_id=club_id, club_phase=phase)
+
+
+@router.get("/{club_id}/members", response_model=PaginatedResponse)
+async def community_members(
+    club_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    club = await db.get(Club, club_id)
+    if not club or club.approval_status != "approved" or _v(club.status) != "active":
+        raise HTTPException(404, "Club not found")
+
+    total = await db.scalar(
+        select(func.count()).select_from(CommunityMember).where(CommunityMember.club_id == club_id)
+    )
+    rows = (await db.execute(
+        select(User.id, User.public_id, User.nickname, User.avatar_url, CommunityMember.created_at)
+        .join(CommunityMember, CommunityMember.user_id == User.id)
+        .where(CommunityMember.club_id == club_id)
+        .order_by(CommunityMember.created_at, CommunityMember.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all()
+    if not rows:
+        return PaginatedResponse(items=[], total=total, page=page, page_size=page_size)
+
+    user_ids = [row.id for row in rows]
+    post_counts = dict((await db.execute(
+        select(MatchRegistration.user_id, func.count())
+        .join(MatchPost, MatchPost.id == MatchRegistration.post_id)
+        .where(MatchPost.club_id == club_id, MatchRegistration.user_id.in_(user_ids),
+               MatchRegistration.status == RegistrationStatus.approved)
+        .group_by(MatchRegistration.user_id)
+    )).all())
+    tournament_counts = dict((await db.execute(
+        select(TournamentRegistration.user_id, func.count())
+        .join(Tournament, Tournament.id == TournamentRegistration.tournament_id)
+        .where(Tournament.club_id == club_id, TournamentRegistration.user_id.in_(user_ids),
+               Tournament.status.in_([TournamentStatus.open, TournamentStatus.ongoing, TournamentStatus.finished]),
+               TournamentRegistration.status == TournamentRegStatus.confirmed,
+               TournamentRegistration.admission == "active", TournamentRegistration.approval == "approved",
+               TournamentRegistration.payment.in_(["none", "paid", "verified"]))
+        .group_by(TournamentRegistration.user_id)
+    )).all())
+    owner_id = await _community_owner(db, club)
+    shanghai = ZoneInfo("Asia/Shanghai")
+    return PaginatedResponse(
+        items=[
+            {
+                "id": row.public_id,
+                "name": row.nickname or "球友",
+                "avatar_url": row.avatar_url,
+                "joined_date": row.created_at.replace(tzinfo=timezone.utc).astimezone(shanghai).date().isoformat(),
+                "activity_count": post_counts.get(row.id, 0) + tournament_counts.get(row.id, 0),
+                "is_owner": row.id == owner_id,
+            }
+            for row in rows
+        ],
+        total=total, page=page, page_size=page_size,
+    )
 
 
 @router.post("/{club_id}/community")

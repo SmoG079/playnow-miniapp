@@ -1,9 +1,17 @@
+from datetime import datetime
+
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from app.api.v1 import clubs
 from app.api.deps import get_club_admin
-from app.models.models import Club, User, ClubMember, CommunityMember
+from app.core.database import get_db
+from app.models.models import (
+    Club, User, ClubMember, CommunityMember, MatchPost, MatchRegistration, RegistrationStatus,
+    TournamentRegistration, TournamentRegStatus,
+)
+from tests.test_discovery import post
 from tests.test_tournaments import db, event
 
 @pytest.mark.asyncio
@@ -27,6 +35,54 @@ async def test_membership_is_idempotent_and_never_grants_management(db):
     await clubs.leave_community(1, guest, db)
     await clubs.leave_community(1, guest, db)
     with pytest.raises(HTTPException): await clubs.leave_community(1, owner, db)
+
+
+@pytest.mark.asyncio
+async def test_public_club_members_show_paginated_profiles_and_confirmed_activity_counts(db):
+    tournament_id, owner = await event(db)
+    club = await db.get(Club, 1)
+    club.created_by = owner.id
+    guest = await db.get(User, "3")
+    guest.avatar_url = "https://example.com/avatar.png"
+    first = await post(db, "扬州市", "2030-01-01")
+    second = await post(db, "扬州市", "2030-01-02")
+    (await db.get(MatchPost, first.id)).club_id = 1
+    (await db.get(MatchPost, second.id)).club_id = 2
+    joined_at = datetime(2026, 11, 7, 17)
+    db.add_all([
+        CommunityMember(club_id=1, user_id=guest.id, created_at=joined_at),
+        CommunityMember(club_id=1, user_id=owner.id, created_at=joined_at),
+        MatchRegistration(post_id=first.id, user_id=guest.id, status=RegistrationStatus.approved),
+        MatchRegistration(post_id=second.id, user_id=guest.id, status=RegistrationStatus.approved),
+        TournamentRegistration(tournament_id=tournament_id, user_id=guest.id,
+                               status=TournamentRegStatus.confirmed),
+        TournamentRegistration(tournament_id=tournament_id, user_id=owner.id,
+                               status=TournamentRegStatus.cancelled),
+    ])
+    await db.flush()
+
+    app = FastAPI()
+    app.include_router(clubs.router)
+
+    async def isolated_db():
+        yield db
+
+    app.dependency_overrides[get_db] = isolated_db
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://isolated") as client:
+        response = await client.get("/clubs/1/members?page_size=1")
+        assert response.status_code == 200
+        assert response.json()["total"] == 2
+        assert response.json()["items"] == [{
+            "id": guest.public_id, "name": guest.nickname, "avatar_url": guest.avatar_url,
+            "joined_date": "2026-11-08", "activity_count": 2, "is_owner": False,
+        }]
+        response = await client.get("/clubs/1/members?page_size=1&page=2")
+        assert response.status_code == 200
+        member, = response.json()["items"]
+        assert member["id"] == owner.public_id and member["is_owner"] and member["activity_count"] == 0
+        club.approval_status = "pending"
+        assert (await client.get("/clubs/1/members")).status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_unapproved_club_cannot_be_joined(db):
