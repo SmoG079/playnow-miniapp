@@ -227,8 +227,9 @@ function returnToPublish() {
             <view><text class="field-label">开始时间</text><picker mode="time" :value="form.preferred_start" @change="form.preferred_start = $event.detail.value"><view class="picker-field">{{ form.preferred_start }}</view></picker></view>
             <view><text class="field-label">结束时间</text><picker mode="time" :value="form.preferred_end" @change="form.preferred_end = $event.detail.value"><view class="picker-field">{{ form.preferred_end }}</view></picker></view>
           </view>
-          <text class="field-label">活动地点 *</text><ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
-          <text class="field-label">地点名称</text><wd-input v-model="form.location_name" :disabled="!!form.booking_id" placeholder="例如：某某网球中心（某某店）" :maxlength="256" />
+          <text class="field-label">活动地点 *</text>
+          <wd-input v-model="form.location_name" :disabled="!!form.booking_id" placeholder="地点名称，例如：某某网球中心" :maxlength="256" />
+          <ActivityLocationSelect field label="活动地点" :city="form.city" :address="form.address" :location-name="form.location_name" :disabled="!!form.booking_id" @busy="locationSelecting = $event" @select="selectLocation" />
           <view v-if="form.booking_id" class="venue-association"><text class="linked-venue">{{ venueName }}（历史关联）</text><wd-button variant="text" @click="unlinkVenue">移除关联</wd-button></view>
         </view>
         <view class="creation-section">

@@ -111,15 +111,16 @@ onReachBottom(loadMore);
     <view class="content">
       <view class="square-heading"><text>约球广场</text><text class="square-caption">找到合拍的球友</text></view>
       <view class="discovery-filters">
-        <view class="filter-line filter-primary">
+        <view class="filter-line">
           <ChoicePicker title="排序方式" :range="sortOptions" :value="sort" @change="sortChange"><view class="filter-control"><text>{{ sortOptions[sort].replace('按','') }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
           <ChoicePicker title="活动类型" :range="types" :value="mode" @change="typeChange"><view class="filter-control" :class="{'filter-selected':mode!==0}"><text>{{ types[mode] }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
           <picker mode="date" :value="date" @change="dateChange"><view class="filter-control" :class="{'filter-selected':!!date}"><text>{{ date || '日期' }}</text><wd-icon v-if="date" name="close" size="12px" @click.stop="clearDate" /><wd-icon v-else name="arrow-down" size="12px" /></view></picker>
         </view>
-        <view class="filter-line filter-secondary">
+        <view class="filter-line">
           <ChoicePicker title="NTRP 等级" :range="levelOptions" :value="ntrp" @change="levelChange"><view class="filter-control" :class="{'filter-selected':ntrp>0}"><text>{{ ntrp ? 'NTRP '+levelOptions[ntrp] : 'NTRP 等级' }}</text><wd-icon name="arrow-down" size="12px" /></view></ChoicePicker>
-          <button class="my-level filter-control" @click="myLevel">适合我的级别</button>
-          <button class="view-tournaments filter-control" :class="{selected:typeValues[mode]==='tournament'}" @click="viewTournaments">查看比赛</button>
+          <button class="filter-control filter-shortcut" @click="myLevel"><text>适合我的级别</text></button>
+          <button class="filter-control filter-shortcut" :class="{selected:typeValues[mode]==='tournament'}"
+            :aria-pressed="typeValues[mode] === 'tournament'" @click="viewTournaments"><text>查看比赛</text></button>
         </view>
       </view>
       <ActivityCard v-for="item in visibleItems" :key="item.kind+'-'+item.id" :item="item" :kind="item.kind" @open="openPage('/pages/common/'+(item.kind==='tournament'?'tournament-detail':'post-detail')+'?id='+item.id)" />
@@ -136,21 +137,21 @@ onReachBottom(loadMore);
 .square-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; margin-bottom:10px; font-size:18px; font-weight:600; color:var(--playnow-text); }
 .square-caption { font-size:13px; font-weight:400; color:var(--playnow-muted); }
 .discovery-filters { margin-bottom:16px; display:flex; flex-direction:column; gap:0; }
-.filter-line { display:grid; gap:8px; min-width:0; }
-.filter-primary { grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr); }
-.filter-secondary { grid-template-columns:1fr 1.3fr 1fr; }
+.filter-line { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr); align-items:center; gap:8px; min-width:0; }
 .filter-line :deep(.choice-select) { min-width:0; }
 .filter-control { position:relative; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; width:100%; min-height:44px; padding:6px; margin:0; border:0; background:transparent; font-size:13px; font-weight:400; line-height:20px; color:var(--playnow-muted); }
 /* Compact 32px visible frame inside a 44px touch target. */
 .filter-control::before { content:""; position:absolute; inset:6px 0; border:1px solid var(--playnow-card-border); border-radius:6px; background:var(--playnow-surface); pointer-events:none; }
 .filter-control > text, .filter-control :deep(.wd-icon) { position:relative; }
 .filter-control text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.filter-control:not(.filter-shortcut) { display:grid; grid-template-columns:12px minmax(0,1fr) 12px; }
+.filter-control:not(.filter-shortcut) > text { grid-column:2; text-align:center; }
 .filter-control::after { border:0; }
 .filter-selected { color:var(--playnow-brand); }
 .filter-selected::before { background:var(--playnow-brand-soft); border-color:var(--playnow-brand); }
-.my-level, .view-tournaments { color:var(--playnow-brand); }
-.my-level::before, .view-tournaments::before { display:none; }
-.view-tournaments.selected { font-weight:600; }
+.filter-shortcut { color:var(--playnow-brand); }
+.filter-shortcut::before { display:none; }
+.filter-shortcut.selected { color:var(--playnow-brand-deep); }
 @media(max-width:359px) { .filter-control { font-size:12px; padding:6px 4px; } .filter-line { gap:6px; } }
 
 </style>

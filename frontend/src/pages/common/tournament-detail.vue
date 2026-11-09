@@ -168,6 +168,16 @@ const canJoin = computed(
     !mine.value ||
     ["cancelled", "expired", "rejected"].includes(mine.value.admission || ""),
 );
+const cancelUnavailableReason = computed(() => {
+  const event = t.value;
+  if (!event) return "";
+  if (event.status === "finished" || event.status === "cancelled") return "赛事已结束，无法取消报名";
+  if (event.roster_frozen || event.draw_version) return "参赛名单已锁定，请联系组织者";
+  const deadline = event.cancellation_deadline
+    ? new Date(utcInput(event.cancellation_deadline)).getTime()
+    : new Date(utcInput(event.start_time)).getTime() - 60 * 60 * 1000;
+  return Date.now() >= deadline ? "已过自助取消截止时间，请联系组织者" : "";
+});
 const title = computed(() =>
   !s.loggedIn
     ? "登录后报名"
@@ -725,12 +735,12 @@ function tie() {
               {{ mine.checked_in_at ? "已签到 · " + localTime(mine.checked_in_at) : "未签到" }}
             </text>
             <text v-if="!mine.checked_in_at && !t.checkin_open" class="check-in-note">开赛前 30 分钟开放</text>
+          </view>
+          <view class="choices registration-card-actions">
             <view v-if="t.checkin_open && mine.status === 'confirmed' && mine.admission === 'active' && !mine.checked_in_at" class="check-in-action">
               <wd-button size="mini" variant="soft" :loading="busy" @click="run(`registrations/${mine.id}/check-in`)">签到</wd-button>
             </view>
-          </view>
-          <view class="choices"
-            ><wd-button
+            <wd-button
               v-if="mine.payment === 'pending' && mine.admission === 'active'"
               size="small"
               :loading="busy"
@@ -742,10 +752,12 @@ function tie() {
               variant="plain"
               @click="run('payment-status')"
               >刷新支付状态</wd-button
-            ><view v-if="!t.roster_frozen && !canJoin" class="cancel-registration-action">
-              <wd-button size="mini" type="danger" variant="plain" @click="cancelReg(mine)">取消报名</wd-button>
+            ><view v-if="!canJoin" class="cancel-registration-action">
+              <wd-button size="mini" type="danger" variant="plain" :disabled="busy || !!cancelUnavailableReason"
+                @click="cancelReg(mine)">取消报名</wd-button>
             </view></view
           >
+          <text v-if="!canJoin && cancelUnavailableReason" class="check-in-note cancellation-note">{{ cancelUnavailableReason }}</text>
           <template
             v-if="
               cfg?.pairing === 'fixed' &&
@@ -788,7 +800,7 @@ function tie() {
         >
         <view v-if="t.can_manage" class="manager"
           ><text class="section-title">赛事管理</text>
-          <view class="choices"
+          <view class="choices manager-toolbar"
             ><wd-button
               v-if="!t.draw_version && !['finished', 'cancelled'].includes(t.status)"
               size="small"
@@ -822,7 +834,7 @@ function tie() {
               custom-class="draw-draft-button"
               @click="draw()"
               >{{ t.draw_version ? "重新抽签" : "生成抽签草稿" }}</wd-button
-            ><text v-if="t.roster_frozen && drawBlockReason(t)" class="muted small">{{drawBlockReason(t)}}</text><wd-button
+            ><wd-button
               v-if="t.draw_version && !t.draw_published"
               size="small"
               :loading="busy"
@@ -858,8 +870,11 @@ function tie() {
               >取消赛事并退款</wd-button
             ></view
           >
+          <view class="manager-status">
+            <text class="check-in-note">未签到：{{ t.unchecked_count || 0 }} 人；全部参赛者签到后可抽签</text>
+            <text v-if="t.roster_frozen && !t.unchecked_count && drawBlockReason(t)" class="check-in-note">{{ drawBlockReason(t) }}</text>
+          </view>
           <wd-button v-if="cancelledRegistrations.length" size="small" variant="text" @click="showCancelledRecords=!showCancelledRecords">{{ showCancelledRecords ? '收起取消记录' : '查看取消记录' }}（{{ cancelledRegistrations.length }}）</wd-button>
-          <text class="muted">未签到：{{ t.unchecked_count || 0 }} 人；全部参赛者签到后可抽签</text>
           <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
             ><view class="registration-profile">
               <view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
@@ -869,7 +884,7 @@ function tie() {
               {{ stateNames[r.payment || ""] }}</text
             ><view class="check-in-section">
               <text class="check-in-status" :class="{ 'is-checked-in': r.checked_in_at }">{{ r.checked_in_at ? "已签到" : "未签到" }}</text>
-            </view><view class="choices registration-management-actions"
+            </view><view class="choices registration-card-actions"
               >
               <view v-if="t.checkin_open && r.status === 'confirmed' && r.admission === 'active' && !r.checked_in_at" class="check-in-action">
                 <wd-button size="mini" variant="soft" :loading="busy" @click="run(`registrations/${r.id}/check-in`)">代签到</wd-button>
@@ -1128,7 +1143,10 @@ function tie() {
 .check-in-section{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--playnow-card-border)}
 .check-in-status,.check-in-note{font-size:13px;line-height:20px;color:var(--playnow-muted)}
 .check-in-status.is-checked-in{color:var(--playnow-brand)}
-.registration-management-actions{align-items:center}
+.registration-card-actions{align-items:center}
+.manager-toolbar{align-items:center}
+.manager-status{display:flex;flex-direction:column;gap:4px}
+.cancellation-note{display:block}
 .check-in-action{--wot-button-height-mini:38px}
 .cancel-registration-action{--wot-button-height-mini:32px}
 </style>
