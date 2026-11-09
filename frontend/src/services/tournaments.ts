@@ -131,6 +131,7 @@ export interface Tournament {
   current_participants: number;
   config: TournamentConfig | null;
   registration_deadline: string;
+  registration_closed?: boolean;
   cancellation_deadline: string;
   roster_frozen: boolean;
   draw_version: number;

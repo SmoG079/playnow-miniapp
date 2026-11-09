@@ -168,6 +168,16 @@ const canJoin = computed(
     !mine.value ||
     ["cancelled", "expired", "rejected"].includes(mine.value.admission || ""),
 );
+const canReopenRegistration = computed(() => {
+  const event = t.value;
+  return !!event && event.status === "open" && !event.draw_version
+    && Date.now() < new Date(utcInput(event.end_time)).getTime() && registrationLocked.value;
+});
+const registrationDeadlinePassed = computed(() => {
+  const event = t.value;
+  return !!event && Date.now() >= new Date(utcInput(event.registration_deadline || event.start_time)).getTime();
+});
+const registrationLocked = computed(() => !!t.value?.roster_frozen || !!t.value?.registration_closed || registrationDeadlinePassed.value);
 const cancelUnavailableReason = computed(() => {
   const event = t.value;
   if (!event) return "";
@@ -450,7 +460,10 @@ async function draw(stage = "initial") {
   }
 }
 async function reopenRegistration() {
-  if (!(await confirm("重新开放报名并解除名单冻结？抽签前可继续补充参赛者。"))) return;
+  const message = registrationDeadlinePassed.value && t.value
+    ? `重新开放报名后，报名截止将延至赛事结束（${localTime(t.value.end_time)}）。确认开放？`
+    : "重新开放报名并解除名单冻结？抽签前可继续补充参赛者。";
+  if (!(await confirm(message))) return;
   try { await run("reopen-registration"); }
   catch(e:any) { uni.showModal({title:"重新开放报名失败",content:e.message||"请刷新后重试",showCancel:false}); }
 }
@@ -812,7 +825,7 @@ function tie() {
               "
               >编辑配置</wd-button
             ><wd-button
-              v-if="!t.roster_frozen"
+              v-if="!registrationLocked"
               size="small"
               :loading="busy"
               @click="
@@ -821,7 +834,7 @@ function tie() {
                 )
               "
               >关闭报名</wd-button
-            ><wd-button v-if="t.roster_frozen && !t.draw_version && t.status === 'open'" size="small" variant="plain" :loading="busy" :disabled="Date.now() >= new Date(utcInput(t.registration_deadline || t.start_time)).getTime()" @click="reopenRegistration">重新开放报名</wd-button><wd-button
+            ><wd-button v-if="canReopenRegistration" size="small" variant="plain" :loading="busy" @click="reopenRegistration">重新开放报名</wd-button><wd-button
               v-if="
                 cfg &&
                 t.roster_frozen &&

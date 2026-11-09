@@ -163,7 +163,7 @@ async def refresh_admissions(db, t):
     rows = await registrations(db, t)
     current = now()
     cfg = config(t) if t.config else None
-    if current >= (t.registration_deadline or t.start_time):
+    if current >= min(t.registration_deadline or t.start_time, t.end_time):
         t.registration_closed = True
         t.roster_frozen = True
     for r in rows:

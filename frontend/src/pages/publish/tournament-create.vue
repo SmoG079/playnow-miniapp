@@ -210,9 +210,9 @@ onLoad(async (q) => {
     form.courts = cfg.courts.join("\n");
     images.value = t.images || [];
     form.registration_hours = String(
-      (new Date(t.start_time + "Z").getTime() -
+      Math.max(0, (new Date(t.start_time + "Z").getTime() -
         new Date((t.registration_deadline || t.start_time) + "Z").getTime()) /
-        3600000,
+        3600000),
     );
     form.cancellation_hours = t.cancellation_deadline
       ? String(

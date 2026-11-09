@@ -10,7 +10,7 @@ def registration_closed_condition(kind, now):
         return or_(Tournament.registration_closed.is_(True),
             Tournament.status.in_(["cancelled", "finished", "ongoing"]),
             func.coalesce(Tournament.registration_deadline, Tournament.start_time) <= now,
-            Tournament.start_time <= now)
+            Tournament.end_time <= now)
     local = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Shanghai"))
     return or_(MatchPost.status == "closed", MatchPost.preferred_date < local.date(),
         and_(MatchPost.preferred_date == local.date(), MatchPost.preferred_start <= local.time().replace(tzinfo=None)))

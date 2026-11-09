@@ -205,13 +205,22 @@ async def test_reopen_before_draw_recovers_insufficient_frozen_roster(db):
 
 
 @pytest.mark.asyncio
-async def test_reopen_refuses_deadline_and_other_users(db):
+async def test_reopen_after_start_extends_registration_until_event_end(db):
     tid,admin=await event(db,4)
     await api.close_registration(tid,admin,db)
     with pytest.raises(HTTPException) as denied:await api.reopen_registration(tid,await db.get(User,2),db)
     assert denied.value.status_code==403
     t=await db.get(Tournament,tid)
-    t.registration_deadline=datetime.utcnow()-timedelta(minutes=1)
+    t.start_time=datetime.utcnow()-timedelta(minutes=1)
+    t.registration_deadline=t.start_time
+    await db.flush()
+    await api.reopen_registration(tid,admin,db)
+    assert t.registration_deadline == t.end_time
+    assert (await api.get_tournament(tid, await db.get(User,2), db))["can_register"]
+    await register(db,tid,2)
+    assert not t.roster_frozen
+    t.end_time=datetime.utcnow()
+    await db.flush()
     with pytest.raises(HTTPException) as closed:await api.reopen_registration(tid,admin,db)
     assert closed.value.status_code==409
 

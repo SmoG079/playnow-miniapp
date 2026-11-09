@@ -437,7 +437,11 @@ async def update_tournament(
               or life.config(t).group_count != req.config.group_count)
     if current and resize:
         await entries.resize(db, t, req.config, req.max_participants, regs)
+    late_registration = (t.registration_deadline and t.registration_deadline > t.start_time
+                         and (req.start_time == t.start_time or req.start_time <= life.now()))
     await apply_request(db, t, req)
+    if late_registration:
+        t.registration_deadline = t.end_time
     if not current:
         await entries.rebuild(db, t)
     await life.refresh_admissions(db, t)
@@ -555,9 +559,7 @@ async def get_tournament(
         .replace("{{地点}}", data["address"] or "")
         .replace("{{项目}}", "网球")
     )
-    closed = t.registration_closed or life.now() >= (
-        t.registration_deadline or t.start_time
-    )
+    closed = t.registration_closed or life.now() >= min(t.registration_deadline or t.start_time, t.end_time)
     data.update(
         registrations=regs,
         participants=[r for r in regs if r["status"] in ("registered", "confirmed") and r.get("admission") not in ("cancelled", "expired", "rejected")],
@@ -1102,12 +1104,17 @@ async def reopen_registration(ident: int, user: User = Depends(get_current_user)
     t = await life.locked_event(db, ident)
     await admin(db, t, user)
     if t.draw_version or _v(t.status) != "open":
-        raise HTTPException(409, "已有签表或赛事已开始，不能重新开放报名")
-    if life.now() >= (t.registration_deadline or t.start_time):
-        raise HTTPException(409, "已超过报名截止时间，不能重新开放报名")
+        raise HTTPException(409, "已有签表或赛事状态不允许重新开放报名")
+    current = life.now()
+    if current >= t.end_time:
+        raise HTTPException(409, "赛事已到结束时间，不能重新开放报名")
+    if current >= (t.registration_deadline or t.start_time):
+        t.registration_deadline = t.end_time
     t.registration_closed = False
     t.roster_frozen = False
-    life.audit(db, t, user, "registration_reopened", {})
+    life.audit(db, t, user, "registration_reopened", {
+        "registration_deadline": (t.registration_deadline or t.start_time).isoformat(),
+    })
     return {"msg": "ok"}
 
 
