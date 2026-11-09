@@ -1124,6 +1124,7 @@ image {
 
 /* Shared navigation: reserve the native capsule lane, then show content. */
 .main-header { margin-bottom: 20px; padding: 0 var(--playnow-gutter) 16px; background: var(--playnow-bg); }
+.main-header:not(.main-header-simple) { margin-bottom: 16px; padding-bottom: 4px; }
 .header-nav { display: flex; align-items: center; }
 .header-nav .city-pill { max-width: 100%; }
 .header-heading { display: flex; align-items: center; gap: 8px; margin-top: 20px; min-width: 0; }
@@ -1151,7 +1152,6 @@ image {
 .profile-header > view > .muted { display: block; line-height: 1.7; overflow-wrap: anywhere; }
 .menu-list { overflow: hidden; margin-bottom: 20px; }
 .message-empty { padding-top: 48px; }
-.search-card { border-radius: var(--playnow-field-radius); background: var(--playnow-surface); overflow: hidden; margin-bottom: 16px; }
 .search-card, .activity-search {
   --wot-search-padding: 0;
   --wot-search-bg: var(--playnow-surface);

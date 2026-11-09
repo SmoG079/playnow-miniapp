@@ -150,21 +150,24 @@ onReachBottom(loadMore);
 .square-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:12px; margin-bottom:10px; font-size:18px; font-weight:600; color:var(--playnow-text); }
 .square-caption { font-size:13px; font-weight:400; color:var(--playnow-muted); }
 .discovery-filters { margin-bottom:16px; display:flex; flex-direction:column; gap:0; }
-.filter-line { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr); align-items:center; gap:8px; min-width:0; }
+.filter-line { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr) minmax(0,1.05fr); align-items:center; gap:8px; min-width:0; }
 .filter-line :deep(.choice-select) { min-width:0; }
-.filter-control { position:relative; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; width:100%; min-height:44px; padding:6px; margin:0; border:0; background:transparent; font-size:13px; font-weight:400; line-height:20px; color:var(--playnow-muted); }
+.filter-control { position:relative; box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-width:0; width:100%; min-height:44px; padding:6px 20px; margin:0; border:0; background:transparent; font-size:13px; font-weight:400; line-height:20px; color:var(--playnow-muted); }
 /* Compact 32px visible frame inside a 44px touch target. */
 .filter-control::before { content:""; position:absolute; inset:6px 0; border:1px solid var(--playnow-card-border); border-radius:6px; background:var(--playnow-surface); pointer-events:none; }
-.filter-control > text, .filter-control :deep(.wd-icon) { position:relative; }
-.filter-control text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.filter-control:not(.filter-shortcut) { display:grid; grid-template-columns:12px minmax(0,1fr) 12px; }
-.filter-control:not(.filter-shortcut) > text { grid-column:2; text-align:center; }
+.filter-control > text { position:relative; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
+.filter-control :deep(.wd-icon) { position:absolute; right:6px; top:50%; transform:translateY(-50%); }
 .filter-control::after { border:0; }
 .filter-selected { color:var(--playnow-brand); }
 .filter-selected::before { background:var(--playnow-brand-soft); border-color:var(--playnow-brand); }
-.filter-shortcut { color:var(--playnow-brand); }
+.filter-shortcut { padding-inline:6px; color:var(--playnow-brand); }
 .filter-shortcut::before { display:none; }
 .filter-shortcut.selected { color:var(--playnow-brand-deep); }
-@media(max-width:359px) { .filter-control { font-size:12px; padding:6px 4px; } .filter-line { gap:6px; } }
+@media(max-width:359px) {
+  .filter-control { font-size:12px; padding-inline:17px; }
+  .filter-shortcut { padding-inline:4px; }
+  .filter-control :deep(.wd-icon) { right:4px; }
+  .filter-line { gap:6px; }
+}
 
 </style>

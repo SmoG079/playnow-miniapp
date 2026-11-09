@@ -74,13 +74,12 @@ onReachBottom(() => more.value && load(true));
 <template>
   <AppShell :active="props.selection ? undefined : 'clubs'" :back="props.selection" :title="props.selection ? '选择并预订场地' : ''"
     ><MainHeader v-if="!props.selection" title="俱乐部" context @city-change="load()" /><view class="content main-content"
-      ><view class="search-card"><wd-search
-        v-model="keyword"
-        placeholder="搜索俱乐部"
-        placeholder-left
-        cancel-txt="搜索"
-        @search="load()"
-        @cancel="load()" /></view><view class="filter-row"
+      ><view class="search-card">
+        <view class="club-search-field">
+          <wd-search v-model="keyword" placeholder="搜索俱乐部" placeholder-left hide-cancel @search="load()" />
+        </view>
+        <wd-button size="large" @click="load()">搜索</wd-button>
+      </view><view class="filter-row"
         ><wd-button
           size="small"
           :type="sort === 'default' ? 'primary' : 'info'"
@@ -125,6 +124,17 @@ onReachBottom(() => more.value && load(true));
 </template>
 
 <style scoped>
+.search-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  --wot-button-height-large: 48px;
+  --wot-button-padding-large: 0 18px;
+  --wot-button-font-size-large: 14px;
+  --wot-button-radius-main: var(--playnow-field-radius);
+}
+.club-search-field { flex: 1; min-width: 0; --wot-search-block-margin-right: 0; }
 .club-description { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .venue-pressed { opacity:.85; }
 </style>
