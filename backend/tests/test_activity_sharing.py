@@ -1,4 +1,5 @@
 import base64
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import httpx
@@ -9,10 +10,13 @@ from app.api.v1 import sharing
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("asset,body", [("code", b'\x89PNG\r\n\x1a\nimage'), ("link", b'{"url_link":"https://wxaurl.cn/test"}')])
+@pytest.mark.parametrize("asset,body", [
+    ("code", b'\x89PNG\r\n\x1a\nimage'),
+    ("link", b'{"url_link":"https://wxaurl.cn/test"}'),
+    ("link", b'{"errcode":0,"url_link":"https://wxmpurl.cn/test"}'),
+])
 async def test_wechat_asset_targets_activity_and_preserves_binary(asset, body):
     async def handler(request):
-        import json
         payload = json.loads(request.content)
         assert request.url.params["access_token"] == "private-token"
         if asset == "code":
@@ -25,7 +29,7 @@ async def test_wechat_asset_targets_activity_and_preserves_binary(asset, body):
     with patch.object(sharing, "get_wx_access_token", AsyncMock(return_value="private-token")), patch.object(sharing.httpx, "AsyncClient", return_value=client):
         result = await sharing.wechat_asset("post", 42, asset)
     if asset == "code": assert base64.b64decode(result["image_base64"]) == body
-    else: assert result["url"] == "https://wxaurl.cn/test"
+    else: assert result["url"] == json.loads(body)["url_link"]
 
 
 @pytest.mark.asyncio

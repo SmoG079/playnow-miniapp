@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ChoicePicker from "../../components/ChoicePicker.vue";
 import { computed, ref } from "vue";
-import { onPullDownRefresh, onReachBottom, onShow, onHide, onUnload, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
+import { onLoad, onPullDownRefresh, onReachBottom, onShow, onHide, onUnload, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
 import { visibleInDiscovery, registrationCutoff, activityPhase } from "../../domain/activity-visibility";
 import MainHeader from "../../components/MainHeader.vue";
 import ActivityCard from "../../components/ActivityCard.vue";
@@ -12,21 +12,20 @@ import { openPage } from "../../utils/navigation";
 import { useDiscovery } from "../../stores/discovery";
 import { useSession } from "../../stores/session";
 import { sortOptions, sortValues, levelOptions, discoveryQuery, ownLevel } from "../../services/discovery";
-import { enableActivitySharing } from "../../utils/share";
+import { enableActivitySharing, homeShare, isTimelinePreview } from "../../utils/share";
 
-// #ifdef MP-WEIXIN
-enableActivitySharing();
-onShareAppMessage(() => ({
-  title: "一起上场 · 网球约球与赛事报名",
-  path: "/pages/home/index",
-  imageUrl: "/static/tennis.jpg",
-}));
-onShareTimeline(() => ({
-  title: "一起上场 · 网球约球与赛事报名",
-  imageUrl: "/static/tennis.jpg",
-}));
-// #endif
 const location = useDiscovery(), session = useSession();
+// #ifdef MP-WEIXIN
+onLoad(q => {
+  if (isTimelinePreview() && typeof q?.city === "string") location.selectCity(q.city.slice(0, 64));
+});
+onShow(() => enableActivitySharing());
+onShareAppMessage(homeShare);
+onShareTimeline(() => {
+  const { title, imageUrl } = homeShare();
+  return { title, imageUrl, query: location.city ? `city=${encodeURIComponent(location.city)}` : "" };
+});
+// #endif
 const mode = ref(0), date = ref(""), ntrp = ref(0), sort = ref(0);
 const items = ref<any[]>([]), loading = ref(false), queryError = ref("");
 let retryMore = false;
@@ -113,7 +112,7 @@ async function myLevel() {
 }
 onShow(async () => {
   visible=true;visibilityNow.value=Date.now();
-  if (!location.city && !location.attempted) { await locateCity(); return; }
+  if (!isTimelinePreview() && !location.city && !location.attempted) { await locateCity(); return; }
   await load();
 });
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));

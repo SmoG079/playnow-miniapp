@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { onLoad, onShareAppMessage } from "@dcloudio/uni-app";
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import ActivityCard from "../../components/ActivityCard.vue";
 import type { ActivityCardData, ActivityKind } from "../../domain/activity-card";
 import { request, type PageResult } from "../../services/api";
 import { useSession } from "../../stores/session";
+import { clubShare, enableActivitySharing } from "../../utils/share";
 
 type ClubActivity = ActivityCardData & { id: number; kind: ActivityKind };
 type ClubMember = {
@@ -100,13 +101,13 @@ onLoad(q => {
   id.value = Number(q?.id);
   void load();
   void loadActivities();
-  uni.showShareMenu?.({ menus: ["shareAppMessage"] });
 });
-onShareAppMessage(() => ({
-  title: club.value?.name || "网球俱乐部",
-  path: "/pages/common/club-detail?id=" + id.value,
-  imageUrl: club.value?.cover_image || undefined,
-}));
+onShow(() => enableActivitySharing());
+onShareAppMessage(() => clubShare(id.value, club.value?.name, club.value?.cover_image));
+onShareTimeline(() => {
+  const { title, query, imageUrl } = clubShare(id.value, club.value?.name, club.value?.cover_image);
+  return { title, query, imageUrl };
+});
 function openActivity(item: ClubActivity) {
   const pageName = item.kind === "tournament" ? "tournament-detail" : "post-detail";
   uni.navigateTo({ url: "/pages/common/" + pageName + "?id=" + item.id });

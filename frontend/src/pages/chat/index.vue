@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {notificationTime} from '../../domain/notifications';
 import {ref,watch,computed} from 'vue';
-import {onShow,onHide,onUnload,onReachBottom} from '@dcloudio/uni-app';
+import { onShareAppMessage,onShow,onHide,onUnload,onReachBottom} from '@dcloudio/uni-app';
 import MainHeader from '../../components/MainHeader.vue';
 import AppShell from '../../components/AppShell.vue';
 import Photo from '../../components/Photo.vue';
@@ -10,6 +10,12 @@ import {getConversations,type Conversation} from '../../services/messages';
 import {openPage} from '../../utils/navigation';
 import {useSession} from '../../stores/session';
 import {useInbox} from '../../stores/inbox';
+import { enableActivitySharing, homeShare } from "../../utils/share";
+
+// #ifdef MP-WEIXIN
+onShow(() => enableActivitySharing(false));
+onShareAppMessage(homeShare);
+// #endif
 const session=useSession(),inbox=useInbox(),unread=computed(()=>inbox.systemUnread),latest=ref<any>(null),conversations=ref<Conversation[]>([]),error=ref('');
 let visible=false,version=0,loading=false,page=1,more=false,timer:ReturnType<typeof setTimeout>|undefined;
 function stop(){visible=false;version++;clearTimeout(timer);}

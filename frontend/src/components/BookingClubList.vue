@@ -6,6 +6,7 @@ import { useDiscovery } from "../stores/discovery";
 import AppShell from "./AppShell.vue";
 import { request, type PageResult } from "../services/api";
 import { openPage } from "../utils/navigation";
+import { isTimelinePreview } from "../utils/share";
 const props = defineProps<{ selection?: boolean }>();
 const returnMode = ref("post");
 onLoad(q => { returnMode.value = q?.return_mode === "tournament" ? "tournament" : "post"; });
@@ -30,12 +31,13 @@ async function load(append = false) {
   const version = ++loadVersion;
   const signature = querySignature();
   if (!append) { clubs.value = []; cachedSignature = ""; loadedAt = 0; }
-  if (!location.city) { loading.value = false; return; }
+  if (!location.city && !isTimelinePreview()) { loading.value = false; return; }
   loading.value = true;
   queryError.value = "";
   try {
     const p = append ? page.value + 1 : 1;
-    let url = `/clubs?community=true&page=${p}&page_size=20&city=${encodeURIComponent(location.city)}`;
+    let url = `/clubs?community=true&page=${p}&page_size=20`;
+    if (location.city) url += `&city=${encodeURIComponent(location.city)}`;
     if (keyword.value) url += `&keyword=${encodeURIComponent(keyword.value)}`;
     if (sort.value === "distance" && location.latitude !== null)
       url += `&lat=${location.latitude}&lng=${location.longitude}&sort_by=distance`;
@@ -59,7 +61,7 @@ async function setSort(v: string) {
   sort.value = v; await load();
 }
 onShow(async () => {
-  if (!location.city && !location.attempted) {
+  if (!isTimelinePreview() && !location.city && !location.attempted) {
     try { await location.locate(); }
     catch { uni.showToast({ title: "请手动选择城市", icon: "none" }); }
   }

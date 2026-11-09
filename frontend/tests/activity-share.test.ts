@@ -3,7 +3,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 import { createPinia, setActivePinia } from "pinia";
-import { activityShare, enableActivitySharing, isTimelinePreview } from "../src/utils/share";
+import { activityShare, clubShare, enableActivitySharing, homeShare, isTimelinePreview } from "../src/utils/share";
 import { futureActivityStart } from "../src/utils/date";
 import { useSession } from "../src/stores/session";
 
@@ -18,6 +18,16 @@ it("enables both chat and Moments menus", () => {
 it("uses the detail route and safe cover without leaking temporary images", () => {
   expect(activityShare("post",42,"周末约球","wxfile://tmp/cover.jpg")).toMatchObject({title:"周末约球",path:"/pages/common/post-detail?id=42",query:"id=42",imageUrl:"/static/tennis.jpg"});
   expect(activityShare("tournament",9,"周末比赛","https://cos.example/cover.jpg").imageUrl).toBe("https://cos.example/cover.jpg");
+});
+
+it("shares a club by public ID and sends private page shares to the public home page", () => {
+  expect(clubShare(8, "网球俱乐部", "wxfile://tmp/cover.jpg")).toMatchObject({
+    path: "/pages/common/club-detail?id=8", query: "id=8", imageUrl: "/static/tennis.jpg",
+  });
+  (uni as any).showShareMenu = vi.fn();
+  enableActivitySharing(false);
+  expect(uni.showShareMenu).toHaveBeenCalledWith({ menus: ["shareAppMessage"] });
+  expect(homeShare().path).toBe("/pages/home/index");
 });
 
 function pageHooks(page: string) {

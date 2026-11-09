@@ -35,8 +35,10 @@ async def wechat_asset(kind: str, ident: int, asset: str) -> dict:
             mime = "image/png" if response.content.startswith(b"\x89PNG") else "image/jpeg"
             return {"image_base64": base64.b64encode(response.content).decode(), "mime_type": mime}
         data = response.json()
-        if asset == "link" and not data.get("errcode") and str(data.get("url_link", "")).startswith("https://wxaurl.cn/"):
-            return {"url": data["url_link"]}
+        link = data.get("url_link")
+        if (asset == "link" and not data.get("errcode") and isinstance(link, str)
+                and link.startswith(("https://wxaurl.cn/", "https://wxmpurl.cn/"))):
+            return {"url": link}
         if data.get("errcode") == 85079:
             raise HTTPException(503, "小程序尚无正式发布版本，微信暂不支持生成分享链接，请使用小程序内转发")
         if data.get("errcode") == 41030:

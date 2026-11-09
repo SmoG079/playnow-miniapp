@@ -125,7 +125,7 @@ function showGatedTab(loggedIn: boolean, page: string) {
   const uni = { redirectTo: vi.fn() };
   const source = fs.readFileSync(new URL(`../src/pages/${page}/index.vue`, import.meta.url), "utf8")
     .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)![1].replace(/^import[\s\S]*?;\s*/gm, "");
-  const context: any = { computed: (fn: any) => ({ get value() { return fn(); } }), identityLabels: () => [], ref: (value: any) => ({ value }), onShow: (fn: any) => { show = fn; }, useSession: () => session, uni };
+  const context: any = { computed: (fn: any) => ({ get value() { return fn(); } }), identityLabels: () => [], ref: (value: any) => ({ value }), onShow: (fn: any) => { show = fn; }, onShareAppMessage: vi.fn(), homeShare: vi.fn(), useSession: () => session, uni };
   vm.createContext(context);
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText +
     ";globalThis.allowedState = allowed;", context);

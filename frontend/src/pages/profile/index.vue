@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onShow } from "@dcloudio/uni-app";
+import { onShareAppMessage, onShow } from "@dcloudio/uni-app";
 import MainHeader from "../../components/MainHeader.vue";
 import AppShell from "../../components/AppShell.vue";
 import { useSession } from "../../stores/session";
 import { identityLabels } from "../../domain/my-activities";
 import { openPage } from "../../utils/navigation";
+import { enableActivitySharing, homeShare } from "../../utils/share";
+
+// #ifdef MP-WEIXIN
+onShow(() => enableActivitySharing(false));
+onShareAppMessage(homeShare);
+// #endif
 const s = useSession();
 const identities = computed(() => identityLabels(s.user));
 const allowed = ref(false);

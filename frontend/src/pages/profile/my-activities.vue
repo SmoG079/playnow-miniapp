@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { onLoad, onShow, onHide, onUnload, onReachBottom, onPullDownRefresh } from "@dcloudio/uni-app";
+import { onShareAppMessage, onLoad, onShow, onHide, onUnload, onReachBottom, onPullDownRefresh } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import ActivityCard from "../../components/ActivityCard.vue";
 import { request, type PageResult } from "../../services/api";
@@ -9,6 +9,12 @@ import { openPage } from "../../utils/navigation";
 import { localTime, teamName, getTournament } from "../../services/tournaments";
 import { activityQuery, registrationLabel } from "../../domain/my-activities";
 import { activityPollDelay } from "../../domain/activity-polling";
+import { enableActivitySharing, homeShare } from "../../utils/share";
+
+// #ifdef MP-WEIXIN
+onShow(() => enableActivitySharing(false));
+onShareAppMessage(homeShare);
+// #endif
 const session = useSession();
 const kinds = [
   { value: "all", label: "全部" },

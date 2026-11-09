@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { onShow } from "@dcloudio/uni-app";
+import { onShareAppMessage, onShow } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import MainHeader from "../../components/MainHeader.vue";
 import { useSession } from "../../stores/session";
+import { enableActivitySharing, homeShare } from "../../utils/share";
+
+// #ifdef MP-WEIXIN
+onShow(() => enableActivitySharing(false));
+onShareAppMessage(homeShare);
+// #endif
 const s = useSession();
 const allowed = ref(false);
 onShow(() => {
