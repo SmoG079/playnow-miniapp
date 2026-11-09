@@ -48,6 +48,25 @@ function logout() {
     success: (r) => r.confirm && s.logout(),
   });
 }
+declare const wx: { openPrivacyContract?: (options: { fail?: () => void }) => void };
+function openPrivacy() {
+  // #ifdef MP-WEIXIN
+  if (typeof wx !== "undefined" && typeof wx.openPrivacyContract === "function") {
+    wx.openPrivacyContract({
+      fail: () =>
+        uni.showToast({
+          title: "隐私指引暂不可用，请在小程序右上角「更多资料」查看",
+          icon: "none",
+        }),
+    });
+    return;
+  }
+  // #endif
+  uni.showToast({
+    title: "请在右上角「更多资料」查看隐私指引",
+    icon: "none",
+  });
+}
 </script>
 <template>
   <AppShell v-if="allowed" active="profile"
@@ -82,6 +101,8 @@ function logout() {
           ></view
         ></template
       ><view v-else-if="s.loggedIn" class="empty-state"><text class="muted">{{ s.loading ? "正在确认登录信息" : "登录信息暂不可用" }}</text><wd-button size="small" @click="refreshProfile">重试</wd-button></view
+      ><view class="privacy-entry" role="button" aria-label="隐私保护指引" @click="openPrivacy"
+        ><text>隐私保护指引</text></view
       ></view
     ></AppShell
   >
@@ -120,4 +141,6 @@ function logout() {
 .profile-menu-card:last-child { border-bottom:0; }
 .profile-pressed { opacity:.8; }
 .logout-action { margin-top:32px; --wot-button-danger-plain-border:var(--playnow-card-border); }
+.privacy-entry { display:flex; justify-content:center; margin-top:28px; }
+.privacy-entry text { padding:8px 14px; font-size:12px; line-height:16px; color:var(--playnow-muted); }
 </style>
