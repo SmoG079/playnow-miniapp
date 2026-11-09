@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import ChoicePicker from "../../components/ChoicePicker.vue";
 import { computed, ref, watch } from "vue";
 import { onLoad, onShow, onHide, onUnload, onReachBottom, onPullDownRefresh } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -11,11 +10,19 @@ import { localTime, teamName, getTournament } from "../../services/tournaments";
 import { activityQuery, registrationLabel } from "../../domain/my-activities";
 import { activityPollDelay } from "../../domain/activity-polling";
 const session = useSession();
-const relation = ref("joined"), kind = ref("tournament"), phase = ref("all"), keyword = ref("");
+const kinds = [
+  { value: "all", label: "全部" },
+  { value: "tournament", label: "比赛" },
+  { value: "post", label: "约球" },
+] as const;
+type ActivityKindFilter = typeof kinds[number]["value"];
+const relation = ref("joined"), kind = ref<ActivityKindFilter>("all"), phase = ref("all"), keyword = ref("");
+const kindLabel = computed(() => kind.value === "all" ? "活动" : kind.value === "tournament" ? "比赛" : "约球");
+const hasFilters = computed(() => kind.value !== "all" || phase.value !== "all" || !!keyword.value.trim());
 const items = ref<any[]>([]), page = ref(1), more = ref(true), loading = ref(false), failed = ref(false);
 const failureMessage = ref("活动暂时无法加载");
 const expanded = ref<number | null>(null), personal = ref<any>(null), personalLoading = ref(false), personalError = ref("");
-const phaseOptions = computed(() => [{value:"all",label:"全部"},{value:"open",label:"报名中"},...(kind.value === "tournament" ? [{value:"registration_closed",label:"等待开始"},{value:"ongoing",label:"比赛进行中"}] : []),{value:"ended",label:"已结束"}, ...(relation.value === "joined" ? [{value:"review",label:"待审核"}] : [])]);
+const phaseOptions = computed(() => [{value:"all",label:"全部"},{value:"open",label:"报名中"},...(kind.value !== "post" ? [{value:"registration_closed",label:"等待开始"},{value:"ongoing",label:"比赛进行中"}] : []),{value:"ended",label:"已结束"}, ...(relation.value === "joined" ? [{value:"review",label:"待审核"}] : [])]);
 let visible = false, loadVersion = 0, detailVersion = 0, refreshing = false;
 let searchTimer: ReturnType<typeof setTimeout> | undefined, refreshTimer: ReturnType<typeof setTimeout> | undefined;
 onLoad(q => { if (q?.relation === "published") relation.value = "published"; });
@@ -43,8 +50,12 @@ function reset() {
 }
 function selectRelation(value: string) { if (relation.value === value) return; relation.value = value; phase.value = "all"; reset(); }
 function selectPhase(value: string) { if (phase.value === value) return; phase.value = value; reset(); }
-function selectKind(e: any) { kind.value = Number(e.detail.value) === 0 ? "tournament" : "post"; phase.value = "all"; reset(); }
-function switchActivityType() { kind.value = kind.value === "tournament" ? "post" : "tournament"; phase.value = "all"; keyword.value = ""; reset(); }
+function selectKind(value: ActivityKindFilter) {
+  if (kind.value === value) return;
+  kind.value = value;
+  phase.value = "all";
+  reset();
+}
 watch(keyword, () => { clearTimeout(searchTimer); searchTimer = setTimeout(reset,300); });
 async function loadPersonal(silent = false) {
   if (expanded.value == null) return;
@@ -113,7 +124,12 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
   <AppShell back title="我的活动"><view class="content list-content my-activities">
     <view class="activity-search"><wd-search v-model="keyword" placeholder="搜索活动名称或编号" hide-cancel placeholder-left @search="reset" /></view>
     <view class="relation-tabs"><button :class="{selected:relation === 'joined'}" @click="selectRelation('joined')">我参加的</button><button :class="{selected:relation === 'published'}" @click="selectRelation('published')">我发布的</button></view>
-    <view class="activity-filters"><view class="phase-wrap"><scroll-view scroll-x class="phase-scroll"><view class="phase-options"><button v-for="option in phaseOptions" :key="option.value" class="filter-pill" :class="{selected:phase === option.value}" @click="selectPhase(option.value)">{{ option.label }}</button></view></scroll-view><view class="phase-fade" /></view><ChoicePicker title="活动类型" :range="['比赛','约球']" :value="kind === 'tournament' ? 0 : 1" @change="selectKind"><view class="type-filter">筛选 · {{ kind === 'tournament' ? '比赛' : '约球' }}<wd-icon name="arrow-down" size="12px" /></view></ChoicePicker></view>
+    <view class="kind-options" aria-label="活动类型">
+      <button v-for="option in kinds" :key="option.value" class="filter-pill"
+        :class="{ selected: kind === option.value }" :aria-pressed="kind === option.value"
+        @click="selectKind(option.value)">{{ option.label }}</button>
+    </view>
+    <view class="activity-filters"><view class="phase-wrap"><scroll-view scroll-x class="phase-scroll"><view class="phase-options"><button v-for="option in phaseOptions" :key="option.value" class="filter-pill" :class="{selected:phase === option.value}" @click="selectPhase(option.value)">{{ option.label }}</button></view></scroll-view><view class="phase-fade" /></view></view>
     <ActivityCard v-for="item in items" :key="item.id" :item="item" :kind="item.kind" @open="openPage(`/pages/common/${item.kind === 'tournament' ? 'tournament' : 'post'}-detail?id=${item.id}`)">
       <view v-if="(relation === 'joined' && (item.registration || item.kind === 'tournament')) || (relation === 'published' && item.can_manage)" class="activity-card-extras">
       <view v-if="relation === 'joined' && item.registration" class="registration-line"><text class="registration-state" :class="{pending:registrationLabel(item) === '待审核'}">{{ registrationLabel(item) }}</text><text v-if="item.registration.review_reason" class="muted small">{{ item.registration.review_reason }}</text></view>
@@ -121,13 +137,21 @@ onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()));
       <view v-if="expanded === item.id" class="personal-detail"><text v-if="personalLoading" class="muted small">正在加载对阵…</text><view v-else-if="personalError"><text class="muted small">{{ personalError }}</text><wd-button size="small" variant="text" @click="loadPersonal()">重试</wd-button></view><template v-else-if="personal"><text class="muted small">{{ personal.provisional ? '临时预览 · 正式对阵以发布签表为准' : ('签表 v' + personal.published_version) }}</text><text class="strong small">{{ personal.my_draw ? `第 ${personal.my_draw.group_no} 组 · ${personal.my_draw.half}` : item.registration.requested_group ? `第 ${item.registration.requested_group} 组 · 待发布签表` : '自动分组 · 待发布签表' }}</text><view v-for="match in personal.personalMatches" :key="match.key" class="personal-match"><text>第 {{ match.round_no }} 轮 · 对手：{{ opponent(match) }}</text><text class="muted small">{{ matchResult(match) }} · {{ localTime(match.scheduled_at) }} · {{ match.court || '待排场' }}</text></view><text v-if="!personal.personalMatches.length" class="muted small">报名确认并完成抽签后，可查看自己的对阵。</text></template></view>
       </view>
     </ActivityCard>
-    <view v-if="failed" class="empty-state"><text class="muted">{{ failureMessage }}</text><wd-button size="small" @click="load()">重试</wd-button></view><wd-empty v-else-if="!loading && !items.length" :tip="keyword || phase !== 'all' ? '当前筛选无结果' : `暂无${relation === 'published' ? '发布' : '参加'}的${kind === 'tournament' ? '比赛' : '约球'}`"><template #bottom><view class="empty-type-action"><text @click="switchActivityType">查看{{ kind === 'tournament' ? '约球' : '比赛' }}记录</text></view></template></wd-empty><text v-if="loading" class="muted loading-text">正在加载…</text>
+    <view v-if="failed" class="empty-state"><text class="muted">{{ failureMessage }}</text><wd-button size="small" @click="load()">重试</wd-button></view><wd-empty v-else-if="!loading && !items.length"
+      :tip="keyword.trim() || phase !== 'all' ? '当前筛选无结果' : `暂无${relation === 'published' ? '发布' : '参加'}的${kindLabel}`">
+      <template v-if="hasFilters" #bottom>
+        <button class="empty-type-action" @click="kind = 'all'; phase = 'all'; keyword = ''; reset()">清除筛选</button>
+      </template>
+    </wd-empty><text v-if="loading" class="muted loading-text">正在加载…</text>
   </view></AppShell>
 </template>
 <style scoped>
-.empty-type-action{margin-top:16px;text-align:center;font-size:14px;color:var(--playnow-brand)}
+.empty-type-action{margin:16px auto 0;background:transparent;min-height:44px;font-size:14px;color:var(--playnow-brand)}
+.kind-options{display:flex;gap:8px;margin-bottom:10px}
+.kind-options button{flex:1;margin:0;min-height:44px;padding:10px;font-size:14px;line-height:22px}
+.kind-options button::after,.empty-type-action::after{border:0}
 
-.activity-search{overflow:hidden;border:1px solid var(--playnow-card-border);border-radius:var(--playnow-card-radius);background:white;margin-bottom:22px}.relation-tabs{display:flex;padding:4px;border:1px solid var(--playnow-card-border);border-radius:12px;background:#fff;margin-bottom:16px}.relation-tabs button{flex:1;border:0;background:transparent;font-size:15px;font-weight:600;color:var(--playnow-muted);min-height:44px;line-height:24px;padding:10px 8px;margin:0;border-radius:9px}.relation-tabs button::after,.phase-options button::after{border:0}.relation-tabs button.selected{background:var(--playnow-brand);color:white}.activity-filters{display:flex;align-items:center;gap:10px;margin-bottom:20px}.phase-wrap{flex:1;min-width:0;position:relative;overflow:hidden}.phase-scroll{width:100%;white-space:nowrap}.phase-options{padding-right:20px}.phase-fade{position:absolute;top:0;right:0;bottom:0;width:18px;background:linear-gradient(90deg,rgba(245,247,246,0),var(--playnow-bg));pointer-events:none}.phase-options{display:flex;gap:8px}.phase-options button{flex-shrink:0;margin:0;min-height:44px;padding:11px 12px;font-size:13px;line-height:20px}.filter-pill.selected{background:#e8f1eb;border-color:var(--playnow-brand);color:var(--playnow-brand)}.type-filter{display:flex;align-items:center;gap:6px;white-space:nowrap;background:#fff;border:1px solid var(--playnow-card-border);border-radius:10px;min-height:44px;padding:10px;font-size:13px;color:var(--playnow-text)}.registration-line{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:0;border-top:1px solid var(--playnow-card-border);padding-top:12px}.registration-state{font-size:13px;color:var(--playnow-brand)}.registration-state.pending{color:#9e7935}.activity-actions{justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:8px}.activity-actions:empty{display:none}.personal-detail{border-top:1px solid var(--playnow-card-border);margin-top:12px;padding-top:12px;display:flex;flex-direction:column;gap:8px}.personal-match{padding-top:10px;font-size:13px;line-height:1.6}.personal-match text{display:block}.loading-text{display:block;text-align:center;padding:20px}
+.activity-search{overflow:hidden;border:1px solid var(--playnow-card-border);border-radius:var(--playnow-card-radius);background:white;margin-bottom:22px}.relation-tabs{display:flex;padding:4px;border:1px solid var(--playnow-card-border);border-radius:12px;background:#fff;margin-bottom:16px}.relation-tabs button{flex:1;border:0;background:transparent;font-size:15px;font-weight:600;color:var(--playnow-muted);min-height:44px;line-height:24px;padding:10px 8px;margin:0;border-radius:9px}.relation-tabs button::after,.phase-options button::after{border:0}.relation-tabs button.selected{background:var(--playnow-brand);color:white}.activity-filters{display:flex;align-items:center;gap:10px;margin-bottom:20px}.phase-wrap{flex:1;min-width:0;position:relative;overflow:hidden}.phase-scroll{width:100%;white-space:nowrap}.phase-options{padding-right:20px}.phase-fade{position:absolute;top:0;right:0;bottom:0;width:18px;background:linear-gradient(90deg,rgba(245,247,246,0),var(--playnow-bg));pointer-events:none}.phase-options{display:flex;gap:8px}.phase-options button{flex-shrink:0;margin:0;min-height:44px;padding:11px 12px;font-size:13px;line-height:20px}.filter-pill.selected{background:#e8f1eb;border-color:var(--playnow-brand);color:var(--playnow-brand)}.registration-line{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:0;border-top:1px solid var(--playnow-card-border);padding-top:12px}.registration-state{font-size:13px;color:var(--playnow-brand)}.registration-state.pending{color:#9e7935}.activity-actions{justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:8px}.activity-actions:empty{display:none}.personal-detail{border-top:1px solid var(--playnow-card-border);margin-top:12px;padding-top:12px;display:flex;flex-direction:column;gap:8px}.personal-match{padding-top:10px;font-size:13px;line-height:1.6}.personal-match text{display:block}.loading-text{display:block;text-align:center;padding:20px}
 </style>
 
 <style scoped>

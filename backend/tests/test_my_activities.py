@@ -6,7 +6,7 @@ from httpx import ASGITransport,AsyncClient
 from app.api.v1 import users,tournaments
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models.models import User,ClubMember,ClubMemberRole,Activity,MatchPost,MatchRegistration,RegistrationStatus
+from app.models.models import User,ClubMember,ClubMemberRole,Activity,MatchPost,MatchRegistration,RegistrationStatus,Tournament
 from app.schemas.tournament import TournamentCreate,TournamentConfig,RegistrationCommand
 from tests.test_tournaments import db
 
@@ -95,3 +95,29 @@ async def test_published_post_is_visible_without_own_registration(db):
             assert row['id']==300 and row['can_manage'] and row['registration'] is None
         joined=await client.get('/users/me/activity-records?kind=post')
         assert joined.json()['total']==0
+
+
+@pytest.mark.asyncio
+async def test_all_activity_kinds_share_order_search_and_pagination(db):
+    tournament_id = await activity(db, title="周末比赛")
+    tournament = await db.get(Tournament, tournament_id)
+    now = datetime.utcnow()
+    tournament.created_at = now - timedelta(minutes=1)
+    db.add_all([Activity(id=ident, kind="post") for ident in (301, 302, 303)])
+    await db.flush()
+    db.add_all([
+        MatchPost(id=ident, user_id=owner, title=title, created_at=now - timedelta(minutes=age),
+                  preferred_date=now.date() + timedelta(days=1), preferred_start=time(9), preferred_end=time(11))
+        for ident, owner, title, age in (
+            (301, "2", "周末约球", 0), (302, "2", "平日约球", 2), (303, "3", "周末约球", 0)
+        )
+    ])
+    await db.flush()
+    pages = [await records(db, kind="all", relation="published", page=page, size=1) for page in (1, 2, 3)]
+    assert [result.total for result in pages] == [3, 3, 3]
+    assert [(result.items[0]["kind"], result.items[0]["id"]) for result in pages] == [
+        ("post", 301), ("tournament", tournament_id), ("post", 302)
+    ]
+    matches = await records(db, kind="all", relation="published", keyword="周末")
+    assert [item["id"] for item in matches.items] == [301, tournament_id]
+    assert (await records(db, kind="all", relation="joined")).total == 0

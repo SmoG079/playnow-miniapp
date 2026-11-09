@@ -59,7 +59,7 @@ async def managed_tournaments(
 @router.get("/me/activity-records", response_model=PaginatedResponse)
 @router.get("/me/activities", response_model=PaginatedResponse)
 async def my_activities(
-    kind: Literal["tournament", "post"] = "tournament",
+    kind: Literal["tournament", "post", "all"] = "tournament",
     relation: Literal["joined", "published"] = "joined",
     phase: Literal["all", "open", "ongoing", "ended", "review", "registration_closed"] = "all",
     keyword: str = Query("", max_length=128),
@@ -68,24 +68,58 @@ async def my_activities(
 ):
     """Filter the current user's indexed records before paginating; bracket data is lazy-loaded."""
     now = datetime.utcnow()
+    keyword = keyword.strip()
+    if kind != "all":
+        model, query = _activity_records_query(kind, relation, phase, keyword, current_user.id, now)
+        total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        rows = (await db.execute(query.order_by(model.created_at.desc(), model.id.desc())
+                                 .offset((page - 1) * page_size).limit(page_size))).all()
+        items = await _activity_record_items(db, kind, rows)
+        return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+    queries = {
+        item_kind: _activity_records_query(item_kind, relation, phase, keyword, current_user.id, now)
+        for item_kind in ("tournament", "post")
+    }
+    candidates = union_all(*[
+        query.with_only_columns(model.id, model.created_at, literal(item_kind).label("kind"))
+        for item_kind, (model, query) in queries.items()
+    ]).subquery()
+    total = await db.scalar(select(func.count()).select_from(candidates)) or 0
+    selected = (await db.execute(
+        select(candidates.c.id, candidates.c.kind)
+        .order_by(candidates.c.created_at.desc(), candidates.c.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all()
+    items_by_key = {}
+    for item_kind, (model, query) in queries.items():
+        ids = [row.id for row in selected if row.kind == item_kind]
+        if ids:
+            rows = (await db.execute(query.where(model.id.in_(ids)))).all()
+            for item in await _activity_record_items(db, item_kind, rows):
+                items_by_key[(item_kind, item["id"])] = item
+    items = [items_by_key[(row.kind, row.id)] for row in selected if (row.kind, row.id) in items_by_key]
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+def _activity_records_query(kind, relation, phase, keyword, user_id, now):
     from app.services.activity_visibility import registration_closed_condition, tournament_phase_condition
     if kind == "tournament":
         event, registration = Tournament, TournamentRegistration
-        owned = Tournament.user_id == current_user.id
+        owned = Tournament.user_id == user_id
         event_phase = tournament_phase_condition(now)
         query = select(Tournament, TournamentRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
             TournamentRegistration, and_(TournamentRegistration.tournament_id == Tournament.id,
-                                          TournamentRegistration.user_id == current_user.id))
+                                          TournamentRegistration.user_id == user_id))
         approval = TournamentRegistration.approval
     else:
         event, registration = MatchPost, MatchRegistration
-        owned = MatchPost.user_id == current_user.id
+        owned = MatchPost.user_id == user_id
         event_phase = case((registration_closed_condition("post", now), "ended"), else_="open")
         query = select(MatchPost, MatchRegistration, event_phase.label("phase"), owned.label("owned")).outerjoin(
-            MatchRegistration, and_(MatchRegistration.post_id == MatchPost.id, MatchRegistration.user_id == current_user.id))
+            MatchRegistration, and_(MatchRegistration.post_id == MatchPost.id, MatchRegistration.user_id == user_id))
         approval = MatchRegistration.status
     query = query.where(owned if relation == "published" else registration.id.is_not(None))
-    keyword = keyword.strip()
     if keyword:
         search = event.title.contains(keyword, autoescape=True)
         number = keyword.lstrip("#")
@@ -95,8 +129,10 @@ async def my_activities(
     if phase == "review":
         query = query.where(approval == "pending", event_phase != "ended") if relation == "joined" else query.where(False)
     elif phase != "all": query = query.where(event_phase == phase)
-    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
-    rows = (await db.execute(query.order_by(event.created_at.desc(), event.id.desc()).offset((page-1)*page_size).limit(page_size))).all()
+    return event, query
+
+
+async def _activity_record_items(db, kind, rows):
     items = []
     for e, r, event_phase_value, owner in rows:
         item = dict(id=e.id, activity_id=e.id, kind=kind, title=e.title, city=e.city,
@@ -123,7 +159,7 @@ async def my_activities(
         by_id = {card.id: card.model_dump() for card in public_cards} if kind == 'post' else {card['id']: card for card in public_cards}
         items = [{**by_id[item['id']], **item} for item in items]
         await load_card_participants(db, {(kind, item['id']): item for item in items})
-    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+    return items
 
 
 @router.get("/me", response_model=UserMeResponse)
