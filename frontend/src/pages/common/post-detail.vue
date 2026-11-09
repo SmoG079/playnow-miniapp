@@ -271,10 +271,9 @@ function remove(c: any) {
           >回复 {{ reply.nickname }}
           <text class="link" @click.stop="reply = null">取消</text></text
         ><view class="comment-input"
-          ><wd-input
-            v-model="input"
-            :placeholder="reply ? '回复 ' + reply.nickname : '说点什么…'"
-          /><wd-button size="small" :loading="busy" @click="send"
+          ><view class="comment-field">
+            <wd-input v-model="input" :placeholder="reply ? '回复 ' + reply.nickname : '说点什么…'" />
+          </view><wd-button size="small" :loading="busy" @click="send"
             >发送</wd-button
           ></view
         ></view
@@ -321,6 +320,14 @@ function remove(c: any) {
 
 <style scoped>
 .detail-content { padding-bottom: calc(140px + env(safe-area-inset-bottom)); }
+.comment-field {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--playnow-surface);
+  border: 1px solid var(--playnow-card-border);
+  border-radius: var(--playnow-field-radius);
+}
 .payment-notice{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:13px;color:#69756c;line-height:22px}
 
 .fixed-action > .registration-actions{display:flex;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}

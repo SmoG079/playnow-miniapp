@@ -694,7 +694,11 @@ function tie() {
           ></wd-tabs
         >
         <view v-if="mine" class="list-card"
-          ><text class="muted"
+          ><view class="registration-heading">
+            <text class="registration-title">我的报名</text>
+            <text class="registration-badge">{{ stateNames[mine.admission || ""] }}</text>
+          </view>
+          <text class="muted"
             >报名组别：{{
               mine.requested_group
                 ? "第 " + mine.requested_group + " 组"
@@ -705,10 +709,7 @@ function tie() {
             :model-value="mine.requested_group || 0" title="更换参赛组" :disabled="busy"
             :options="[{value:0,label:'自动分组'},...(t.registration_groups || []).map(g=>({value:g.group_no,label:'第 '+g.group_no+' 组',description:g.reserved+'/'+g.capacity+' 人已占位'}))]"
             @change="changeGroup(Number($event))" />
-          <text>{{ mine.checked_in_at ? "已签到：" + localTime(mine.checked_in_at) : "未签到（开赛前30分钟开放）" }}</text>
-          <wd-button v-if="t.checkin_open && mine.status === 'confirmed' && mine.admission === 'active' && !mine.checked_in_at" size="small" :loading="busy" @click="run(`registrations/${mine.id}/check-in`)">签到</wd-button>
-          <text>我的报名：{{ stateNames[mine.admission || ""] }}</text
-          ><text class="muted"
+          <text class="muted"
             >{{ stateNames[mine.approval || ""] }} ·
             {{ stateNames[mine.payment || ""] }}</text
           ><text v-if="mine.seat_expires_at" class="muted"
@@ -718,6 +719,16 @@ function tie() {
           ><text v-if="mine.refund_status" class="muted">{{
             stateNames[mine.refund_status] || mine.refund_status
           }}</text>
+          <view class="check-in-section">
+            <text class="registration-title">签到</text>
+            <text class="check-in-status" :class="{ 'is-checked-in': mine.checked_in_at }">
+              {{ mine.checked_in_at ? "已签到 · " + localTime(mine.checked_in_at) : "未签到" }}
+            </text>
+            <text v-if="!mine.checked_in_at && !t.checkin_open" class="check-in-note">开赛前 30 分钟开放</text>
+            <view v-if="t.checkin_open && mine.status === 'confirmed' && mine.admission === 'active' && !mine.checked_in_at" class="check-in-action">
+              <wd-button size="mini" variant="soft" :loading="busy" @click="run(`registrations/${mine.id}/check-in`)">签到</wd-button>
+            </view>
+          </view>
           <view class="choices"
             ><wd-button
               v-if="mine.payment === 'pending' && mine.admission === 'active'"
@@ -731,13 +742,9 @@ function tie() {
               variant="plain"
               @click="run('payment-status')"
               >刷新支付状态</wd-button
-            ><wd-button
-              v-if="!t.roster_frozen && !canJoin"
-              size="small"
-              variant="plain"
-              @click="cancelReg(mine)"
-              >取消报名</wd-button
-            ></view
+            ><view v-if="!t.roster_frozen && !canJoin" class="cancel-registration-action">
+              <wd-button size="mini" type="danger" variant="plain" @click="cancelReg(mine)">取消报名</wd-button>
+            </view></view
           >
           <template
             v-if="
@@ -854,11 +861,19 @@ function tie() {
           <wd-button v-if="cancelledRegistrations.length" size="small" variant="text" @click="showCancelledRecords=!showCancelledRecords">{{ showCancelledRecords ? '收起取消记录' : '查看取消记录' }}（{{ cancelledRegistrations.length }}）</wd-button>
           <text class="muted">未签到：{{ t.unchecked_count || 0 }} 人；全部参赛者签到后可抽签</text>
           <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
-            ><text>{{ r.checked_in_at ? "已签到" : "未签到" }}</text><wd-button v-if="t.checkin_open && r.status === 'confirmed' && r.admission === 'active' && !r.checked_in_at" size="small" :loading="busy" @click="run(`registrations/${r.id}/check-in`)">代签到</wd-button><view class="registration-profile"><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view><text class="muted small">{{ stateNames[r.admission || ""] }}</text></view><text class="muted"
+            ><view class="registration-profile">
+              <view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
+              <text class="registration-badge">{{ stateNames[r.admission || ""] }}</text>
+            </view><text class="muted"
               >{{ stateNames[r.approval || ""] }} ·
               {{ stateNames[r.payment || ""] }}</text
-            ><view class="choices"
-              ><wd-button
+            ><view class="check-in-section">
+              <text class="check-in-status" :class="{ 'is-checked-in': r.checked_in_at }">{{ r.checked_in_at ? "已签到" : "未签到" }}</text>
+            </view><view class="choices registration-management-actions"
+              >
+              <view v-if="t.checkin_open && r.status === 'confirmed' && r.admission === 'active' && !r.checked_in_at" class="check-in-action">
+                <wd-button size="mini" variant="soft" :loading="busy" @click="run(`registrations/${r.id}/check-in`)">代签到</wd-button>
+              </view><wd-button
                 v-if="r.payment === 'unverified'"
                 size="small"
                 variant="plain"
@@ -879,13 +894,9 @@ function tie() {
                 variant="plain"
                 @click="refund(r)"
                 >全额退款</wd-button
-              ><wd-button
-                v-if="!t.draw_version && r.admission === 'active'"
-                size="small"
-                variant="plain"
-                @click="cancelReg(r)"
-                >取消名额</wd-button
-              ></view
+              ><view v-if="!t.draw_version && r.admission === 'active'" class="cancel-registration-action">
+                <wd-button size="mini" type="danger" variant="plain" @click="cancelReg(r)">取消名额</wd-button>
+              </view></view
             ></view
           >
           <view
@@ -1110,4 +1121,14 @@ function tie() {
 </style>
 
 <style scoped>
-.registration-profile{display:flex;align-items:center;gap:12px}.registration-profile>.registration-identity{flex:1;min-width:0}.registration-profile>.muted{flex-shrink:0}</style>
+.registration-profile,.registration-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.registration-profile>.registration-identity{flex:1;min-width:0}
+.registration-title{font-size:14px;font-weight:650;color:var(--playnow-text)}
+.registration-badge{flex-shrink:0;padding:3px 8px;border-radius:12px;background:var(--playnow-brand-soft);color:var(--playnow-brand-deep);font-size:12px}
+.check-in-section{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--playnow-card-border)}
+.check-in-status,.check-in-note{font-size:13px;line-height:20px;color:var(--playnow-muted)}
+.check-in-status.is-checked-in{color:var(--playnow-brand)}
+.registration-management-actions{align-items:center}
+.check-in-action{--wot-button-height-mini:38px}
+.cancel-registration-action{--wot-button-height-mini:32px}
+</style>
