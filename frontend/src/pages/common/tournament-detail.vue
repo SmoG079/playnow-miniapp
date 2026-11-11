@@ -28,6 +28,8 @@ import {
   personalDraw,
 } from "../../services/tournament-preview";
 import { request } from "../../services/api";
+import { SUPPORT_PHONE } from "../../config";
+import { isRemoteImage } from "../../services/media";
 import { payTournament } from "../../services/payment";
 import { useSession } from "../../stores/session";
 import { tournamentPollDelay } from "../../domain/activity-polling";
@@ -57,6 +59,21 @@ const s = useSession(),
   historyVersion = ref(0),
   history = ref<any>(null),
   mineOnly = ref(false);
+const galleryImages = computed(() => {
+  const sources = [t.value?.cover_image, ...(t.value?.images ?? [])];
+  const images = sources
+    .filter((source): source is string => typeof source === "string")
+    .map(source => source.trim())
+    .filter(source => isRemoteImage(source) || source.startsWith("/static/"));
+  return [...new Set(images)];
+});
+function previewGallery(image: string) {
+  uni.previewImage({
+    current: image,
+    urls: galleryImages.value,
+    fail: () => uni.showToast({ title: "暂时无法预览图片", icon: "none" }),
+  });
+}
 const contactingOrganizer = ref(false);
 async function contactOrganizer() {
   if (t.value?.club_id) {
@@ -386,7 +403,13 @@ async function pay() {
 }
 async function cancelReg(r: Registration) {
   const why = await reason(t.value?.payment_method === "offline" ? "取消报名（线下费用请与组织者协商）" : "取消报名（截止前全额退）");
-  if (why) await run(`registrations/${r.id}/cancel`, { reason: why });
+  if (!why) return;
+  try {
+    await run(`registrations/${r.id}/cancel`, { reason: why });
+    uni.showToast({ title: "已取消报名", icon: "none" });
+  } catch (e: any) {
+    await refundFailure(e);
+  }
 }
 async function review(r: Registration, approved: boolean) {
   const why = await reason(approved ? "通过报名审核" : "拒绝报名");
@@ -549,12 +572,41 @@ async function verifyLegacy(r: Registration) {
 }
 async function refund(r: Registration) {
   const why = await reason("管理员全额退款");
-  if (why) await run(`registrations/${r.id}/refund`, { reason: why });
+  if (!why) return;
+  try {
+    await run(`registrations/${r.id}/refund`, { reason: why });
+    uni.showToast({ title: "退款已受理", icon: "none" });
+  } catch (e: any) {
+    await refundFailure(e, true);
+  }
+}
+/** Shared failure dialog: players get the organizer hotline, managers get the reason. */
+async function refundFailure(e: any, manage = false) {
+  const detail = String(e?.message || "").replace(/^退款失败：/, "").trim();
+  const asManager = manage || t.value?.can_manage;
+  await uni.showModal({
+    title: "退款失败",
+    content: asManager
+      ? `${detail || "微信未受理退款"}。请到微信商户平台核对后重试。`
+      : `退款失败，联系管理员：${SUPPORT_PHONE}`,
+    showCancel: false,
+  });
 }
 async function cancelEvent() {
   const why = await reason("取消整个赛事并全额退款");
-  if (why && (await confirm("所有参赛名额将取消，已支付订单将原路退款")))
-    await run("cancel", { reason: why });
+  if (!why || !(await confirm("所有参赛名额将取消，已支付订单将原路退款"))) return;
+  try {
+    const result: any = await run("cancel", { reason: why });
+    if (result?.refund_failed) {
+      await uni.showModal({
+        title: "部分退款失败",
+        content: `${result.refund_failed} 笔报名退款未成功，已保留报名并通知你处理，请到微信商户平台核对后重试。`,
+        showCancel: false,
+      });
+    }
+  } catch (e: any) {
+    await refundFailure(e, true);
+  }
 }
 async function finish() {
   if (await confirm("确认所有比赛已完成并结束赛事？"))
@@ -582,13 +634,23 @@ function tie() {
       <wd-button size="small" @click="load">重新加载</wd-button>
     </view>
     <template v-else-if="t">
-      <Photo
-        width="100%"
-        height="230px"
-        :src="t.cover_image"
-        fallback="/static/tennis.jpg"
-        mode="aspectFill"
-      />
+      <swiper
+        v-if="galleryImages.length"
+        class="tournament-cover"
+        :indicator-dots="galleryImages.length > 1"
+        indicator-color="rgba(0, 0, 0, .45)"
+        indicator-active-color="#fff"
+      >
+        <swiper-item v-for="(image, index) in galleryImages" :key="image">
+          <button class="gallery-photo" :aria-label="'查看第 ' + (index + 1) + ' 张赛事图片'" @click="previewGallery(image)">
+            <Photo :src="image" fallback="/static/tennis.jpg" />
+            <text class="gallery-preview-label">
+              查看图片<template v-if="galleryImages.length > 1"> {{ index + 1 }} / {{ galleryImages.length }}</template>
+            </text>
+          </button>
+        </swiper-item>
+      </swiper>
+      <Photo v-else width="100%" height="230px" fallback="/static/tennis.jpg" />
       <view class="content tournament-content"
         ><text class="page-title">{{ t.title }}</text
         ><view class="activity-meta">
@@ -647,7 +709,15 @@ function tie() {
                   <text v-if="prize.description" class="prize-description">{{ prize.description }}</text>
                 </view>
               </view>
-              <view v-if="t.images?.length" class="intro-section"><text class="intro-heading">赛事图片</text><view class="gallery"><Photo v-for="img in t.images" :key="img" :src="img" width="100%" height="180px" /></view></view>
+              <view v-if="galleryImages.length" class="intro-section">
+                <text class="intro-heading">赛事图片</text>
+                <view class="gallery">
+                  <button v-for="(image, index) in galleryImages" :key="image" class="gallery-photo"
+                    :aria-label="'查看第 ' + (index + 1) + ' 张赛事图片'" @click="previewGallery(image)">
+                    <Photo :src="image" width="100%" height="180px" />
+                  </button>
+                </view>
+              </view>
               <view class="intro-section"><text class="intro-heading">主办与联系</text><view class="organizer-profile"><Photo :src="t.club_id ? t.club_avatar : t.organizer_avatar" width="44px" height="44px" round /><view class="organizer-copy"><text class="organizer-name">{{ t.club_id ? t.club_name : t.organizer_nickname || '球友' }}</text><text class="organizer-type">{{ t.club_id ? '俱乐部主办' : '个人主办' }}</text></view></view><text v-if="t.club_id && t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
               <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="intro-copy">付款方式：{{ paymentLabel(t.entry_fee, t.payment_method || 'online') }}</text><text class="muted small">{{ Number(t.entry_fee) <= 0 ? '本次比赛免费参加。' : t.payment_method === 'offline' ? '报名无需线上支付，费用由组织者线下收取；退费请与组织者协商。' : '截止前全额原路退款，之后由管理员处理；主办方取消全退。' }}</text></view>
             </view>
@@ -920,8 +990,9 @@ function tie() {
                 v-if="['paid', 'verified'].includes(r.payment || '')"
                 size="small"
                 variant="plain"
+                :disabled="r.refund_status === 'success'"
                 @click="refund(r)"
-                >全额退款</wd-button
+                >{{ r.refund_status === "success" ? "已退款" : "全额退款" }}</wd-button
               ><view v-if="!t.draw_version && r.admission === 'active'" class="cancel-registration-action">
                 <wd-button size="mini" type="danger" variant="plain" @click="cancelReg(r)">取消名额</wd-button>
               </view></view
@@ -1122,6 +1193,33 @@ function tie() {
   display: block;
   white-space: pre-wrap;
   margin: 12px 0;
+}
+.tournament-cover {
+  height: 230px;
+}
+.gallery-photo {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.tournament-cover .gallery-photo {
+  height: 100%;
+}
+.gallery-preview-label {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .72);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .gallery {
   display: flex;

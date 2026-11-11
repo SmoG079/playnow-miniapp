@@ -5,7 +5,8 @@ import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
 const id = ref(0),
-  post = ref<any>(null);
+  post = ref<any>(null),
+  refunding = ref("");
 const statusLabels: Record<string, string> = {
   pending: "等待审核", approved: "已通过", rejected: "未通过", cancelled: "已取消",
 };
@@ -17,12 +18,63 @@ onLoad((q) => {
   load();
 });
 async function review(r: any, status: string) {
-  await request(`/posts/${id.value}/registrations/${r.user_id}`, {
-    method: "PUT",
-    data: { status },
-  });
+  try {
+    await request(`/posts/${id.value}/registrations/${r.user_id}`, {
+      method: "PUT",
+      data: { status },
+    });
+  } catch (e: any) {
+    // A refused refund keeps the signup reviewable; the host fixes the balance and retries.
+    if (e?.statusCode === 502) {
+      const detail = String(e?.message || "").replace(/^退款失败：/, "").trim();
+      uni.showModal({
+        title: "退款失败",
+        content: `${detail || "微信未受理退款"}。请到微信商户平台核对后重试。`,
+        showCancel: false,
+      });
+    } else {
+      uni.showToast({ title: e?.message || "操作失败", icon: "none" });
+    }
+    load();
+    return;
+  }
   uni.showToast({ title: "已处理", icon: "success" });
   load();
+}
+function confirmRefund(r: any) {
+  return new Promise<boolean>((resolve) =>
+    uni.showModal({
+      title: "全额退款",
+      content: `确定取消 ${r.user_nickname || "该选手"} 的报名并全额退款吗？`,
+      success: (res) => resolve(!!res.confirm),
+      fail: () => resolve(false),
+    }),
+  );
+}
+async function refund(r: any) {
+  if (refunding.value || !(await confirmRefund(r))) return;
+  refunding.value = r.user_id;
+  try {
+    await request(`/posts/${id.value}/registrations/${r.user_id}/refund`, {
+      method: "POST",
+    });
+    uni.showToast({ title: "已退款", icon: "success" });
+  } catch (e: any) {
+    // A refused refund keeps the signup so the same button can retry after a top-up.
+    if (e?.statusCode === 502) {
+      const detail = String(e?.message || "").replace(/^退款失败：/, "").trim();
+      uni.showModal({
+        title: "退款失败",
+        content: `${detail || "微信未受理退款"}。请到微信商户平台核对后重试。`,
+        showCancel: false,
+      });
+    } else {
+      uni.showToast({ title: e?.message || "退款失败", icon: "none" });
+    }
+  } finally {
+    refunding.value = "";
+    load();
+  }
 }
 </script>
 <template>
@@ -47,6 +99,20 @@ async function review(r: any, status: string) {
             @click="review(r, 'rejected')"
             >拒绝</wd-button
           ></view
+        ><view
+          v-if="r.payment === 'paid' && r.status === 'approved'"
+          class="registration-actions"
+          ><wd-button
+            size="small"
+            variant="plain"
+            :loading="refunding === r.user_id"
+            @click="refund(r)"
+            >全额退款</wd-button
+          ></view
+        ><view
+          v-else-if="r.payment === 'paid' && r.status === 'cancelled'"
+          class="registration-actions"
+          ><wd-button size="small" variant="plain" disabled>已退款</wd-button></view
         ></view
       ><wd-empty
         v-if="post && !post.registrations?.length"

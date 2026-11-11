@@ -7,7 +7,7 @@ from app.api.deps import _v
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.core.wechat_pay import get_wxpay, build_jsapi_params
-from app.models.models import MatchPost, MatchRegistration, BookingOrder, OrderStatus, RegistrationStatus, MatchPostStatus, RefundRecord
+from app.models.models import MatchPost, MatchRegistration, BookingOrder, OrderStatus, RegistrationStatus, MatchPostStatus, RefundRecord, Notification, NotificationType, User
 from app.services import tournament_lifecycle as money
 from app.services.activity_visibility import post_registration_closed
 from app.services.settlement import _to_cents
@@ -114,11 +114,60 @@ async def payment_success(db, data):
     return {'code':'SUCCESS'}
 
 
+async def notify_refund_failure(db, post, order, reason):
+    """Tell the organizer who could not be refunded, why, and for which order."""
+    nickname = (
+        await db.scalar(select(User.nickname).where(User.id == order.user_id))
+        if order.user_id
+        else None
+    )
+    db.add(
+        Notification(
+            user_id=post.user_id,
+            type=NotificationType.match,
+            title="退款失败",
+            content=(
+                f"{nickname or '报名用户'} 退款失败：{reason}；"
+                f"订单号 {order.order_no}（金额 ¥{order.amount}），请到微信商户平台核对后重试"
+            ),
+            ref_id=post.id,
+            ref_type="match_post",
+        )
+    )
+    logger.warning("Post %s refund failed for order %s: %s", post.id, order.id, reason)
+
+
 async def cancel(db, post, reg, reason):
-    if reg.order_id:
-        order = await money.locked_order(db, reg.order_id)
-        if order and _v(order.status) == 'paid':
-            await money.request_refund(db, order, reason)
+    """Cancel a registration, refunding a paid online order in the same request.
+
+    A refund WeChat rejects aborts the cancellation: the player keeps the seat,
+    the organizer is notified with the reason and order number, and the caller
+    receives HTTPException(502) so the client can show the failure.
+    """
+    order = await money.locked_order(db, reg.order_id) if reg.order_id else None
+    if (
+        order
+        and _v(order.status) == 'refunding'
+        and _v(reg.status) == 'cancelled'
+    ):
+        # This cancellation already submitted its refund; never queue a second one.
+        return
+    if order and _v(order.status) in ('paid', 'refunding'):
+        if not order.wx_transaction_id or order.wx_transaction_id.startswith('dev_'):
+            reg.payment = 'unverified'
+            order.refund_status = 'abnormal'
+        else:
+            try:
+                record = await money.request_refund(db, order, reason)
+                await db.flush()
+                await money.submit_refund(db, order, record)
+            except HTTPException as exc:
+                if exc.status_code != 502:
+                    # Refund abnormal/closed: nothing can be submitted automatically.
+                    order.refund_status = 'abnormal'
+                else:
+                    await notify_refund_failure(db, post, order, str(exc.detail))
+                    raise
     reg.status = RegistrationStatus.cancelled
     reg.seat_expires_at = None
     await db.flush()
@@ -162,6 +211,13 @@ async def refund_callback(db, data):
     order.status = OrderStatus.refunded if state == 'success' else OrderStatus.refunding
     if state == 'success':
         rec.completed_at = order.refund_time = money.now()
+        # A success must never keep the text of an earlier failed attempt.
+        rec.fail_reason = None
+        if order.user_id:
+            db.add(Notification(user_id=order.user_id, type=NotificationType.match,
+                title='退款成功',
+                content=f'你的报名费 ¥{rec.amount} 已原路退回，订单号 {order.order_no}',
+                ref_id=order.post_id, ref_type='match_post'))
     return {'code':'SUCCESS'}
 
 

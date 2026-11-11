@@ -185,10 +185,10 @@ async def maintain_db(db, settings):
             )
             await db.commit()
             processed += 1
-        except Exception:
+        except Exception as exc:
             await db.rollback()
             errors += 1
-            await life.locked_event(db, event_id)
+            t = await life.locked_event(db, event_id)
             ref = (
                 await db.execute(
                     select(RefundRecord)
@@ -201,13 +201,18 @@ async def maintain_db(db, settings):
             if _v(ref.status) != "success":
                 ref.retry_count += 1
                 ref.status = "failed"
-                ref.fail_reason = "微信退款处理失败，请查询后重试"
+                ref.fail_reason = life.reject_reason(exc)
                 ref.scheduled_at = life.now() + timedelta(
                     seconds=min(
                         settings.REFUND_RETRY_BACKOFF_BASE_SECONDS * 2**ref.retry_count,
                         1800,
                     )
                 )
+                if ref.retry_count >= settings.REFUND_MAX_RETRIES:
+                    # Automatic retries are exhausted: the organizer has to act.
+                    o = await life.locked_order(db, order_id)
+                    if o is not None:
+                        await life.notify_refund_failure(db, t, o, ref.fail_reason)
             await db.commit()
             life.logger.error(
                 "Tournament refund recovery failed: %s", ident, exc_info=True

@@ -21,6 +21,7 @@ from app.models.models import (
     TournamentAudit,
     Notification,
     NotificationType,
+    User,
 )
 from app.schemas.tournament import TournamentConfig
 from app.services.settlement import _to_cents
@@ -285,26 +286,191 @@ async def request_refund(db, order, reason):
     return record
 
 
+# WeChat refund rejections are surfaced to the caller instead of being queued,
+# because a rejected refund must not cost the player their seat.
+REFUND_REJECT_REASONS = {
+    "NOT_ENOUGH": "商户号可用余额不足",
+    "PARAM_ERROR": "退款参数有误",
+    "ORDER_NOT_EXIST": "微信侧查无此订单",
+    "INVALID_REQUEST": "退款请求无效",
+    "FREQUENCY_LIMITED": "退款请求过于频繁",
+    "SYSTEMERROR": "微信系统繁忙",
+    "SIGN_ERROR": "微信支付签名校验失败",
+    "APPID_NOT_EXIST": "AppID 配置有误",
+    "MCHID_NOT_EXIST": "商户号配置有误",
+    "REFUND_FEE_INVALID": "退款金额超出原订单",
+}
+
+
+def reject_reason(error):
+    code = str(error or "").strip()
+    if code in REFUND_REJECT_REASONS:
+        return REFUND_REJECT_REASONS[code]
+    if "Payment query does not match" in code:
+        return "微信订单状态与本地记录不一致"
+    if "Refund response does not match" in code:
+        return "微信退款回执与本地订单不一致"
+    return "微信拒绝了退款请求"
+
+
+async def notify_refund_failure(db, t, order, reason):
+    """Tell the organizer who could not be refunded, why, and for which order."""
+    nickname = (
+        await db.scalar(select(User.nickname).where(User.id == order.user_id))
+        if order.user_id
+        else None
+    )
+    db.add(
+        Notification(
+            user_id=t.user_id,
+            type=NotificationType.tournament,
+            title="退款失败",
+            content=(
+                f"{nickname or '参赛用户'} 退款失败：{reason}；"
+                f"订单号 {order.order_no}（金额 ¥{order.amount}），请到微信商户平台核对后重试"
+            ),
+            ref_id=t.id,
+            ref_type="tournament",
+        )
+    )
+    logger.warning(
+        "Tournament %s refund failed for order %s: %s", t.id, order.id, reason
+    )
+
+
+async def submit_refund(db, order, record):
+    """Submit a queued refund to WeChat immediately and persist the outcome.
+
+    Raises HTTPException(502) when WeChat rejects the request. Callers must keep
+    the registration valid in that case and let the organizer resolve it.
+    """
+    settings = get_settings()
+    if not order.wx_transaction_id or order.wx_transaction_id.startswith("dev_"):
+        raise HTTPException(409, "历史订单未核验真实收款，不能发起微信退款")
+    try:
+        if _v(record.status) == "processing":
+            response = await wx_call(
+                "query_refund", out_refund_no=record.out_refund_no
+            )
+        else:
+            paid = await wx_call("query", out_trade_no=order.order_no)
+            if (
+                paid.get("trade_state") != "SUCCESS"
+                or paid.get("transaction_id") != order.wx_transaction_id
+                or paid.get("mchid") != settings.WX_MCH_ID
+                or paid.get("appid") != settings.WX_APP_ID
+                or paid.get("amount", {}).get("total") != _to_cents(order.amount)
+            ):
+                raise RuntimeError("Payment query does not match refundable order")
+            response = await wx_call(
+                "refund",
+                out_refund_no=record.out_refund_no,
+                transaction_id=order.wx_transaction_id,
+                amount={
+                    "refund": _to_cents(record.amount),
+                    "total": _to_cents(order.amount),
+                    "currency": "CNY",
+                },
+                reason=record.reason,
+            )
+        state = response.get("status", "").lower()
+        if (
+            state not in ("success", "processing", "closed", "abnormal")
+            or response.get("out_refund_no") != record.out_refund_no
+            or response.get("out_trade_no") != order.order_no
+            or response.get("amount", {}).get("refund") != _to_cents(record.amount)
+        ):
+            raise RuntimeError("Refund response does not match order")
+    except Exception as exc:
+        message = reject_reason(exc)
+        if str(exc) in REFUND_REJECT_REASONS or "does not match" in str(exc):
+            # WeChat answered and refused: stop retrying until an organizer acts.
+            record.status = "failed"
+            record.fail_reason = message
+            record.retry_count = settings.REFUND_MAX_RETRIES
+            record.scheduled_at = now() + timedelta(
+                minutes=settings.REFUND_POLL_INTERVAL_MINUTES
+            )
+            order.status = OrderStatus.paid
+            order.refund_status = "failed"
+            order.refund_amount = None
+            order.cancel_reason = None
+            order.cancel_time = None
+        else:
+            # Ambiguous (network/timeout): the refund may still exist at WeChat,
+            # so keep the queued record retryable instead of declaring failure.
+            record.status = "pending"
+            record.retry_count = 0
+            record.fail_reason = message
+            record.scheduled_at = now()
+        raise HTTPException(502, f"退款失败：{message}") from exc
+    payload = dict(
+        response,
+        refund_status=state.upper(),
+        mchid=response.get("mchid", settings.WX_MCH_ID),
+    )
+    if _v(order.business_type) == "post":
+        from app.services.post_payments import refund_callback as post_refund_callback
+
+        await post_refund_callback(db, payload)
+    else:
+        await refund_callback(db, payload)
+    record.scheduled_at = now() + timedelta(
+        minutes=settings.REFUND_POLL_INTERVAL_MINUTES
+    )
+    return record
+
+
 async def cancel_registration(db, t, r, reason, actor=None):
+    """Cancel a registration, refunding a paid online order in the same request.
+
+    A refund WeChat rejects aborts the cancellation: the player keeps the seat,
+    the organizer is notified with the reason and order number, and the caller
+    receives HTTPException(502) so the client can show the failure.
+    """
+    order = await locked_order(db, r.order_id) if r.order_id else None
+    if order and _v(order.status) in ("paid", "refunding"):
+        if not order.wx_transaction_id or order.wx_transaction_id.startswith("dev_"):
+            r.payment = "unverified"
+            order.refund_status = "abnormal"
+            audit(
+                db,
+                t,
+                actor,
+                "refund_manual_review",
+                {"order_id": order.id, "reason": "历史收款未核验"},
+            )
+        else:
+            try:
+                record = await request_refund(db, order, reason)
+                await db.flush()
+                await submit_refund(db, order, record)
+            except HTTPException as exc:
+                if exc.status_code != 502:
+                    # Refund abnormal/closed: nothing can be submitted automatically.
+                    order.refund_status = "abnormal"
+                    audit(
+                        db,
+                        t,
+                        actor,
+                        "refund_manual_review",
+                        {"order_id": order.id, "reason": exc.detail},
+                    )
+                else:
+                    await notify_refund_failure(db, t, order, str(exc.detail))
+                    audit(
+                        db,
+                        t,
+                        actor,
+                        "refund_failed",
+                        {"order_id": order.id, "reason": exc.detail},
+                    )
+                    raise
     r.admission = "cancelled"
     r.status = TournamentRegStatus.cancelled
     r.seat_expires_at = None
     r.invite_token = None
     await unpair(db, t, r)
-    if r.order_id:
-        order = await locked_order(db, r.order_id)
-        if order and _v(order.status) == "paid":
-            if not order.wx_transaction_id or order.wx_transaction_id.startswith("dev_"):
-                r.payment = "unverified"
-                order.refund_status = "abnormal"
-                audit(db, t, actor, "refund_manual_review", {"order_id": order.id, "reason": "历史收款未核验"})
-            else:
-                try:
-                    await request_refund(db, order, reason)
-                except HTTPException as exc:
-                    order.refund_status = "abnormal"
-                    audit(db, t, actor, "refund_manual_review", {"order_id": order.id, "reason": exc.detail})
-        # Pending orders are closed/queried by the maintenance task, never falsely marked paid.
     audit(
         db,
         t,
@@ -470,8 +636,24 @@ async def refund_callback(db, data):
     order.refund_status = state
     if state == "success":
         rec.completed_at = now()
+        # A success must never keep the text of an earlier failed attempt.
+        rec.fail_reason = None
         order.status = OrderStatus.refunded
         order.refund_time = now()
+        if order.user_id:
+            db.add(
+                Notification(
+                    user_id=order.user_id,
+                    type=NotificationType.tournament,
+                    title="退款成功",
+                    content=(
+                        f"你的报名费 ¥{rec.amount} 已原路退回，"
+                        f"订单号 {order.order_no}"
+                    ),
+                    ref_id=t.id,
+                    ref_type="tournament",
+                )
+            )
     # A failed refund never restores participation or touches venue slots.
     audit(db, t, None, "refund_updated", {"order_id": order.id, "status": state})
     return {"code": "SUCCESS"}

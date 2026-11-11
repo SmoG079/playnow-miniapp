@@ -275,7 +275,13 @@ async def update_post(
     if update_data.get("status") == "closed":
         for registration in await payments.refresh(db, post):
             if registration.order_id and _v(registration.status) in ("pending", "approved"):
-                await payments.cancel(db, post, registration, "组织者关闭活动")
+                try:
+                    await payments.cancel(db, post, registration, "组织者关闭活动")
+                except HTTPException as exc:
+                    # One rejected refund must not block closing the whole activity.
+                    if exc.status_code != 502:
+                        raise
+                    await db.commit()
 
     start = update_data.get("preferred_start", post.preferred_start)
     end = update_data.get("preferred_end", post.preferred_end)
@@ -534,7 +540,52 @@ async def cancel_register(
     reg = result.scalar_one_or_none()
     if not reg:
         raise HTTPException(status_code=404, detail="Registration not found")
-    await payments.cancel(db, post, reg, "用户取消报名")
+    try:
+        await payments.cancel(db, post, reg, "用户取消报名")
+    except HTTPException as exc:
+        # Keep the failed refund record and the organizer notification on record.
+        if exc.status_code == 502:
+            await db.commit()
+        raise
+    await db.flush()
+    return {"msg": "ok"}
+
+
+@router.post("/{post_id}/registrations/{user_id}/refund")
+async def refund_registration(
+    post_id: int,
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Organizer-initiated refund: cancels one signup and returns the fee.
+
+    The same call is the retry path after a refused refund, because the signup
+    survives every failure.
+    """
+    post = (await db.execute(select(MatchPost).where(MatchPost.id == post_id)
+                            .with_for_update())).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
+        raise HTTPException(status_code=403, detail="Only post owner can refund")
+    reg = (await db.execute(
+        select(MatchRegistration).join(User, MatchRegistration.user_id == User.id).where(
+            MatchRegistration.post_id == post_id,
+            User.public_id == user_id,
+        )
+    )).scalar_one_or_none()
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    if not reg.order_id:
+        raise HTTPException(status_code=409, detail="该报名没有线上支付订单")
+    try:
+        await payments.cancel(db, post, reg, "组织者退款")
+    except HTTPException as exc:
+        # Keep the failed refund record and the organizer notification on record.
+        if exc.status_code == 502:
+            await db.commit()
+        raise
     await db.flush()
     return {"msg": "ok"}
 
@@ -582,7 +633,13 @@ async def review_registration(
         if _v(post.status) not in ("open", "full") or count + 1 >= post.max_players:
             raise HTTPException(status_code=409, detail="活动已关闭或报名已满")
     if new_status == RegistrationStatus.rejected:
-        await payments.cancel(db, post, reg, "组织者拒绝报名")
+        try:
+            await payments.cancel(db, post, reg, "组织者拒绝报名")
+        except HTTPException as exc:
+            # A rejected refund must keep the registration reviewable for a retry.
+            if exc.status_code == 502:
+                await db.commit()
+            raise
     reg.status = new_status
     reg.review_reason = req.reason
 
@@ -784,11 +841,19 @@ async def close_post(
     if post.user_id != current_user.id and _v(current_user.role) != "platform_admin":
         raise HTTPException(403, "只有发起人可以关闭活动")
     post.status = MatchPostStatus.closed
+    refund_failed = 0
     for registration in await payments.refresh(db, post):
         if registration.order_id and _v(registration.status) in ("pending", "approved"):
-            await payments.cancel(db, post, registration, "组织者关闭活动")
+            try:
+                await payments.cancel(db, post, registration, "组织者关闭活动")
+            except HTTPException as exc:
+                # One rejected refund must not block closing the whole activity.
+                if exc.status_code != 502:
+                    raise
+                refund_failed += 1
+                await db.commit()
     await db.flush()
-    return {"msg": "ok"}
+    return {"msg": "ok", "refund_failed": refund_failed}
 
 
 @router.delete("/{post_id}/comments/{comment_id}")

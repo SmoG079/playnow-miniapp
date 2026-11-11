@@ -11,6 +11,7 @@ import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
 import { request } from "../../services/api";
+import { SUPPORT_PHONE } from "../../config";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 import { postLocation } from "../../domain/post-location";
@@ -88,6 +89,18 @@ onShareTimeline(() => {
   const { title, query, imageUrl } = activityShare("post", id.value, post.value?.title, post.value?.images?.[0]);
   return { title, query, imageUrl };
 });
+/** Players get the organizer hotline instead of a raw WeChat error code. */
+function refundFailure(e: any) {
+  if (e?.statusCode !== 502) {
+    uni.showToast({ title: e?.message || "取消失败", icon: "none" });
+    return;
+  }
+  uni.showModal({
+    title: "退款失败",
+    content: `退款失败，联系管理员：${SUPPORT_PHONE}`,
+    showCancel: false,
+  });
+}
 function cancelPending() {
   uni.showModal({title:"取消报名",content:"确定取消这次待支付的报名吗？",success:async (r) => {
     if (!r.confirm || busy.value) return;
@@ -122,8 +135,11 @@ function action() {
       content: Number(post.value.price) > 0 ? post.value.payment_method === "online" ? "确定取消报名吗？已在线支付的报名费将原路退回。" : "确定取消报名吗？线下已付费用请与组织者协商退还。" : "确定取消报名吗？",
       success: async (r) => {
         if (r.confirm) {
-          try { await request(`/posts/${id.value}/register`, { method: "DELETE" }); await load(); }
-          catch(e:any) { uni.showToast({title:e.message || "取消失败",icon:"none"}); }
+          try {
+            await request(`/posts/${id.value}/register`, { method: "DELETE" });
+            uni.showToast({ title: "已取消报名", icon: "none" });
+            await load();
+          } catch(e:any) { refundFailure(e); }
         }
       },
     });

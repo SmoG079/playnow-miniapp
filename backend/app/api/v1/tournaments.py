@@ -884,7 +884,13 @@ async def cancel_registration(
         raise HTTPException(409, "已超过自助取消截止时间，请联系管理员")
     if t.draw_version:
         raise HTTPException(409, "已有签表，请使用管理员退款或取消整个赛事")
-    await life.cancel_registration(db, t, r, req.reason, user)
+    try:
+        await life.cancel_registration(db, t, r, req.reason, user)
+    except HTTPException as exc:
+        # Keep the failed refund record and the organizer notification on record.
+        if exc.status_code == 502:
+            await db.commit()
+        raise
     return {"msg": "ok"}
 
 
@@ -904,9 +910,13 @@ async def refund_registration(
     o = await life.locked_order(db, r.order_id)
     if _v(o.status) not in ("paid", "refunding", "refunded"):
         raise HTTPException(409, "订单未真实支付")
-    if _v(o.status) != "refunded":
+    # Already refunded orders only need the seat released, never a second refund.
+    try:
         await life.cancel_registration(db, t, r, req.reason, user)
-        await life.request_refund(db, o, req.reason)
+    except HTTPException as exc:
+        if exc.status_code == 502:
+            await db.commit()
+        raise
     life.audit(
         db, t, user, "admin_refund", {"registration_id": reg_id, "reason": req.reason}
     )
@@ -1591,10 +1601,18 @@ async def cancel_event(
     t.status = TournamentStatus.cancelled
     t.registration_closed = True
     t.roster_frozen = True
+    refund_failed = 0
     for r in await life.registrations(db, t):
-        await life.cancel_registration(db, t, r, req.reason, user)
+        try:
+            await life.cancel_registration(db, t, r, req.reason, user)
+        except HTTPException as exc:
+            # One rejected refund must not abort the whole event cancellation.
+            if exc.status_code != 502:
+                raise
+            refund_failed += 1
+            await db.commit()
     life.audit(db, t, user, "cancelled", {"reason": req.reason})
-    return {"msg": "ok"}
+    return {"msg": "ok", "refund_failed": refund_failed}
 
 
 @router.get("/{ident}/audit")

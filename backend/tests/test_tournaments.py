@@ -20,7 +20,9 @@ from app.models.models import (
     TournamentRegistration,
     Tournament,
     RefundRecord,
+    Notification,
 )
+from app.api.deps import _v
 from app.schemas.tournament import *
 from app.api.v1 import tournaments as api
 from app.services import tournament_lifecycle as life
@@ -235,6 +237,25 @@ async def test_payment_gate_duplicates_late_callback_and_refund(db, monkeypatch)
     await life.payment_success(db, payload)
     await life.payment_success(db, payload)
     assert t.current_participants == 1 and r.payment == "paid"
+
+    async def fake_wx_call(method, **kwargs):
+        if method == "query":
+            return dict(
+                trade_state="SUCCESS",
+                transaction_id="real-wx-tx",
+                mchid="mch",
+                appid="app",
+                amount={"total": 2000},
+            )
+        return dict(
+            status="PROCESSING",
+            out_refund_no=kwargs["out_refund_no"],
+            out_trade_no=o.order_no,
+            amount={"refund": 2000},
+            mchid="mch",
+        )
+
+    monkeypatch.setattr(life, "wx_call", fake_wx_call)
     await api.cancel_registration(
         tid, r.id, ReasonCommand(reason="退赛"), await db.get(User, 2), db
     )
@@ -277,6 +298,105 @@ async def test_payment_gate_duplicates_late_callback_and_refund(db, monkeypatch)
         and o2.status == OrderStatus.refunding
         and t.current_participants == 0
     )
+
+
+@pytest.mark.asyncio
+async def test_rejected_refund_keeps_seat_and_notifies_organizer(db, monkeypatch):
+    """A refund WeChat refuses must not cost the player their seat."""
+    settings = life.get_settings()
+    monkeypatch.setattr(settings, "WX_PAY_ENABLED", True)
+    monkeypatch.setattr(settings, "WX_MCH_ID", "mch")
+    monkeypatch.setattr(settings, "WX_APP_ID", "app")
+    tid, admin = await event(db, 2, fee=Decimal("20"))
+    await register(db, tid, 2)
+    t = await life.locked_event(db, tid)
+    r = await api.own(db, t, await db.get(User, 2))
+    o = await db.get(BookingOrder, r.order_id)
+    await life.payment_success(
+        db,
+        dict(
+            out_trade_no=o.order_no,
+            mchid="mch",
+            appid="app",
+            amount={"total": 2000},
+            transaction_id="real-wx-tx",
+        ),
+    )
+
+    async def insufficient(method, **kwargs):
+        if method == "query":
+            return dict(
+                trade_state="SUCCESS",
+                transaction_id="real-wx-tx",
+                mchid="mch",
+                appid="app",
+                amount={"total": 2000},
+            )
+        raise RuntimeError("NOT_ENOUGH")
+
+    monkeypatch.setattr(life, "wx_call", insufficient)
+    with pytest.raises(HTTPException) as err:
+        await api.cancel_registration(
+            tid, r.id, ReasonCommand(reason="退赛"), await db.get(User, 2), db
+        )
+    assert err.value.status_code == 502 and "余额不足" in err.value.detail
+    # The seat and the paid order survive; the refund record stops auto-retrying.
+    assert r.admission == "active" and _v(r.status) == "confirmed"
+    assert o.status == OrderStatus.paid and o.refund_status == "failed"
+    record = (
+        await db.execute(select(RefundRecord).where(RefundRecord.order_id == o.id))
+    ).scalar_one()
+    assert record.status == "failed" and record.retry_count >= settings.REFUND_MAX_RETRIES
+    # The organizer is told who failed, why and which order to reconcile.
+    notes = (
+        await db.execute(
+            select(Notification).where(Notification.user_id == admin.id)
+        )
+    ).scalars().all()
+    assert any(
+        n.title == "退款失败"
+        and o.order_no in n.content
+        and "余额不足" in n.content
+        and "选手2" in n.content
+        for n in notes
+    )
+
+    # Once the balance is topped up the same button succeeds and releases the seat.
+    async def accepted(method, **kwargs):
+        if method == "query":
+            return dict(
+                trade_state="SUCCESS",
+                transaction_id="real-wx-tx",
+                mchid="mch",
+                appid="app",
+                amount={"total": 2000},
+            )
+        return dict(
+            status="SUCCESS",
+            out_refund_no=kwargs["out_refund_no"],
+            out_trade_no=o.order_no,
+            amount={"refund": 2000},
+            mchid="mch",
+        )
+
+    monkeypatch.setattr(life, "wx_call", accepted)
+    await api.refund_registration(
+        tid, r.id, ReasonCommand(reason="管理员全额退款"), admin, db
+    )
+    assert r.admission == "cancelled" and o.status == OrderStatus.refunded
+    # The payer is told the money is back, and no stale failure text survives.
+    record = (
+        await db.execute(select(RefundRecord).where(RefundRecord.order_id == o.id))
+    ).scalar_one()
+    assert record.fail_reason is None
+    refunded = (
+        await db.execute(
+            select(Notification).where(
+                Notification.user_id == r.user_id, Notification.title == "退款成功"
+            )
+        )
+    ).scalars().all()
+    assert len(refunded) == 1 and o.order_no in refunded[0].content
 
 
 @pytest.mark.asyncio
@@ -557,9 +677,8 @@ async def test_refund_worker_verifies_response_and_dev_payment(db, monkeypatch):
             transaction_id="real-tx",
         ),
     )
-    await api.cancel_registration(
-        tid, r.id, ReasonCommand(reason="退赛"), await db.get(User, 2), db
-    )
+    # Queue a refund the way the maintenance task expects; the worker below submits it.
+    await life.request_refund(db, o, "核验退款回执")
     order_id, order_no = o.id, o.order_no
     await db.commit()
 

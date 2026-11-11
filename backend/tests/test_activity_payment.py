@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from app.api.v1 import posts, tournaments
 from app.core.config import get_settings
-from app.models.models import User, MatchPost, MatchRegistration, BookingOrder, RefundRecord, TournamentRegistration, Tournament
+from app.models.models import User, MatchPost, MatchRegistration, BookingOrder, RefundRecord, Notification, TournamentRegistration, Tournament
 from app.schemas.schemas import PostCreate, PostUpdate, RegisterPostRequest, ReviewRegistrationRequest
 from app.schemas.tournament import TournamentCreate, TournamentConfig, RegistrationCommand, ReviewCommand, ReasonCommand, DrawCommand
 from app.services import post_payments, tournament_lifecycle as life, payment_callback
@@ -23,6 +23,22 @@ def receipt(order, **extra):
     s=get_settings()
     return dict(out_trade_no=order.order_no,mchid=s.WX_MCH_ID,appid=s.WX_APP_ID,
                 transaction_id='real-post-'+str(order.id),amount={'total':int(order.amount*100)},**extra)
+
+
+def wx_stub(order, refund_status='PROCESSING', fail=None):
+    """Stand-in for WeChat: verifies the paid order, then accepts/refuses a refund."""
+    async def call(method, **kwargs):
+        s = get_settings()
+        if method == 'query':
+            return dict(trade_state='SUCCESS', transaction_id=order.wx_transaction_id,
+                        mchid=s.WX_MCH_ID, appid=s.WX_APP_ID,
+                        amount={'total': int(order.amount * 100)})
+        if fail:
+            raise RuntimeError(fail)
+        return dict(status=refund_status, out_refund_no=kwargs['out_refund_no'],
+                    out_trade_no=order.order_no, amount={'refund': int(order.amount * 100)},
+                    mchid=s.WX_MCH_ID)
+    return call
 
 
 @pytest.mark.asyncio
@@ -60,6 +76,7 @@ async def test_online_post_requires_receipt_before_success_and_refunds_once(db,m
     await payment_callback._handle_payment_success(receipt(order),db)
     await payment_callback._handle_payment_success(receipt(order),db)
     assert reg.status.value=='approved' and reg.payment=='paid'
+    monkeypatch.setattr(life,'wx_call',wx_stub(order))
     await posts.cancel_register(p.id,guest,db)
     await posts.cancel_register(p.id,guest,db)
     refs=(await db.scalars(select(RefundRecord))).all()
@@ -96,9 +113,42 @@ async def test_online_post_review_and_host_close_refund(db,monkeypatch):
     with pytest.raises(HTTPException):await posts.review_registration(p.id,guest.public_id,ReviewRegistrationRequest(status='approved'),owner,db)
     await payment_callback._handle_payment_success(receipt(order),db)
     assert reg.status.value=='pending' and reg.payment=='paid'
+    monkeypatch.setattr(life,'wx_call',wx_stub(order))
     await posts.review_registration(p.id,guest.public_id,ReviewRegistrationRequest(status='approved'),owner,db)
     await posts.close_post(p.id,owner,db)
     assert reg.status.value=='cancelled' and order.status.value=='refunding'
+
+
+@pytest.mark.asyncio
+async def test_rejected_post_refund_keeps_registration_and_notifies_host(db,monkeypatch):
+    """A refused post refund must keep the signup and tell the organizer why."""
+    monkeypatch.setattr(get_settings(),'WX_PAY_ENABLED',True)
+    p,owner=await post(db,'online')
+    guest=await db.get(User,'2')
+    await posts.register_post(p.id,RegisterPostRequest(),guest,db)
+    reg=await db.scalar(select(MatchRegistration));order=await db.get(BookingOrder,reg.order_id)
+    await payment_callback._handle_payment_success(receipt(order),db)
+    assert reg.payment=='paid'
+    monkeypatch.setattr(life,'wx_call',wx_stub(order,fail='NOT_ENOUGH'))
+    with pytest.raises(HTTPException) as err: await posts.cancel_register(p.id,guest,db)
+    assert err.value.status_code==502 and '余额不足' in err.value.detail
+    # The signup survives so the same button can retry once the balance is topped up.
+    assert reg.status.value=='approved' and order.status.value=='paid'
+    assert order.refund_status=='failed'
+    notes=(await db.execute(select(Notification).where(Notification.user_id==owner.id))).scalars().all()
+    assert any(n.title=='退款失败' and order.order_no in n.content and '余额不足' in n.content
+               and '选手2' in n.content for n in notes)
+    monkeypatch.setattr(life,'wx_call',wx_stub(order,refund_status='SUCCESS'))
+    with pytest.raises(HTTPException) as denied: await posts.refund_registration(p.id,guest.public_id,guest,db)
+    assert denied.value.status_code==403
+    await posts.refund_registration(p.id,guest.public_id,owner,db)
+    assert reg.status.value=='cancelled' and order.status.value=='refunded'
+    # The payer is told the money is back, and no stale failure text survives.
+    ref=(await db.scalars(select(RefundRecord))).all()[0]
+    assert ref.fail_reason is None
+    paid=(await db.execute(select(Notification).where(Notification.user_id==guest.id,
+        Notification.title=='退款成功'))).scalars().all()
+    assert len(paid)==1 and order.order_no in paid[0].content
 
 
 @pytest.mark.asyncio
