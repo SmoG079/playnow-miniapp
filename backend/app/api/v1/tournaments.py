@@ -271,11 +271,12 @@ def discovery_query():
 async def organizer_profiles(db, ids):
     if not ids:
         return {}
-    rows = (await db.execute(select(Tournament.id, User.nickname, User.avatar_url, Club.cover_image)
+    rows = (await db.execute(select(Tournament.id, User.nickname, User.avatar_url, Club.logo_image, Club.cover_image)
         .join(User, User.id == Tournament.user_id)
         .outerjoin(Club, Club.id == Tournament.club_id).where(Tournament.id.in_(ids)))).all()
-    return {ident: dict(organizer_nickname=nickname, organizer_avatar=avatar, club_avatar=cover)
-            for ident, nickname, avatar, cover in rows}
+    # A club's logo is its avatar; the cover is only a fallback for clubs that never uploaded one.
+    return {ident: dict(organizer_nickname=nickname, organizer_avatar=avatar, club_avatar=logo or cover)
+            for ident, nickname, avatar, logo, cover in rows}
 
 
 async def discovery_items(db,rows,lat=None,lng=None):

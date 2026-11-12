@@ -243,7 +243,7 @@ function remove(c: any) {
           post.description || post.notes || "发起人暂未填写更多说明。"
         }}</text></view
         ><view v-if="post.club_id" class="section-head"><text class="section-title">俱乐部</text></view>
-        <ClubJoinCard v-if="post.club_id" :club-id="post.club_id" :name="post.club_name" :city="post.club_city" :logo="post.club_logo" :owner-name="post.user_nickname" />
+        <ClubJoinCard v-if="post.club_id" :club-id="post.club_id" :name="post.club_name" :city="post.club_city" :logo="post.club_logo || post.club_avatar" :owner-name="post.user_nickname" />
         <view class="section-head"><text class="section-title">组织者</text></view>
         <view class="organizer"
           ><Photo

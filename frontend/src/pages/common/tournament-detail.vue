@@ -725,7 +725,7 @@ function tie() {
               </view>
               <view v-if="t.club_id" class="intro-section"
                 ><text class="intro-heading">俱乐部</text>
-                <ClubJoinCard :club-id="t.club_id" :name="t.club_name" :city="t.club_city" :logo="t.club_logo" :owner-name="t.organizer_nickname" /><text v-if="t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text></view
+                <ClubJoinCard :club-id="t.club_id" :name="t.club_name" :city="t.club_city" :logo="t.club_logo || t.club_avatar" :owner-name="t.organizer_nickname" /><text v-if="t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text></view
               >
               <view class="intro-section"
                 ><text class="intro-heading">组织者</text>

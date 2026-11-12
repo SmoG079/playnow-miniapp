@@ -102,7 +102,7 @@ onReachBottom(() => more.value && load(true));
           ><Photo
             width="100%"
             height="100%"
-            :src="c.cover_image"
+            :src="c.logo_image || c.cover_image"
             fallback="/static/tennis.jpg"
             mode="aspectFill"
           /><text v-if="c.distance != null" class="distance-badge"

@@ -28,7 +28,7 @@ onShow(async () => {
           ><Photo
             width="64px"
             height="64px"
-            :src="c.cover_image"
+            :src="c.logo_image || c.cover_image"
             fallback="/static/court.jpg"
           /><view class="record-copy"
             ><text class="strong">{{ c.name }}</text
