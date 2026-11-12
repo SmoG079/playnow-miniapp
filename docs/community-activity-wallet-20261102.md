@@ -24,7 +24,7 @@
 - `POST /activity-wallet/notify`：独立转账通知，校验时效、签名、原单及金额／身份。
 - `GET/POST/DELETE /clubs/{id}/community`：成员状态、加入和退出；`DELETE /clubs/{id}/community/{public_id}` 仅群主移除普通成员。
 
-同用户申请在用户行上串行化，余额输入使用当前锁定读取，避免 MySQL REPEATABLE READ 的旧快照导致重复提现。单笔默认 10–20000 分，同用户每日默认 20000 分；未终结转账即使跨日仍占用额度，成功款按到账日统计。超过每日额度仅申请本次允许金额，其余之后申请；拆单不能突破每日限额。转账查单由每分钟 Celery 任务兜底。
+同用户申请在用户行上串行化，余额输入使用当前锁定读取，避免 MySQL REPEATABLE READ 的旧快照导致重复提现。单笔默认 10–20000 分（¥0.10–¥200），同用户每日默认 500000 分（¥5000），超过单笔上限的部分拆成多笔、单次申请最多 100 笔；未终结转账即使跨日仍占用额度，成功款按到账日统计。超过每日额度仅申请本次允许金额，其余之后申请；拆单不能突破每日限额。转账查单由每分钟 Celery 任务兜底。
 
 正常退款不因组织者已提现而被阻止。未提交的转账在来源失效后取消；已经提交／到账的转账继续核对，退款产生账户待抵扣金额，由后续已解锁收入优先抵扣，期间不允许超额提现。平台承担资金先行退款及异常人工核对工作；本次不新增催缴、银行卡还款或平台垫资自动核销功能。
 
@@ -38,8 +38,8 @@
 - `ACTIVITY_TRANSFER_ENABLED=true`。
 - `ACTIVITY_TRANSFER_SCENE_VERIFIED=true`：获批场景确实覆盖实际业务用途；竞品的“活动奖励”文案不能代替适用性核实。
 - `ACTIVITY_TRANSFER_SCENE_ID` 和 `ACTIVITY_TRANSFER_REPORT_INFOS`：填商户真实获批场景 ID 及对应字段，不自动将报名收入改报现金奖励。
-- `ACTIVITY_FEE_RATE_VERIFIED=true` 及 `ACTIVITY_PAYMENT_FEE_RATE`：核实签约费率后设置，默认估算 0.006。
-- `ACTIVITY_TRANSFER_LIMITS_VERIFIED=true`：核实并设置 `ACTIVITY_TRANSFER_MIN_CENTS`、`ACTIVITY_TRANSFER_MAX_CENTS`、`ACTIVITY_TRANSFER_DAILY_CENTS`。本次单笔最高仍限制 20000 分。
+- `ACTIVITY_FEE_RATE_VERIFIED=true` 及 `ACTIVITY_PAYMENT_FEE_RATE`：核实签约费率后设置。生产按 `0.006` 执行，交易手续费由组织者承担，从可提现金额中扣除；未提现的历史收入在下次提现时按当时费率固化为 `ActivityEarning.fee_rate`。
+- `ACTIVITY_TRANSFER_LIMITS_VERIFIED=true`：核实并设置 `ACTIVITY_TRANSFER_MIN_CENTS`、`ACTIVITY_TRANSFER_MAX_CENTS`、`ACTIVITY_TRANSFER_DAILY_CENTS`。本次单笔仍限 20000 分（¥200，微信商家转账单笔约束），每人每日 500000 分（¥5000）。
 - 可选 `ACTIVITY_TRANSFER_NOTIFY_URL` 指向独立 HTTPS `/api/v1/activity-wallet/notify`，未配置时依赖定时查单。
 
 `REPORT_INFOS` 为 JSON 对象数组，各项包含获批场景要求的 `info_type` 和真实 `info_content`；不要在公开配置中保存任何密钥。商户配置变化时，旧单继续核对原商户，不能切换商户重发；当前实现对不匹配配置拒绝自动处理并要求人工核对。

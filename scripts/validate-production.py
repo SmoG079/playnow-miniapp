@@ -62,7 +62,11 @@ def main():
                     "WX_MCH_PRIVATE_KEY_PATH", "WX_PAY_NOTIFY_URL",
                     # 微信支付公钥：微信会定期轮换，轮换属常规运维而非安全开关
                     # （公钥只用于验签，泄露不影响资金安全），故与 WX_MCH_* 同等对待。
-                    "WX_PAY_PUBLIC_KEY_PATH", "WX_PAY_PUBLIC_KEY_ID"}
+                    "WX_PAY_PUBLIC_KEY_PATH", "WX_PAY_PUBLIC_KEY_ID",
+                    # 活动提现业务参数：费率从 0 改为微信签约的 0.6%（此前平台自己
+                    # 贴交易手续费），每人每日限额从 ¥200 放宽到 ¥5000。单笔上限
+                    # 仍锁在 ¥200，且由 config 校验器强制不超过 100 笔的拆分能力。
+                    "ACTIVITY_PAYMENT_FEE_RATE", "ACTIVITY_TRANSFER_DAILY_CENTS"}
     for service in ("api", "celery_worker", "celery_beat"):
         env = services[service]["environment"]
         jwt_secret = env.get("JWT_SECRET_KEY", "")

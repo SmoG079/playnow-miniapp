@@ -158,3 +158,13 @@ async def test_later_unlocked_income_offsets_refunded_payout_before_new_transfer
     new_bill=await db.scalar(select(ActivityTransfer).where(ActivityTransfer.withdrawal_id==second.id))
     assert new_bill.amount_cents==9940
     assert (await wallet.overview(db,'1'))['available_cents']==0
+
+def test_default_limits_allow_a_5000_yuan_day_in_200_yuan_bills():
+    """The organiser takes home the full ¥5000 a day, but WeChat still sees ¥200 bills."""
+    from app.core.config import Settings
+    fields = Settings.model_fields
+    assert fields['ACTIVITY_PAYMENT_FEE_RATE'].default == '0.006'
+    assert fields['ACTIVITY_TRANSFER_MAX_CENTS'].default == 20000
+    assert fields['ACTIVITY_TRANSFER_DAILY_CENTS'].default == 500000
+    parts = wallet.split(500000, 10, 20000)
+    assert len(parts) == 25 and sum(parts) == 500000 and max(parts) == 20000

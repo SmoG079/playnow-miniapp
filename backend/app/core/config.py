@@ -71,8 +71,10 @@ class Settings(BaseSettings):
     ACTIVITY_TRANSFER_REPORT_INFOS: list[dict[str, str]] = []
     ACTIVITY_TRANSFER_NOTIFY_URL: str = ""
     ACTIVITY_TRANSFER_MIN_CENTS: int = 10
+    # 单笔上限 ¥200：微信商家转账的单笔约束，调高前必须先确认商户号开通额度。
     ACTIVITY_TRANSFER_MAX_CENTS: int = 20000
-    ACTIVITY_TRANSFER_DAILY_CENTS: int = 20000
+    # 每用户每日 ¥5000。超过单笔上限的部分由 split() 拆成多笔，一次申请最多 100 笔。
+    ACTIVITY_TRANSFER_DAILY_CENTS: int = 500000
     ACTIVITY_TRANSFER_LIMITS_VERIFIED: bool = False
     # Explicitly approved existing receipts only; never a global unlock switch.
     ACTIVITY_TRANSFER_EARLY_UNLOCK_EARNING_IDS: list[int] = []
@@ -136,8 +138,10 @@ class Settings(BaseSettings):
             raise ValueError("ACTIVITY_PAYMENT_FEE_RATE must be between 0 and 1")
         if not 10 <= self.ACTIVITY_TRANSFER_MIN_CENTS <= self.ACTIVITY_TRANSFER_MAX_CENTS <= 20000:
             raise ValueError("Activity transfer per-bill limits must be between 10 and 20000 cents")
-        if self.ACTIVITY_TRANSFER_DAILY_CENTS < self.ACTIVITY_TRANSFER_MIN_CENTS:
-            raise ValueError("Activity transfer daily limit is below the minimum bill")
+        # 一次申请最多 100 笔（见 activity_wallet.reserve），日额度超出这个拆分能力
+        # 的部分永远发不出去，只会在提交时莫名失败。
+        if not self.ACTIVITY_TRANSFER_MIN_CENTS <= self.ACTIVITY_TRANSFER_DAILY_CENTS <= self.ACTIVITY_TRANSFER_MAX_CENTS * 100:
+            raise ValueError("Activity transfer daily limit must be reachable within 100 per-bill transfers")
         return self
 
     class Config:
