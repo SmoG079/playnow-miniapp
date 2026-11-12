@@ -5,7 +5,6 @@ import { onLoad } from "@dcloudio/uni-app";
 import { uploadedImage } from "../../services/media";
 import AppShell from "../../components/AppShell.vue";
 import NtrpAssessment from "../../components/NtrpAssessment.vue";
-import type { RatingResult } from "../../services/rating-assessment";
 import { request } from "../../services/api";
 import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
@@ -50,11 +49,11 @@ onLoad(async (q) => {
   });
   profileReady.value = !!u;
 });
-function ratingCompleted(result: RatingResult) {
+function ratingCompleted(level: number) {
   if (!s.user) return;
-  form.ntrp_level = Number(result.ntrp_level).toFixed(1);
-  s.user.ntrp_level = Number(result.ntrp_level);
-  s.user.rating_source = result.rating_source;
+  form.ntrp_level = level.toFixed(1);
+  if (Number(s.user.ntrp_level) !== level) s.user.rating_source = null;
+  s.user.ntrp_level = level;
 }
 async function avatar(e: any) {
   if (!profileReady.value || ratingOpen.value || loading.value || imageUploading.value) return;

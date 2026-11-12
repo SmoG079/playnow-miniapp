@@ -27,7 +27,7 @@ fs.mkdirSync(output, { recursive: true });
         if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
         const endpoint = url.slice(productionBase.length);
         requests.push({ endpoint, method: request.method() });
-        if (failSave && endpoint === "/users/me/rating-assessment") {
+        if (failSave && endpoint === "/users/me" && request.method() === "PUT") {
           failSave = false;
           return route.fulfill({ status: 503, headers, contentType: "application/json", body: JSON.stringify({ detail: "隔离测试：保存失败" }) });
         }
@@ -51,32 +51,53 @@ fs.mkdirSync(output, { recursive: true });
     await page.locator(".rating-card").first().waitFor();
     await page.waitForTimeout(350);
     assert.equal(await page.locator(".rating-card").count(), 4);
-    assert.deepEqual(await page.locator(".rating-level").allTextContents(), ["1.5", "2.5", "3.5", "4.5"]);
+    assert.deepEqual(await page.locator(".rating-level").allTextContents(), ["2.0", "2.5", "3.0", "4.0"]);
     assert.match(await page.locator(".rating-footer .wd-button").getAttribute("class"), /is-disabled/);
     await page.screenshot({ path: path.join(output, "quick.png") });
     assert.equal(await page.locator(".rating-sheet").innerText().then(text => /UTR/.test(text)), false);
-    await page.locator(".rating-card").filter({ hasText: "会打" }).locator(".wd-radio").click();
+    await page.locator(".rating-card").filter({ hasText: "稳定对拉" }).click();
     failSave = true;
     await page.getByText("确认定级并保存", { exact: true }).click();
     await page.getByText("隔离测试：保存失败", { exact: true }).waitFor();
-    assert.equal(await page.locator(".rating-card.chosen").count(), 1);
+    assert.equal(await page.locator(".rating-card.is-checked").count(), 1);
     await page.getByText("确认定级并保存", { exact: true }).click();
     await page.locator(".rating-sheet").waitFor({ state: "hidden" });
-    assert.match(await page.locator(".picker-field").innerText(), /3\.5/);
+    assert.match(await page.locator(".picker-field").innerText(), /3\.0/);
     await page.reload({ waitUntil: "networkidle" });
-    assert.match(await page.locator(".picker-field").innerText(), /3\.5/);
+    assert.match(await page.locator(".picker-field").innerText(), /3\.0/);
     await page.getByText("测测我的等级", { exact: true }).click();
     await page.getByText("做完整问卷（更细致）", { exact: true }).click();
-    for (let step = 0; step < 6; step++) {
-      await page.locator(".rating-progress").filter({ hasText: `${step + 1} / 6` }).waitFor();
-      await page.locator(".rating-card .wd-radio").nth(3).click();
+    const calibrationOptions = [3, 4, 1, 3, 3, 3, 3];
+    for (const [step, option] of calibrationOptions.entries()) {
+      await page.locator(".rating-progress").filter({ hasText: `${step + 1} / 7` }).waitFor();
+      const cards = page.locator(".rating-card");
+      const selected = page.locator(".rating-card.is-checked");
+      assert.equal(await selected.count(), 0);
+      if (step === 5) {
+        await cards.nth(1).click();
+        assert.deepEqual(await selected.allTextContents(), ["能截击正面的慢球"]);
+      }
+      await cards.nth(option).click();
+      assert.deepEqual(await selected.allTextContents(), [await cards.nth(option).textContent()]);
       if (!step) await page.screenshot({ path: path.join(output, "full.png") });
-      await page.getByText(step === 5 ? "完成并保存" : "下一题", { exact: true }).click();
+      await page.getByText(step === 6 ? "查看结果" : "下一题", { exact: true }).click();
     }
+    await page.locator(".rating-result-score").getByText("NTRP 3.0", { exact: true }).waitFor();
+    await page.locator(".rating-weakness").getByText(/反手/).waitFor();
+    assert.equal(requests.filter(({ endpoint, method }) => endpoint === "/users/me" && method === "PUT").length, 2);
+    await page.getByText("返回修改", { exact: true }).click();
+    await page.locator(".rating-progress").filter({ hasText: "7 / 7" }).waitFor();
+    assert.match(await page.locator(".rating-card.is-checked").innerText(), /调整战术/);
+    await page.getByText("查看结果", { exact: true }).click();
+    failSave = true;
+    await page.getByText("保存等级", { exact: true }).click();
+    await page.getByText("隔离测试：保存失败", { exact: true }).waitFor();
+    await page.locator(".rating-result-score").getByText("NTRP 3.0", { exact: true }).waitFor();
+    await page.getByText("保存等级", { exact: true }).click();
     await page.locator(".rating-sheet").waitFor({ state: "hidden" });
-    assert.match(await page.locator(".picker-field").innerText(), /3\.5/);
+    assert.match(await page.locator(".picker-field").innerText(), /3\.0/);
     await visit("profile/index");
-    await page.getByText("NTRP 3.5", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "编辑个人资料" }).getByText("NTRP 3.0", { exact: true }).waitFor();
     await page.screenshot({ path: path.join(output, "profile-tag.png") });
     // Actual form drafts survive page reconstruction and keep separate activity types.
     await visit("publish/index");
@@ -94,6 +115,7 @@ fs.mkdirSync(output, { recursive: true });
     await visit("publish/post-create");
     assert.equal(await page.locator(".post-form input").first().inputValue(), "退出后继续填写的约球");
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ ok: true, screenshots: output, checks: ["quick selection", "save failure retry", "NTRP persists after reload", "six-question flow", "profile tag", "post draft reload", "tournament draft reload", "separate activity drafts"], apiRequests: requests.length }));
+    assert(!requests.some(({ endpoint }) => /rating-(questionnaire|assessment)$/.test(endpoint)));
+    console.log(JSON.stringify({ ok: true, screenshots: output, checks: ["quick selection", "save failure retry", "NTRP persists after reload", "seven-question calibration and preview", "profile tag", "post draft reload", "tournament draft reload", "separate activity drafts"], apiRequests: requests.length }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
