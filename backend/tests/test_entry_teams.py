@@ -125,10 +125,10 @@ async def test_personal_organizer_contact_uses_activity_conversation(db, monkeyp
     c = await messages.contact(messages.ContactActivity(activity_id=tid), await db.get(User, 2), db)
     assert c["activity"] == {"id": tid, "kind": "tournament", "title": t.title}
     assert "phone" not in c["peer"]
+    # Club-hosted events keep the in-app channel open for players as well.
     t.club_id = 1
-    with pytest.raises(HTTPException) as error:
-        await messages.contact(messages.ContactActivity(activity_id=tid), await db.get(User, 3), db)
-    assert error.value.status_code == 422
+    club_chat = await messages.contact(messages.ContactActivity(activity_id=tid), await db.get(User, 3), db)
+    assert club_chat["activity"] == {"id": tid, "kind": "tournament", "title": t.title}
 
 
 @pytest.mark.asyncio

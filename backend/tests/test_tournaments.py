@@ -1108,3 +1108,27 @@ async def test_acceptance_finished_cancel_is_rejected_and_full_flag(db):
         await api.cancel_event(tid, ReasonCommand(reason='验收取消'), owner, db)
     assert exc.value.status_code == 409
     assert t.status == 'finished'
+
+
+@pytest.mark.asyncio
+async def test_contact_details_are_limited_to_the_organiser_side(db):
+    tid, owner = await event(db)
+    await register(db, tid, 2)
+    player = await db.get(User, 2)
+    player.phone = "13800000000"
+    owner.phone = "13900000000"
+    await db.flush()
+    # The organiser must be able to call the players who signed up.
+    as_owner = await api.get_tournament(tid, owner, db)
+    me = next(r for r in as_owner["registrations"] if r["user_id"] == "2")
+    assert me["user_phone"] == "13800000000"
+    assert me["user_public_id"]
+    # A fellow player sees the roster but never the phone numbers.
+    peer = await db.get(User, 3)
+    await register(db, tid, 3)
+    as_peer = await api.get_tournament(tid, peer, db)
+    assert all(not r.get("user_phone") for r in as_peer["registrations"])
+    # The organiser's own number is only handed to signed-in viewers.
+    assert as_peer["organizer_phone"] == "13900000000"
+    assert as_peer["organizer_public_id"]
+    assert (await api.get_tournament(tid, None, db))["organizer_phone"] is None

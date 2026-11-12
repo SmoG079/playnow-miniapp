@@ -38,6 +38,7 @@ from app.schemas.tournament import (
 )
 from app.services import tournament_lifecycle as life
 from app.services import tournament_engine as engine
+from app.services.public_identity import public_user_id
 from app.services import tournament_entries as entries
 from app.services import activity_ids
 from app.services.discovery import city_name, ordered
@@ -464,7 +465,7 @@ async def get_tournament(
     d = await draw_for(db, t, t.draw_version if manage else t.published_version)
     rows = (
         await db.execute(
-            select(TournamentRegistration, User.nickname, User.avatar_url, User.ntrp_level)
+            select(TournamentRegistration, User.nickname, User.avatar_url, User.ntrp_level, User.phone)
             .join(User, TournamentRegistration.user_id == User.id)
             .where(TournamentRegistration.tournament_id == ident)
             .order_by(TournamentRegistration.created_at)
@@ -472,10 +473,11 @@ async def get_tournament(
     ).all()
     regs = []
     mine = None
-    for r, nick, avatar, level in rows:
+    for r, nick, avatar, level, phone in rows:
         public = dict(
             id=r.id,
             user_id=r.user_id,
+            user_public_id=public_user_id(r.user_id),
             user_nickname=nick,
             user_avatar=avatar,
             user_ntrp_level=float(level) if level is not None else None,
@@ -491,6 +493,9 @@ async def get_tournament(
         )
         if manage or (user and user.id == r.user_id):
             public.update(private)
+            # Contact details stay with the organiser/admin who must reach the player.
+            if manage:
+                public["user_phone"] = phone
             if r.order_id:
                 order = await db.get(BookingOrder, r.order_id)
                 public["refund_status"] = (
@@ -510,7 +515,7 @@ async def get_tournament(
             regs.append(public)
     matches = await matches_for(db, d)
     frozen_ids = {uid for team in await teams_for(db, d) for uid in team["user_ids"]}
-    for r, nick, avatar, level in rows:
+    for r, nick, avatar, level, phone in rows:
         if r.user_id in frozen_ids and not any(x["user_id"] == r.user_id for x in regs):
             regs.append(
                 dict(
@@ -529,6 +534,8 @@ async def get_tournament(
     data = dict(
         **brief(t),
         club_name=club.name if club else None,
+        club_city=(club.city if club else None),
+        club_logo=((club.logo_image or club.cover_image) if club else None),
         **row_dict(
             t,
             "description prizes images address contact_name contact_phone lock_venue config cancellation_deadline roster_frozen",
@@ -547,6 +554,10 @@ async def get_tournament(
     data["unchecked_count"] = sum(life.eligible(r) and not r.checked_in_at for r, *_ in rows)
     data["auto_title"] = t.auto_title
     data["organizer_user_id"] = t.user_id
+    data["organizer_public_id"] = public_user_id(t.user_id) if t.user_id else None
+    # Players need a way to reach the organiser directly; anonymous visitors do not.
+    organizer = await db.get(User, t.user_id) if (user is not None and t.user_id) else None
+    data["organizer_phone"] = organizer.phone if organizer else None
     if not t.club_id:
         data["contact_phone"] = None
     data["description_template"] = t.description
@@ -585,7 +596,7 @@ async def get_tournament(
     for team in entry_teams:
         seats = []
         for seat_no in range(1, entries.size(t) + 1):
-            member = next(((r, nick, av, level) for r, nick, av, level in rows
+            member = next(((r, nick, av, level) for r, nick, av, level, _phone in rows
                            if r.entry_team_id == team.id and r.entry_seat == seat_no), None)
             participant = None
             if member:
@@ -610,7 +621,7 @@ async def get_tournament(
     data["draw_block_reason"] = ""
     if manage and t.config and (not d or d.stage == "initial"):
         try:
-            entries.ready(t, entry_teams, [r for r, _, _, _ in rows], life.eligible)
+            entries.ready(t, entry_teams, [r for r, *_ in rows], life.eligible)
         except ValueError as exc:
             data["draw_block_reason"] = str(exc)
     data["my_draw"] = (
@@ -619,7 +630,7 @@ async def get_tournament(
         else None
     )
     active = [
-        r for r, _, _, _ in rows if r.admission == "active" and r.approval == "approved"
+        r for r, *_ in rows if r.admission == "active" and r.approval == "approved"
     ]
     data["registration_groups"] = [
         dict(
@@ -647,7 +658,7 @@ async def get_tournament(
     if not t.published_version and t.config:
         try:
             cfg = life.config(t)
-            grouped = entries.ready(t, entry_teams, [r for r, _, _, _ in rows], life.eligible)
+            grouped = entries.ready(t, entry_teams, [r for r, *_ in rows], life.eligible)
             preview_teams = [
                 dict(id=p["entry_team_id"], group_no=p["group_no"], name=f"队伍{i}", user_ids=p["user_ids"])
                 for i, p in enumerate(grouped, 1)

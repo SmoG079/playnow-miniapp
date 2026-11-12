@@ -102,3 +102,35 @@ async def test_system_read_is_durable_before_response_and_does_not_read_other_us
     assert second.is_read is False
     with pytest.raises(HTTPException) as denied:await mark_notification_read(second.id,user,db)
     assert denied.value.status_code==404
+
+
+@pytest.mark.asyncio
+async def test_organiser_can_message_a_signed_up_player_only(db, monkeypatch):
+    from app.models.models import MatchRegistration, RegistrationStatus
+    from app.services.public_identity import public_user_id
+
+    monkeypatch.setattr(messages, "check_rate_limit", AsyncMock())
+    db.add(Activity(id=810, kind="post"))
+    db.add(MatchPost(id=810, user_id="1", title="约球A",
+                     preferred_date=date.today() + timedelta(days=1),
+                     preferred_start=time(10), preferred_end=time(12)))
+    db.add(MatchRegistration(post_id=810, user_id="3",
+                             status=RegistrationStatus.approved, payment="none"))
+    await db.flush()
+    owner = await db.get(User, "1")
+    player = await db.get(User, "3")
+    outsider = await db.get(User, "4")
+    chat = await messages.contact(
+        messages.ContactActivity(activity_id=810, target_user_id=public_user_id("3")), owner, db
+    )
+    assert chat["peer"]["nickname"] == "选手3"
+    # The player reaches the organiser through the same single conversation.
+    assert (await messages.contact(
+        messages.ContactActivity(activity_id=810, target_user_id=public_user_id("1")), player, db
+    ))["id"] == chat["id"]
+    # Nobody else may open a chat with a participant.
+    with pytest.raises(HTTPException) as error:
+        await messages.contact(
+            messages.ContactActivity(activity_id=810, target_user_id=public_user_id("3")), outsider, db
+        )
+    assert error.value.status_code == 403

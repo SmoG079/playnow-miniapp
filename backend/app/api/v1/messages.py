@@ -12,12 +12,14 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.rate_limit import check_rate_limit
 from app.core.logger import get_logger
-from app.models.models import User,MatchPost,Tournament,Activity,DirectConversation,DirectMessage
+from app.models.models import User,MatchPost,Tournament,Activity,DirectConversation,DirectMessage,ClubMember,MatchRegistration,TournamentRegistration
 router=APIRouter(prefix='/messages',tags=['messages'])
 logger=get_logger(__name__)
 
 class ContactActivity(BaseModel):
     activity_id:int=Field(...,ge=1)
+    # Public id of the球友 to reach; omitted means "the organiser of this activity".
+    target_user_id:str|None=Field(None,max_length=64)
 
 class SendMessage(BaseModel):
     client_id:str=Field(...,min_length=8,max_length=64,pattern=r'^[a-zA-Z0-9_-]+$')
@@ -52,20 +54,57 @@ async def conversation_data(db,c,user):
 def message_data(m,user):
     return dict(id=m.id,client_id=m.client_id,content=m.content,is_mine=m.sender_id==user.id,created_at=m.created_at)
 
+def role_of(user):
+    return getattr(user.role,'value',user.role)
+
+async def activity_owner(db,activity):
+    """Creator of the activity, plus the club it belongs to (if any)."""
+    if activity.kind=='post':
+        item=await db.get(MatchPost,activity.id)
+        if not item:raise HTTPException(404,'活动不存在')
+        return item.user_id,item.club_id
+    item=await db.get(Tournament,activity.id)
+    if not item:raise HTTPException(404,'活动不存在')
+    return item.user_id,item.club_id
+
+async def is_organizer(db,activity,user):
+    """Host of the activity: creator, hosting-club admin, or platform admin."""
+    if role_of(user)=='platform_admin':return True
+    owner_id,club_id=await activity_owner(db,activity)
+    if user.id==owner_id:return True
+    if club_id and role_of(user)=='club_admin':
+        return bool(await db.scalar(select(ClubMember.id).where(ClubMember.club_id==club_id,ClubMember.user_id==user.id)))
+    return False
+
+async def is_signed_up(db,activity,user):
+    """Any registration record counts, including pending review and cancelled history."""
+    model,col=(MatchRegistration,MatchRegistration.post_id) if activity.kind=='post' else (TournamentRegistration,TournamentRegistration.tournament_id)
+    return bool(await db.scalar(select(model.id).where(col==activity.id,model.user_id==user.id).limit(1)))
+
+async def resolve_peer(db,activity,req,user):
+    if req.target_user_id:
+        peer=await db.scalar(select(User).where(User.public_id==req.target_user_id))
+        if not peer:raise HTTPException(404,'球友不存在')
+        return peer
+    owner_id,_=await activity_owner(db,activity)
+    if not owner_id:raise HTTPException(409,'主办方联系信息尚未设置')
+    peer=await db.get(User,owner_id)
+    if not peer:raise HTTPException(409,'主办方联系信息尚未设置')
+    return peer
+
 @router.post('/conversations')
 async def contact(req:ContactActivity,user:User=Depends(get_current_user),db:AsyncSession=Depends(get_db)):
     activity=await db.get(Activity,req.activity_id)
     if not activity:raise HTTPException(404,'活动不存在')
-    if activity.kind=='post':
-        post=await db.get(MatchPost,activity.id)
-        owner_id=post.user_id
-    else:
-        tournament=await db.get(Tournament,activity.id)
-        if tournament.club_id:raise HTTPException(422,'俱乐部主办请使用赛事联系电话')
-        owner_id=tournament.user_id
-        if not owner_id:raise HTTPException(409,'主办方联系信息尚未设置')
-    if owner_id==user.id:raise HTTPException(409,'不能给自己发私信')
-    pair=sorted([user.id,owner_id])
+    peer=await resolve_peer(db,activity,req,user)
+    if peer.id==user.id:raise HTTPException(409,'不能给自己发私信')
+    peer_is_organizer=await is_organizer(db,activity,peer)
+    if not peer_is_organizer:
+        # Only the organiser side may open a chat with a signed-up player.
+        caller_is_organizer=await is_organizer(db,activity,user)
+        if not caller_is_organizer:raise HTTPException(403,'只能与活动主办方或已报名的球友联系')
+        if not await is_signed_up(db,activity,peer):raise HTTPException(403,'对方未报名该活动')
+    pair=sorted([user.id,peer.id])
     key=hashlib.sha256(json.dumps(pair,ensure_ascii=False).encode()).hexdigest()
     c=await db.scalar(select(DirectConversation).where(DirectConversation.pair_key==key))
     if not c:

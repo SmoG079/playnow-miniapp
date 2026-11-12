@@ -351,6 +351,8 @@ async def update_post(
 
 @router.get("/{post_id}", response_model=PostDetail)
 async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Optional[User] = Depends(get_optional_user)):
+    # Tests and internal callers may pass the dependency object through unchanged.
+    viewer = viewer if isinstance(viewer, User) else None
     approved_count = func.sum(
         case((MatchRegistration.status == RegistrationStatus.approved, 1), else_=0)
     )
@@ -359,6 +361,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     )
     result = await db.execute(
         select(MatchPost, User.nickname, User.avatar_url, User.phone, Club.name,
+               Club.city, Club.logo_image, Club.cover_image,
                approved_count, pending_count)
         .join(User, MatchPost.user_id == User.id)
         .outerjoin(Club, MatchPost.club_id == Club.id)
@@ -369,7 +372,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     row = result.one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Post not found")
-    post, nickname, avatar, phone, club_name, approved_cnt, pending_cnt = row
+    post, nickname, avatar, phone, club_name, club_city, club_logo, club_cover, approved_cnt, pending_cnt = row
 
     # Get registrations
     reg_result = await db.execute(
@@ -381,11 +384,27 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
     reg_rows = reg_result.all()
 
     registrations = []
+    # Host, hosting-club admin and platform admin all need the phone to reach players.
+    sees_contacts = False
+    if viewer:
+        if viewer.id == post.user_id or _v(viewer.role) == "platform_admin":
+            sees_contacts = True
+        elif post.club_id:
+            sees_contacts = bool(await db.scalar(
+                select(ClubMember.id).where(
+                    ClubMember.club_id == post.club_id, ClubMember.user_id == viewer.id
+                )
+            )) and _v(viewer.role) == "club_admin"
+    # The organiser hotline is shared with the球友 who signed up for this activity.
+    sees_organizer_phone = sees_contacts or (viewer is not None and any(
+        r.user_id == viewer.id for r, *_ in reg_rows
+    ))
     for r, r_nick, r_av, r_phone, r_level in reg_rows:
         r_nick = r_nick or _fallback_nickname(r.user_id, r_phone)
         registrations.append(RegistrationBrief(
             id=r.id, user_id=r.user_id, message=r.message, status=_v(r.status), payment=r.payment,
             user_nickname=r_nick, user_avatar=r_av, user_ntrp_level=r_level,
+            user_phone=r_phone if sees_contacts else None,
         ))
 
     effective_city, effective_lat, effective_lng = post.city, post.latitude, post.longitude
@@ -418,7 +437,7 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
             cover_image = cover_image or club.cover_image
             club_documents = club.documents if await can_view_club_documents(db, club, viewer) else None
 
-    # 联系发起人走私信，不再通过活动详情暴露手机号。
+    # Contact the organiser by phone or in-app chat; the number is only for logged-in球友.
     return PostDetail(
         id=post.id, club_id=post.club_id, user_id=post.user_id,
         city=effective_city, address=venue_address if post.venue_id else post.address, location_name=post.location_name, latitude=effective_lat, longitude=effective_lng,
@@ -432,12 +451,14 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db), viewer: Opt
         approval_required=post.approval_required,
         created_at=post.created_at,
         user_nickname=nickname or _fallback_nickname(post.user_id, phone), user_avatar=avatar,
-        club_name=club_name, registration_count=approved_cnt or 0,
+        club_name=club_name, club_city=club_city, club_logo=club_logo or club_cover,
+        registration_count=approved_cnt or 0,
         pending_count=pending_cnt or 0,
         notes=post.notes, description=post.description, documents=post.documents,
         venue_id=post.venue_id, booking_id=post.booking_id,
         registrations=registrations,
-        price=post.price, payment_method=post.payment_method, user_phone=None, venue_name=venue_name, venue_address=venue_address,
+        price=post.price, payment_method=post.payment_method,
+        user_phone=phone if sees_organizer_phone else None, venue_name=venue_name, venue_address=venue_address,
         venue_latitude=venue_latitude, venue_longitude=venue_longitude,
         cover_image=(post.images[0] if post.images else cover_image), club_documents=club_documents,
         images=post.images,

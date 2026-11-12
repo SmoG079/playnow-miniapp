@@ -65,7 +65,8 @@ class UserMeResponse(UserProfile):
     ntrp_level: Optional[Decimal] = None
     rating_source: Optional[str] = None
 
-
+# Kept until the new client (which grades locally) is published; the released
+# build still calls these two endpoints.
 class RatingAssessmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal["playnow_self_v2"]
@@ -597,6 +598,8 @@ class PostDetail(PostBrief):
     booking_id: Optional[int]
     registrations: list["RegistrationBrief"] = []
     user_phone: Optional[str] = None
+    club_city: Optional[str] = None
+    club_logo: Optional[str] = None
     venue_address: Optional[str] = None
     venue_latitude: Optional[float] = None
     venue_longitude: Optional[float] = None
@@ -615,6 +618,8 @@ class RegistrationBrief(BaseModel):
     user_nickname: Optional[str] = None
     user_avatar: Optional[str] = None
     user_ntrp_level: Optional[Decimal] = None
+    # Only populated for the host/admin who needs to reach the player.
+    user_phone: Optional[str] = None
 
     class Config:
         from_attributes = True

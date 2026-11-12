@@ -22,6 +22,9 @@ class Club(Base):
     __tablename__ = 'clubs'
     id = Column(Integer, primary_key=True)
     name = Column(String)
+    city = Column(String)
+    logo_image = Column(String)
+    cover_image = Column(String)
     latitude = Column(Integer)
     longitude = Column(Integer)
 

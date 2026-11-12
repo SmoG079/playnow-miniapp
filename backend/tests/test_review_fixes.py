@@ -349,14 +349,18 @@ async def test_phone_visibility_public_ids_and_club_document_scope(db):
         == user.public_id
         == public_user_id("1")
     )
-    assert (await posts.get_post(1, db, user)).user_phone is None
+    assert (await posts.get_post(1, db, user)).user_phone == "13800138000"
     participant = await db.get(User, "2")
     participant.role = "user"
-    assert (await posts.get_post(1, db, participant)).user_phone is None
+    # A球友 who signed up gets the organiser hotline for phone contact.
+    assert (await posts.get_post(1, db, participant)).user_phone == "13800138000"
+    # A logged-in stranger still only gets the in-app conversation.
+    outsider = await db.get(User, "3")
+    assert (await posts.get_post(1, db, outsider)).user_phone is None
     reg = (await db.execute(select(MatchRegistration))).scalar_one()
     reg.status = "approved"
     await db.flush()
-    assert (await posts.get_post(1, db, participant)).user_phone is None
+    assert (await posts.get_post(1, db, participant)).user_phone == "13800138000"
     assert (await clubs.get_club(1, db, None)).documents is None
     assert (await clubs.get_club(1, db, user)).documents == club.documents
 
