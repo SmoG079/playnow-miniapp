@@ -16,6 +16,8 @@ import { useSession } from "../../stores/session";
 import { openPage } from "../../utils/navigation";
 import { postLocation } from "../../domain/post-location";
 import { postParticipants } from "../../domain/post-participants";
+import ClubJoinCard from "../../components/ClubJoinCard.vue";
+import ContactActions from "../../components/ContactActions.vue";
 const s = useSession(),
   id = ref(""),
   post = ref<any>(null),
@@ -29,16 +31,6 @@ const s = useSession(),
   showRegs = ref(false);
 const location = computed(() => postLocation(post.value || {}));
 const participants = computed(() => post.value ? postParticipants(post.value) : []);
-const contacting = ref(false);
-async function contactOrganizer() {
-  if(!s.requireLogin('/pages/common/post-detail?id='+id.value)||contacting.value)return;
-  contacting.value=true;
-  try{
-    const conversation=await request<{id:string}>('/messages/conversations',{method:'POST',data:{activity_id:Number(id.value)}});
-    openPage('/pages/chat/conversation?id='+conversation.id);
-  }catch(e:any){uni.showToast({title:e.message||'暂时无法联系发起人',icon:'none'});}
-  finally{contacting.value=false;}
-}
 function openMeetingLocation() {
   const point = location.value;
   if (point.latitude == null || point.longitude == null) return;
@@ -250,24 +242,26 @@ function remove(c: any) {
         </view><view class="section-head"><text class="section-title">活动详情</text></view><view class="activity-description"><text class="body-copy">{{
           post.description || post.notes || "发起人暂未填写更多说明。"
         }}</text></view
-        ><view class="organizer"
+        ><view v-if="post.club_id" class="section-head"><text class="section-title">俱乐部</text></view>
+        <ClubJoinCard v-if="post.club_id" :club-id="post.club_id" :name="post.club_name" :city="post.club_city" :logo="post.club_logo" :owner-name="post.user_nickname" />
+        <view class="section-head"><text class="section-title">组织者</text></view>
+        <view class="organizer"
           ><Photo
             round
-            width="40px"
-            height="40px"
+            width="44px"
+            height="44px"
             :src="post.user_avatar"
             fallback="/static/tennis.jpg"
-          /><view
-            ><text class="strong"
-              >{{ post.user_nickname || "匿名" }} · 发起人</text
-            ></view
-          ><wd-button
-            v-if="post.user_id !== s.user?.id"
-            size="small"
-            variant="plain"
-             :loading="contacting" @click="contactOrganizer"
-            >发消息</wd-button
-          ></view
+          /><view class="organizer-copy"
+            ><text class="strong">{{ post.user_nickname || "球友" }}</text
+            ><text class="muted small">活动发起人</text></view
+          ><ContactActions
+            size="large"
+            :activity-id="Number(id)"
+            :user-id="post.user_id !== s.user?.id ? post.user_id : null"
+            :phone="post.user_phone || null"
+            :redirect="`/pages/common/post-detail?id=${id}`"
+          /></view
         ><view class="section-head"
           ><text class="section-title">评论</text></view
         ><view v-if="commentsFailed" class="row between">
@@ -321,6 +315,13 @@ function remove(c: any) {
               <Photo round width="44px" height="44px" :src="person.avatar" />
               <text class="participant-fullname">{{ person.nickname }}</text>
               <text class="participant-status" :class="{ 'is-organizer': person.organizer }">{{ person.organizer ? '发起人' : '已报名' }}</text>
+              <ContactActions
+                v-if="!person.organizer && (owner || person.phone)"
+                :activity-id="Number(id)"
+                :user-id="person.id"
+                :phone="person.phone"
+                :redirect="`/pages/common/post-detail?id=${id}`"
+              />
             </view>
           </scroll-view>
         </view></wd-popup></template

@@ -13,12 +13,16 @@ describe("production migration", () => {
       fs.readFileSync(path.join(root, "tests/fixtures/native-routes.json"), "utf8"),
     );
     const expected = native.pages.filter(
-      (route: string) => !native.removedNotificationStubs.includes(route),
+      (route: string) =>
+        !native.removedNotificationStubs.includes(route) &&
+        !(native.retiredBookingRoutes || []).includes(route),
     );
     expect(migrated).toEqual(expect.arrayContaining(expected));
     expect(migrated).toContain("pages/profile/applications");
     expect(new Set(migrated).size).toBe(migrated.length);
     for (const removed of native.removedNotificationStubs) expect(migrated).not.toContain(removed);
+    // Court booking is paused, so the placeholder screens must not ship at all.
+    for (const retired of native.retiredBookingRoutes || []) expect(migrated).not.toContain(retired);
     for (const route of migrated)
       expect(fs.existsSync(path.join(root, `src/${route}.vue`)), route).toBe(
         true,

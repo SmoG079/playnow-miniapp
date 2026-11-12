@@ -59,9 +59,19 @@ function selectClub({index}: {index:number}) {
   if (clubPurpose.value === "host") clubIndex.value = index - 1;
   else {
     const club = clubs.value[index];
-    if (club) uni.navigateTo({url:`/pages/booking/venue-detail?id=${club.id}&return_mode=tournament`});
+    if (club) applyClubLocation(club);
   }
   clubSheet.value = false;
+}
+/** Venue booking is not offered, so a club-linked event reuses the club address. */
+function applyClubLocation(club: any) {
+  form.latitude = club.latitude != null ? Number(club.latitude) : null;
+  form.longitude = club.longitude != null ? Number(club.longitude) : null;
+  form.address = club.address || "";
+  form.location_name = club.name || "";
+  if (club.city && !form.city) form.city = club.city;
+  cacheDraft();
+  uni.showToast({ title: "已使用俱乐部地址，可继续手动调整", icon: "none" });
 }
 const clubActions = computed(() => clubPurpose.value === "host" ? [{name:"不设置主办俱乐部"},...clubs.value.map(c => ({name:c.name}))] : clubs.value.map(c => ({name:c.name})));
 let initialized = false, completed = false, draftOwner = "";

@@ -35,5 +35,10 @@
     "pages/common/post-detail",
     "pages/common/tournament-detail",
     "pages/common/user-profile"
+  ],
+  "retiredBookingRoutes": [
+    "pages/booking/venue-detail",
+    "pages/booking/confirm",
+    "pages/booking/select"
   ]
 }

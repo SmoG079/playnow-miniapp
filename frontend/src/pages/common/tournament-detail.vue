@@ -20,6 +20,8 @@ import { cardSchedule } from "../../domain/activity-card";
 import ActivityShare from "../../components/ActivityShare.vue";
 import { activityShare, enableActivitySharing, isTimelinePreview, guideToMiniProgram } from "../../utils/share";
 import AppShell from "../../components/AppShell.vue";
+import ClubJoinCard from "../../components/ClubJoinCard.vue";
+import ContactActions from "../../components/ContactActions.vue";
 import TournamentDrawEditor from "../../components/TournamentDrawEditor.vue";
 import TournamentBracket from "../../components/TournamentBracket.vue";
 import TournamentSchedulePreview from "../../components/TournamentSchedulePreview.vue";
@@ -74,19 +76,21 @@ function previewGallery(image: string) {
     fail: () => uni.showToast({ title: "暂时无法预览图片", icon: "none" }),
   });
 }
-const contactingOrganizer = ref(false);
-async function contactOrganizer() {
-  if (t.value?.club_id) {
-    if (t.value.contact_phone) uni.makePhoneCall({phoneNumber:t.value.contact_phone});
-    return;
-  }
-  if (!s.requireLogin(`/pages/common/tournament-detail?id=${id.value}`) || contactingOrganizer.value) return;
-  contactingOrganizer.value = true;
-  try {
-    const c = await request<{id:string}>('/messages/conversations',{method:'POST',data:{activity_id:id.value}});
-    uni.navigateTo({url:'/pages/chat/conversation?id='+c.id});
-  } catch(e:any) { uni.showToast({title:e.message || '暂时无法联系主办方',icon:'none'}); }
-  finally { contactingOrganizer.value = false; }
+/** The organiser cannot call or message themselves. */
+const organizerPublicId = computed<string | null>(() => {
+  const current = t.value;
+  if (!current) return null;
+  // Older backends only expose `organizer_user_id`, already a public id.
+  if (current.organizer_public_id) return current.organizer_public_id;
+  return typeof current.organizer_user_id === "string" ? current.organizer_user_id : null;
+});
+const viewerIsOrganizer = computed(
+  () => !!organizerPublicId.value && organizerPublicId.value === s.user?.id,
+);
+/** Public id used to open a chat with a registered player. */
+function registrationContactId(r: Registration) {
+  if (r.user_public_id) return r.user_public_id;
+  return typeof r.user_id === "string" ? r.user_id : null;
 }
 const showCancelledRecords = ref(false);
 const cancelledRegistrations = computed(() => (t.value?.registrations||[]).filter(r=>r.status==="cancelled" || r.admission==="cancelled"));
@@ -714,11 +718,30 @@ function tie() {
                 <view class="gallery">
                   <button v-for="(image, index) in galleryImages" :key="image" class="gallery-photo"
                     :aria-label="'查看第 ' + (index + 1) + ' 张赛事图片'" @click="previewGallery(image)">
-                    <Photo :src="image" width="100%" height="180px" />
+                    <image class="gallery-full" :src="image" mode="widthFix" lazy-load />
+                    <text class="gallery-preview-label">点击查看大图</text>
                   </button>
                 </view>
               </view>
-              <view class="intro-section"><text class="intro-heading">主办与联系</text><view class="organizer-profile"><Photo :src="t.club_id ? t.club_avatar : t.organizer_avatar" width="44px" height="44px" round /><view class="organizer-copy"><text class="organizer-name">{{ t.club_id ? t.club_name : t.organizer_nickname || '球友' }}</text><text class="organizer-type">{{ t.club_id ? '俱乐部主办' : '个人主办' }}</text></view></view><text v-if="t.club_id && t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text><wd-button v-if="t.club_id ? !!t.contact_phone : !!t.organizer_user_id && t.organizer_user_id !== s.user?.id" size="small" variant="plain" :loading="contactingOrganizer" @click="contactOrganizer">联系主办方</wd-button></view>
+              <view v-if="t.club_id" class="intro-section"
+                ><text class="intro-heading">俱乐部</text>
+                <ClubJoinCard :club-id="t.club_id" :name="t.club_name" :city="t.club_city" :logo="t.club_logo" :owner-name="t.organizer_nickname" /><text v-if="t.contact_name" class="intro-copy">联系人：{{ t.contact_name }}</text></view
+              >
+              <view class="intro-section"
+                ><text class="intro-heading">组织者</text>
+                <view class="organizer-card"
+                  ><Photo :src="t.organizer_avatar" width="44px" height="44px" round fallback="/static/tennis.jpg" /><view class="organizer-copy"
+                    ><text class="organizer-name">{{ t.organizer_nickname || '球友' }}</text
+                    ><text class="organizer-type">{{ t.club_id ? '赛事主办' : '活动发起人' }}</text></view
+                  ><ContactActions
+                    v-if="!viewerIsOrganizer"
+                    organizer
+                    size="large"
+                    :activity-id="Number(t.id)"
+                    :phone="t.organizer_phone || (t.club_id ? t.contact_phone : null)"
+                    :redirect="`/pages/common/tournament-detail?id=${id}`"
+                  /></view></view
+              >
               <view class="intro-section registration-section"><text class="intro-heading">报名须知</text><text class="intro-copy">NTRP 等级：{{ t.level_required || '不限' }}</text><text class="intro-copy">报名截止：{{ localTime(t.registration_deadline) }}</text><text class="intro-copy">自助取消截止：{{ localTime(t.cancellation_deadline) }}</text><text class="intro-copy">付款方式：{{ paymentLabel(t.entry_fee, t.payment_method || 'online') }}</text><text class="muted small">{{ Number(t.entry_fee) <= 0 ? '本次比赛免费参加。' : t.payment_method === 'offline' ? '报名无需线上支付，费用由组织者线下收取；退费请与组织者协商。' : '截止前全额原路退款，之后由管理员处理；主办方取消全退。' }}</text></view>
             </view>
           </wd-tab>
@@ -961,13 +984,22 @@ function tie() {
           <view v-for="r in managementRegistrations" :key="r.id" class="list-card"
             ><view class="registration-profile">
               <view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
-              <text class="registration-badge">{{ stateNames[r.admission || ""] }}</text>
+              <view class="registration-side">
+                <text class="registration-badge">{{ stateNames[r.admission || ""] }}</text>
+                <ContactActions
+                  v-if="registrationContactId(r) !== s.user?.id"
+                  :activity-id="Number(t.id)"
+                  :user-id="registrationContactId(r)"
+                  :phone="r.user_phone || null"
+                  :redirect="`/pages/common/tournament-detail?id=${id}`"
+                />
+              </view>
             </view><text class="muted"
               >{{ stateNames[r.approval || ""] }} ·
               {{ stateNames[r.payment || ""] }}</text
             ><view class="check-in-section">
               <text class="check-in-status" :class="{ 'is-checked-in': r.checked_in_at }">{{ r.checked_in_at ? "已签到" : "未签到" }}</text>
-            </view><view class="choices registration-card-actions"
+            </view            ><view class="choices registration-card-actions"
               >
               <view v-if="t.checkin_open && r.status === 'confirmed' && r.admission === 'active' && !r.checked_in_at" class="check-in-action">
                 <wd-button size="mini" variant="soft" :loading="busy" @click="run(`registrations/${r.id}/check-in`)">代签到</wd-button>
@@ -1226,6 +1258,25 @@ function tie() {
   flex-direction: column;
   gap: 12px;
 }
+/* Full-width gallery: keep each photo's own aspect ratio instead of cropping it. */
+.gallery .gallery-photo {
+  overflow: hidden;
+  border-radius: var(--playnow-card-radius);
+  background: #eef1ef;
+}
+.gallery-full {
+  display: block;
+  width: 100%;
+}
+.organizer-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--playnow-card-border);
+  border-radius: var(--playnow-card-radius);
+  background: var(--playnow-surface);
+}
 .manager {
   margin-top: 24px;
   padding-top: 20px;
@@ -1251,6 +1302,7 @@ function tie() {
 .registration-profile>.registration-identity{flex:1;min-width:0}
 .registration-title{font-size:14px;font-weight:650;color:var(--playnow-text)}
 .registration-badge{flex-shrink:0;padding:3px 8px;border-radius:12px;background:var(--playnow-brand-soft);color:var(--playnow-brand-deep);font-size:12px}
+.registration-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
 .check-in-section{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--playnow-card-border)}
 .check-in-status,.check-in-note{font-size:13px;line-height:20px;color:var(--playnow-muted)}
 .check-in-status.is-checked-in{color:var(--playnow-brand)}

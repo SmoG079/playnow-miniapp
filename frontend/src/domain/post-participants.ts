@@ -3,20 +3,23 @@ interface Registration {
   user_nickname?: string;
   user_avatar?: string;
   status: string;
+  /** Only returned to the host / club admin / platform admin. */
+  user_phone?: string | null;
 }
 
 interface PostParticipants {
   user_id: string;
   user_nickname?: string;
   user_avatar?: string;
+  user_phone?: string | null;
   registrations?: Registration[];
 }
 
 export function postParticipants(post: PostParticipants) {
   return [
-    { id: post.user_id, nickname: post.user_nickname || '球友', avatar: post.user_avatar, organizer: true },
+    { id: post.user_id, nickname: post.user_nickname || '球友', avatar: post.user_avatar, phone: post.user_phone || null, organizer: true },
     ...(post.registrations || [])
       .filter(r => r.status === 'approved' && r.user_id !== post.user_id)
-      .map(r => ({ id: r.user_id, nickname: r.user_nickname || '球友', avatar: r.user_avatar, organizer: false })),
+      .map(r => ({ id: r.user_id, nickname: r.user_nickname || '球友', avatar: r.user_avatar, phone: r.user_phone || null, organizer: false })),
   ];
 }

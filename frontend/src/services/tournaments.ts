@@ -74,6 +74,10 @@ export interface Match {
 export interface Registration {
   checked_in_at?: string | null;
   user_ntrp_level?: number | null;
+  /** Public identifier used to start an in-app conversation. */
+  user_public_id?: string;
+  /** Only returned to the organiser, club admin or platform admin. */
+  user_phone?: string | null;
   entry_team_id?: number | null;
   entry_seat?: number | null;
   requested_group?: number;
@@ -99,7 +103,13 @@ export interface Tournament {
   organizer_nickname?: string | null;
   organizer_avatar?: string | null;
   club_avatar?: string | null;
+  /** Public identifier used to start an in-app conversation. */
+  organizer_public_id?: string | null;
+  /** Only returned to signed-in viewers. */
+  organizer_phone?: string | null;
   organizer_user_id?: string | null;
+  club_city?: string | null;
+  club_logo?: string | null;
   entry_teams: EntryTeam[];
   phase?: string;
   level_required?: string | null;

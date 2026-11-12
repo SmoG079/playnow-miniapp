@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ParticipantIdentity from "../../components/ParticipantIdentity.vue";
+import ContactActions from "../../components/ContactActions.vue";
 import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppShell from "../../components/AppShell.vue";
@@ -88,7 +89,12 @@ async function refund(r: any) {
         ><view class="registration-person"
           ><view class="registration-identity"><ParticipantIdentity :nickname="r.user_nickname" :avatar="r.user_avatar" :level="r.user_ntrp_level" /></view>
           <text class="registration-status" :class="'status-' + r.status">{{ r.payment === 'pending' ? '待线上付款' : statusLabels[r.status] }}</text
-          ></view
+          ><ContactActions
+            :activity-id="id"
+            :user-id="r.user_id"
+            :phone="r.user_phone || null"
+            :redirect="`/pages/publish/post-registration-approve?postId=${id}`"
+          /></view
         ><view v-if="r.status === 'pending' && r.payment !== 'pending'" class="registration-actions"
           ><wd-button size="small" @click="review(r, 'approved')"
             >通过</wd-button
